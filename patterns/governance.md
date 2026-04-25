@@ -11,10 +11,19 @@ summary; the repo owner (currently Aaron) clicks merge.
 
 - All Parachute repos with code or content (`parachute-cli`, `parachute-vault`,
   `parachute-notes`, `parachute-scribe`, `parachute.computer`,
-  `parachute-patterns`) have **branch protection on `main`**: at least 1
-  approving review required, no force-push, no branch deletion.
+  `parachute-patterns`) have **branch protection on `main`**: no force-push,
+  no branch deletion, PR-required for changes.
+- **Required-review count is calibrated to team size**:
+  - **Solo human team (today):** required approvals = `0`. The single human
+    *is* both reviewer and merger; a separate "approve" click before "merge"
+    is ceremony without an additional safeguard. The discipline is on the
+    automated actors (tentacles, team-lead) not to merge without a human.
+  - **Multi-human team (later):** required approvals = `≥1`. Bump back up
+    when a second human contributor with merge authority joins so PRs see a
+    second pair of eyes before main.
 - New Parachute repos turn on the same protection at the moment they hit
-  RC / first publish. Before that, direct push is fine while shape is fluid.
+  RC / first publish, calibrated to whatever team-size rule is active. Before
+  RC, direct push is fine while shape is fluid.
 - Reverts and emergency hotfixes follow the same rule: branch, PR, review,
   human merge. Speed comes from a faster review cycle, not from skipping
   review.
@@ -87,10 +96,7 @@ durable alignment across modules and humans.
 
 ## Open questions
 
-- **Self-approval**: GitHub allows a repo admin to approve their own PR in
-  some configurations. We're not currently using `enforce_admins`, so
-  admins can technically merge without a separate approval. This is
-  intentional for emergency overrides; track abuse.
-- **Multi-tentacle approval workflow**: when the codebase has >1 active
-  human contributor, we add explicit `CODEOWNERS` and require code-owner
-  reviews. Out of scope today.
+- **Multi-human transition**: when a second human contributor joins, bump
+  required approvals from `0` to `≥1` on each repo and add explicit
+  `CODEOWNERS` files for path-scoped review. Out of scope today; not
+  forgotten.
