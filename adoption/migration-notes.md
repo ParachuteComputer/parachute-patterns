@@ -13,16 +13,17 @@ entries on top. Each entry: date, change, affected repos, status.
 
 **Affected:**
 
-- `parachute-vault` — currently ships `parachute`; **rename to
-  `parachute-vault`** (pending). Blocks umbrella dispatch.
-- `parachute-scribe` — ships `scribe`; rename to `parachute-scribe`.
-- `parachute-narrate` — ships `narrate`; rename to `parachute-narrate`.
+- `parachute-vault` — renamed `parachute` → `parachute-vault` in
+  [#134](https://github.com/ParachuteComputer/parachute-vault/pull/134) (2026-04-21).
+- `parachute-scribe` — renamed `scribe` → `parachute-scribe` in
+  [#9](https://github.com/ParachuteComputer/parachute-scribe/pull/9) (2026-04-22).
+- `parachute-narrate` — not yet published; will ship as
+  `parachute-narrate` from day one.
 - `parachute-channel` — conformant (`parachute-channel`, `parachute-channel-bridge`).
 - `parachute-agents` — conformant (`parachute-agent`, `parachute-agent-ui`).
 - `tailshare` — exempt; not a Parachute-branded tool.
 
-**Status:** [DRAFT] — renames not yet executed. File per-repo issues to
-track each rename.
+**Status:** complete for shipped modules. Narrate to follow on first publish.
 
 ---
 
