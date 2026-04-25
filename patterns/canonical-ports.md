@@ -2,8 +2,9 @@
 
 ## Convention
 
-Every Parachute ecosystem service reserves a slot in the **`1939–1949`**
-loopback range. Third-party integrators are expected to stay out of it.
+Every Parachute ecosystem service that runs locally claims a slot in the
+**`1939–1949`** loopback range. Third-party integrators are expected to
+stay out of it.
 
 The single source of truth is the `PORT_RESERVATIONS` table in
 [`parachute-cli/src/service-spec.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/service-spec.ts).
@@ -12,37 +13,39 @@ ever disagree, the code wins and this doc is wrong.
 
 ## Reservations (state of the world, 2026-04-25)
 
-| Port | Service | Status | Notes |
-|---|---|---|---|
-| 1939 | `parachute-hub` | assigned | CLI-managed; static + reverse-proxy front door, fronts every service for `parachute expose`. |
-| 1940 | `parachute-vault` | assigned | REST + MCP at `/vault/<name>/`. |
-| 1941 | `parachute-channel` | assigned | Daemon. |
-| 1942 | `parachute-notes` | assigned | Static server over the PWA bundle. |
-| 1943 | `parachute-scribe` | assigned | Whisper-compatible transcription API at root. |
-| 1944 | `pendant` | reserved | Wearable companion (future). |
-| 1945 | `daily-v2` | reserved | Reflective journal app (future). |
-| 1946 | unassigned | reserved | |
-| 1947 | unassigned | reserved | |
-| 1948 | unassigned | reserved | |
-| 1949 | unassigned | reserved | |
+| Port | Service | Tier | Status | Notes |
+|---|---|---|---|---|
+| 1939 | `parachute-hub` | committed core | assigned | CLI-managed; static + reverse-proxy front door, fronts every service for `parachute expose`. |
+| 1940 | `parachute-vault` | committed core | assigned | REST + MCP at `/vault/<name>/`. |
+| 1942 | `parachute-notes` | committed core | assigned | Static server over the PWA bundle. |
+| 1943 | `parachute-scribe` | committed core | assigned | Whisper-compatible transcription API at root. |
+| 1941 | `parachute-channel` | working module | assigned | Daemon. Exploratory; may retire — not part of the committed ecosystem. |
+| 1944 | unassigned | — | reserved | |
+| 1945 | unassigned | — | reserved | |
+| 1946 | unassigned | — | reserved | |
+| 1947 | unassigned | — | reserved | |
+| 1948 | unassigned | — | reserved | |
+| 1949 | unassigned | — | reserved | |
+
+The **committed core** is the set of modules the Parachute ecosystem
+commits to maintaining: hub, vault, notes, scribe (and the umbrella
+`parachute-cli` that ties them together, which doesn't claim a port of
+its own). **Working modules** like channel exist and run, but the
+ecosystem does not commit to them as long-term first-party citizens.
 
 ## Why a fixed range
 
-- **Hub composition.** `parachute expose` (Tailscale serve / funnel) plans
-  proxy routes against fixed loopback ports. The hub fronts the whole
-  range from `127.0.0.1:1939`; clients only ever see the hub's address.
-  If service ports drifted, the proxy plan would have to be regenerated
-  on every install.
+- **Hub composition.** `parachute expose` (Tailscale serve / funnel)
+  plans proxy routes against fixed loopback ports. The hub fronts the
+  whole range from `127.0.0.1:1939`; clients only ever see the hub's
+  address. If service ports drifted, the proxy plan would have to be
+  regenerated on every install.
 - **Predictable curl.** Operators muscle-memory `curl
   http://127.0.0.1:1940/...` for vault, `1942/notes` for the PWA, etc.
   A fixed range makes troubleshooting durable across machines.
 - **Collision warnings.** `parachute install` warns (but does not block)
   when a service tries to claim a port outside the range — forks and
   non-standard deployments sometimes land elsewhere intentionally.
-- **Leaving headroom.** Slots `1944–1949` are reserved so the next four
-  modules don't have to negotiate. New first-party module → claim the
-  next free slot via PR to `parachute-cli/src/service-spec.ts` and add a
-  row here.
 
 ## Hub pin (1939)
 
@@ -54,9 +57,11 @@ than walking up into a service's slot.
 
 ## Rules
 
-- **Pick the next free slot in the range.** Open a PR against
-  `parachute-cli/src/service-spec.ts` adding a `PortReservation` entry,
-  and a row in this doc.
+- **New first-party modules claim a slot at the time they ship, not
+  before.** No speculative reservations for roadmap modules — the table
+  reflects what runs today, not what might run later. Open a PR against
+  `parachute-cli/src/service-spec.ts` adding a `PortReservation` entry
+  when the module actually ships, and add a row here in the same PR.
 - **Don't reuse a port across instances.** Multi-tenant modules (e.g.
   multiple vaults) take *one* port and disambiguate via path — see
   [module-protocol.md](./module-protocol.md) on the `/vault/<name>`
@@ -64,9 +69,9 @@ than walking up into a service's slot.
 - **Don't pin to a port outside the range without a reason.** A service
   that *can* live in `1939–1949` *should*. The warning from `parachute
   install` exists to catch drift, not to encourage it.
-- **Reserved slots are not free for first-come grabs.** `pendant` and
-  `daily-v2` have soft reservations; pick `1946+` if you ship before
-  they do.
+- **The committed-core tier is a maintenance commitment, not a port
+  commitment.** A service can be in the table without being committed
+  core; the table is the port registry, the tier column is editorial.
 
 ## What this isn't
 
@@ -77,13 +82,15 @@ than walking up into a service's slot.
 - **A registry of running services.** That's `~/.parachute/services.json`
   — see [module-protocol.md](./module-protocol.md). The reservation
   table says what *should* be at a port; services.json says what *is*.
+- **A roadmap.** Slots `1944–1949` are unassigned, not earmarked.
+  Whichever module ships first into the range claims the next free slot.
 
 ## Open questions
 
-- **Ports `1944` (pendant) and `1945` (daily-v2)** are soft-reserved
-  against modules that aren't shipped yet. Reclaim if neither lands by
-  end of 2026.
+- **Channel's status.** Currently allocated `1941` and runs in the
+  ecosystem, but flagged for possible retirement. If channel retires,
+  free `1941` and update this table.
 - **Range exhaustion.** Eleven slots is cozy; we'll start to feel it
-  around the seventh or eighth published service. The follow-up plan is
+  around the seventh or eighth shipped service. The follow-up plan is
   `1950–1969` as a second range, but we don't need to commit until the
   pressure is real.
