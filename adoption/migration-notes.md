@@ -71,6 +71,44 @@ not yet OAuth-enforcing.
 
 ---
 
+## 2026-04-26 — Mount-path convention documented
+
+**Change:** new pattern doc
+[`patterns/mount-path-convention.md`](../patterns/mount-path-convention.md).
+Frontend modules are served at a subpath under the ecosystem origin
+(today: `/notes/`), declared once via Vite `base` and read by everyone
+through `import.meta.env.BASE_URL`. Three coordinated downstream
+consumers — Vite asset URLs, React Router `basename`, PWA manifest
+`scope` / `start_url` / `id`. Internal routes are mount-relative
+(`/n/:id`, not `/notes/n/:id`); the router's basename does the
+prefixing. OAuth redirect URIs read `BASE_URL` so the callback resolves
+under the deployed mount. Override knob: `VITE_BASE_PATH`.
+
+**Affected:**
+
+- `parachute-notes` — reference implementation, already conformant.
+  Refactor sequence: PR
+  [#49](https://github.com/ParachuteComputer/parachute-notes/pull/49)
+  (move `base` to `/notes`) → PR
+  [#50](https://github.com/ParachuteComputer/parachute-notes/pull/50)
+  (drop `/notes/` from internal routes) → PR
+  [#54](https://github.com/ParachuteComputer/parachute-notes/pull/54)
+  (deep-link shim for pre-refactor bookmarks). Architecture writeup at
+  the top of `parachute-notes/CLAUDE.md` already forward-references
+  this doc.
+- Future Parachute frontends (PWAs / SPAs) — adopt the same shape: pick
+  a stable slug, set Vite `base`, write mount-relative routes, mirror
+  the manifest. Hub catalog (`/.well-known/parachute.json`) auto-renders
+  any frontend module that publishes a `services.json` entry with
+  `kind: "frontend"`.
+- Third-party frontends — same contract. Standard SPA-under-subpath
+  hygiene; nothing Parachute-specific.
+
+**Status:** complete on 2026-04-26 for `parachute-notes`. Pattern doc
+captures live behavior; no service-side changes required.
+
+---
+
 ## 2026-04-25 — CLI is the port authority at install time
 
 **Change:** `parachute install` now picks each service's port up front and
