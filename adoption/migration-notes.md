@@ -5,6 +5,32 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-04-25 — CLI is the port authority at install time
+
+**Change:** `parachute install` now picks each service's port up front and
+writes `PORT=<n>` into `~/.parachute/<svc>/.env`. Idempotent — an existing
+`PORT` in `.env` wins, so re-installs and user-edited ports survive
+upgrades. See [`patterns/cli-as-port-authority.md`](../patterns/cli-as-port-authority.md);
+pairs with [`patterns/canonical-ports.md`](../patterns/canonical-ports.md).
+
+**Affected:**
+
+- `parachute-cli` — implemented in
+  [#54](https://github.com/ParachuteComputer/parachute-cli/pull/54)
+  (closes #53). Helper: `src/port-assign.ts`. Hook: `src/commands/install.ts`.
+- `parachute-vault`, `parachute-notes`, `parachute-scribe`,
+  `parachute-channel` — no service-side changes required. Each already
+  reads `PORT` from env with a compiled-in fallback; the CLI's `.env`
+  value is merged into the spawn env by `lifecycle.start`. Confirm the
+  pattern on the next touch and add a comment if a service hard-codes its
+  port instead of reading env.
+- Third-party / future modules — same contract: read `PORT` from env, fall
+  back compiled-in, no integration with the CLI required.
+
+**Status:** complete for committed-core services on 2026-04-25.
+
+---
+
 ## 2026-04-15 — `parachute-*` bin naming
 
 **Change:** all Parachute executables adopt the `parachute-<module>` prefix
