@@ -196,6 +196,41 @@ captures live behavior; no service-side changes required.
 
 ---
 
+## 2026-04-26 — Service-to-service auth is a single-validator seam
+
+**Change:** inter-service calls (vault → scribe today; future pairs
+later) authenticate via a bearer token validated by a single
+function on the callee — `validateToken(token) → {valid, scopes}`.
+The CLI mints the secret on install and writes it to both ends. The
+upgrade path to hub-issued JWTs in Phase B2 is a body-swap of that
+one function; callers and callees don't change. See
+[`patterns/service-to-service-auth.md`](../patterns/service-to-service-auth.md);
+pairs with [`patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md)
+and [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
+
+**Affected:**
+
+- `parachute-cli` — already implements the trust broker in
+  `src/auto-wire.ts` (mints `SCRIBE_AUTH_TOKEN`, writes to vault `.env`
+  and scribe `config.json`, idempotent, restarts vault). No code
+  change needed; pattern documents what's there.
+- `parachute-scribe` — already implements the validator seam in
+  `src/auth.ts`. Returns scopes-on-success even on the shared-secret
+  path so the JWT swap is callable-compatible.
+- `parachute-vault` — caller-side resolver in `src/scribe-env.ts`
+  handles canonical `SCRIBE_AUTH_TOKEN` + deprecated `SCRIBE_TOKEN`
+  with a one-shot warning.
+- Phase B2 cutover (`validateToken` body becomes JWT verify; shared
+  scope-guard library) tracked in
+  [cli#59](https://github.com/ParachuteComputer/parachute-cli/issues/59).
+- Future inter-service pairs — declare the env var name in
+  `.parachute/module.json` and `auto-wire` provisions on install.
+
+**Status:** Phase 0+1 complete on 2026-04-23 for the vault↔scribe
+pair. Phase B2 in design.
+
+---
+
 ## 2026-04-25 — CLI is the port authority at install time
 
 **Change:** `parachute install` now picks each service's port up front and
