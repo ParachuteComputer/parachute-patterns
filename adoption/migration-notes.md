@@ -71,6 +71,32 @@ not yet OAuth-enforcing.
 
 ---
 
+## 2026-04-26 — Reviewer-agent convention documented
+
+**Change:** new pattern doc
+[`patterns/reviewer-agent.md`](../patterns/reviewer-agent.md). For PRs
+touching auth / scope / schema / public API / module-protocol /
+inter-service contracts, the team-lead runs a fresh-spawn `reviewer`
+agent against the diff before recommending merge. Convention, not
+enforcement; pairs with [`governance.md`](../patterns/governance.md)
+Rule 1 (every PR reviewed by a team-lead role and merged by a human).
+The reviewer agent's value is the fresh-context pass — both steward
+and team-lead are anchored to what they meant the change to do; a
+fresh agent reads the diff cold against named patterns / RFCs /
+surrounding code and surfaces the gap.
+
+**Affected:**
+
+- Team-lead / patterns steward — adopt the convention going forward;
+  cite reviewer findings in the verification summary.
+- Future PRs in the listed change-classes — should expect a reviewer
+  pass.
+
+**Status:** convention documented on 2026-04-26. Already in informal
+use during launch-week shipping; this writes it down.
+
+---
+
 ## 2026-04-26 — Module JSON extensibility (target convention)
 
 **Change:** new pattern doc
