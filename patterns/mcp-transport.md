@@ -2,13 +2,21 @@
 
 ## Convention
 
-Parachute-hosted MCP servers speak **Streamable HTTP** at `<base>/mcp` and
-authenticate via bearer tokens over `Authorization: Bearer <pvt_...>`.
+Parachute-hosted MCP servers speak **Streamable HTTP** at `<base>/mcp`
+and authenticate via OAuth bearer tokens (or `pvt_*` PATs) over
+`Authorization: Bearer <token>`. The OAuth bearer path is the
+agent-and-service default; `pvt_*` is the user-facing PAT — see
+[`token-auth.md`](./token-auth.md).
 
 - Canonical example: `parachute-vault` serves its MCP at `<vault-url>/mcp`.
 - Clients: agents in `@openparachute/agent` connect via
   `@modelcontextprotocol/sdk` + the Streamable HTTP transport. Source:
   [parachute-agents/src/vault.ts](https://github.com/ParachuteComputer/parachute-agents/blob/main/src/vault.ts).
+- OAuth-aware clients discover the token endpoint via RFC 8414
+  metadata at `<origin>/.well-known/oauth-authorization-server[/<path>]`
+  — see [`well-known-discovery-rfc.md`](./well-known-discovery-rfc.md)
+  for the path-insertion shape and [`hub-as-issuer.md`](./hub-as-issuer.md)
+  for which origin the `iss` claim points to.
 
 ## Why Streamable HTTP (not SSE)
 
@@ -47,9 +55,17 @@ mcp:
     scope: "read write"
 ```
 
-Runs the RFC 6749 `client_credentials` grant and caches the access token
-per-server. PKCE, authorization_code, and refresh_token flows are out of
-scope until an agent actually needs one.
+Runs the RFC 6749 `client_credentials` grant and caches the access
+token per-server. PKCE, authorization_code, and refresh_token flows
+are out of scope until an agent actually needs one.
+
+`token_url` may be omitted — clients that implement RFC 8414 discovery
+will GET `<origin>/.well-known/oauth-authorization-server[/<issuer-
+path>]` against the MCP `url`'s origin, read the advertised
+`token_endpoint`, and proceed. See
+[`well-known-discovery-rfc.md`](./well-known-discovery-rfc.md). Static
+`token_url` remains the explicit override when an author wants to pin
+the endpoint or skip discovery.
 
 ## Rules
 

@@ -71,6 +71,226 @@ not yet OAuth-enforcing.
 
 ---
 
+## 2026-04-26 — Parallel cross-repo PRs documented
+
+**Change:** new pattern doc
+[`patterns/parallel-cross-repo-PRs.md`](../patterns/parallel-cross-repo-PRs.md).
+When a single conceptual change spans multiple Parachute repos, the
+team-lead briefs each steward in parallel and each steward opens its
+own PR independently. No master PR, no orchestration branch, no
+"merge X first" instructions. The composition is parallel-safe by
+design — additive contracts, backwards-compatible shape changes, or
+symmetric contracts that exist on both sides. Captures the shipping
+shape already used for OAuth Phase 0 (4 simultaneous PRs) and
+stateless-scribe.
+
+**Affected:**
+
+- Team-lead / patterns steward — adopt the convention going forward;
+  use it to scope multi-repo changes before briefing the stewards.
+- Tentacle stewards — each PR's description references the shared
+  design doc / brief note; no cross-PR coordination mid-flight.
+- Future ecosystem-wide changes — design parallel-safe scope first,
+  brief stewards in parallel second.
+
+**Status:** convention documented on 2026-04-26. Already in active
+use during launch-week shipping (OAuth Phase 0, stateless scribe);
+this writes it down.
+
+---
+
+## 2026-04-26 — Reviewer-agent convention documented
+
+**Change:** new pattern doc
+[`patterns/reviewer-agent.md`](../patterns/reviewer-agent.md). For PRs
+touching auth / scope / schema / public API / module-protocol /
+inter-service contracts, the team-lead runs a fresh-spawn `reviewer`
+agent against the diff before recommending merge. Convention, not
+enforcement; pairs with [`governance.md`](../patterns/governance.md)
+Rule 1 (every PR reviewed by a team-lead role and merged by a human).
+The reviewer agent's value is the fresh-context pass — both steward
+and team-lead are anchored to what they meant the change to do; a
+fresh agent reads the diff cold against named patterns / RFCs /
+surrounding code and surfaces the gap.
+
+**Affected:**
+
+- Team-lead / patterns steward — adopt the convention going forward;
+  cite reviewer findings in the verification summary.
+- Future PRs in the listed change-classes — should expect a reviewer
+  pass.
+
+**Status:** convention documented on 2026-04-26. Already in informal
+use during launch-week shipping; this writes it down.
+
+---
+
+## 2026-04-26 — Module JSON extensibility (target convention)
+
+**Change:** new pattern doc
+[`patterns/module-json-extensibility.md`](../patterns/module-json-extensibility.md)
+— third-party modules declare themselves via a `.parachute/module.json`
+file shipped in the npm package; `name` / `manifestName` /
+`displayName` / `tagline` / `kind` / `port` / `paths` / `health` /
+`startCmd` / `scopes` / `dependencies`. **No `@openparachute/` scope or
+`parachute-*` prefix required** — the contract is what makes a module
+a Parachute module, not its name. **Status: target, not yet
+implemented in `parachute install`.** Today the CLI uses a hardcoded
+`SERVICE_SPECS` fallback — a first-party shortcut, not an
+architectural limit.
+
+**Affected:**
+
+- `parachute-cli` — needs the `module.json` reader / validator /
+  installer step before this is real. Tracked as Phase 3 work in the
+  design doc. Hardcoded `SERVICE_SPECS` retires (or shrinks to a
+  transitional fallback) when `module.json` lands.
+- `parachute-vault`, `parachute-notes`, `parachute-scribe`,
+  `parachute-channel` — when the convention lands, ship
+  `.parachute/module.json` matching what each currently asserts
+  through `SERVICE_SPECS`. No runtime change.
+- Third-party authors — the canonical shape, today, is in
+  [`parachute.computer/design/2026-04-20-module-architecture.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md)
+  (extensibility section). The pattern doc is the durable reference.
+
+**Status:** convention documented; CLI implementation deferred to
+Phase 3.
+
+---
+
+## 2026-04-26 — Mount-path convention documented
+
+**Change:** new pattern doc
+[`patterns/mount-path-convention.md`](../patterns/mount-path-convention.md).
+Frontend modules are served at a subpath under the ecosystem origin
+(today: `/notes/`), declared once via Vite `base` and read by everyone
+through `import.meta.env.BASE_URL`. Three coordinated downstream
+consumers — Vite asset URLs, React Router `basename`, PWA manifest
+`scope` / `start_url` / `id`. Internal routes are mount-relative
+(`/n/:id`, not `/notes/n/:id`); the router's basename does the
+prefixing. OAuth redirect URIs read `BASE_URL` so the callback resolves
+under the deployed mount. Override knob: `VITE_BASE_PATH`.
+
+**Affected:**
+
+- `parachute-notes` — reference implementation, already conformant.
+  Refactor sequence: PR
+  [#49](https://github.com/ParachuteComputer/parachute-notes/pull/49)
+  (move `base` to `/notes`) → PR
+  [#50](https://github.com/ParachuteComputer/parachute-notes/pull/50)
+  (drop `/notes/` from internal routes) → PR
+  [#54](https://github.com/ParachuteComputer/parachute-notes/pull/54)
+  (deep-link shim for pre-refactor bookmarks). Architecture writeup at
+  the top of `parachute-notes/CLAUDE.md` already forward-references
+  this doc.
+- Future Parachute frontends (PWAs / SPAs) — adopt the same shape: pick
+  a stable slug, set Vite `base`, write mount-relative routes, mirror
+  the manifest. Hub catalog (`/.well-known/parachute.json`) auto-renders
+  any frontend module that publishes a `services.json` entry with
+  `kind: "frontend"`.
+- Third-party frontends — same contract. Standard SPA-under-subpath
+  hygiene; nothing Parachute-specific.
+
+**Status:** complete on 2026-04-26 for `parachute-notes`. Pattern doc
+captures live behavior; no service-side changes required.
+
+---
+
+## 2026-04-26 — Service-to-service auth is a single-validator seam
+
+**Change:** inter-service calls (vault → scribe today; future pairs
+later) authenticate via a bearer token validated by a single
+function on the callee — `validateToken(token) → {valid, scopes}`.
+The CLI mints the secret on install and writes it to both ends. The
+upgrade path to hub-issued JWTs in Phase B2 is a body-swap of that
+one function; callers and callees don't change. See
+[`patterns/service-to-service-auth.md`](../patterns/service-to-service-auth.md);
+pairs with [`patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md)
+and [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
+
+**Affected:**
+
+- `parachute-cli` — already implements the trust broker in
+  `src/auto-wire.ts` (mints `SCRIBE_AUTH_TOKEN`, writes to vault `.env`
+  and scribe `config.json`, idempotent, restarts vault). No code
+  change needed; pattern documents what's there.
+- `parachute-scribe` — already implements the validator seam in
+  `src/auth.ts`. Returns scopes-on-success even on the shared-secret
+  path so the JWT swap is callable-compatible.
+- `parachute-vault` — caller-side resolver in `src/scribe-env.ts`
+  handles canonical `SCRIBE_AUTH_TOKEN` + deprecated `SCRIBE_TOKEN`
+  with a one-shot warning.
+- Phase B2 cutover (`validateToken` body becomes JWT verify; shared
+  scope-guard library) tracked in
+  [cli#59](https://github.com/ParachuteComputer/parachute-cli/issues/59).
+- Future inter-service pairs — declare the env var name in
+  `.parachute/module.json` and `auto-wire` provisions on install.
+
+**Status:** Phase 0+1 complete on 2026-04-23 for the vault↔scribe
+pair. Phase B2 in design.
+
+---
+
+## 2026-04-26 — Writes require `if_updated_at` (or explicit `force: true`)
+
+**Change:** Parachute write APIs require an `if_updated_at`
+precondition by default; `force: true` is the explicit opt-out.
+Conflicts return a structured 409 (`error_type: "conflict"` +
+`current_updated_at` / `your_updated_at` / `path` / `note_id`);
+missing precondition returns a structured 428 (RFC 6585,
+`error_type: "precondition_required"`). Single-resource reads
+always include `updated_at` so the next write has a token. See
+[`patterns/optimistic-concurrency.md`](../patterns/optimistic-concurrency.md).
+
+**Affected:**
+
+- `parachute-vault` — reference implementation.
+  [#153](https://github.com/ParachuteComputer/parachute-vault/pull/153)
+  landed required `if_updated_at` + the structured conflict shape.
+  Both HTTP (`src/routes.ts`) and MCP (`src/mcp-http.ts`) tool
+  surfaces enforce identically.
+- `parachute-notes` — must forward `if_updated_at` from PWA edits to
+  vault writes; don't strip it. PWA's local store should hold the
+  last-seen `updated_at` per note.
+- Future API-surface modules — adopt the same shape on every mutating
+  endpoint over a database-backed resource. Pattern doc has the rules.
+
+**Status:** complete for vault on 2026-04-23 (PR #153). Notes adoption
+ongoing — confirm on next touch.
+
+---
+
+## 2026-04-26 — Context-in-payload pattern documented
+
+**Change:** new pattern doc
+[`patterns/context-in-payload.md`](../patterns/context-in-payload.md). The
+provider pre-fetches narrowly-scoped context (a few dozen names) and ships
+it inline in the trigger payload — multipart `context` part for attachment
+sends, top-level `context: {...}` field for JSON sends. The consumer is
+stateless: parses tolerantly and never calls back into the provider. Empty
+payload → no part attached. Reference pair: `parachute-vault` →
+`parachute-scribe` for transcription proper-noun correction (vault
+[#156](https://github.com/ParachuteComputer/parachute-vault/pull/156)).
+
+**Affected:**
+
+- `parachute-vault` — already conformant. `src/context.ts`
+  (`fetchContextEntries`, `appendContextPart`) implements the provider
+  side; trigger config exposes `include_context` (predicate list with
+  `tag` / `exclude_tag` / `include_metadata`).
+- `parachute-scribe` — already conformant. `src/context.ts`
+  (`parseContextPayload`, `buildProperNounsBlockFromEntries`) implements
+  the tolerant consumer side.
+- Future modules taking context-relevant free-text (cleanup, summarization,
+  classification) — adopt the same `entries[]` shape on receive. Future
+  context-providing modules — emit the exact same shape, do not fork into a
+  per-provider schema.
+
+**Status:** complete on 2026-04-26. Pattern doc captures live behavior; no
+service-side changes required.
+
+---
+
 ## 2026-04-25 — CLI is the port authority at install time
 
 **Change:** `parachute install` now picks each service's port up front and
