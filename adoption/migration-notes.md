@@ -38,6 +38,39 @@ with [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
 
 ---
 
+## 2026-04-26 — Well-known discovery URLs follow RFC 8414 §3.1
+
+**Change:** OAuth metadata for an issuer with a path component lives
+at `<origin>/.well-known/<type>/<issuer-path>` (path-insertion), not
+`<issuer>/.well-known/<type>` (path-append). Vault serves both for
+client compatibility, but path-insertion is the canonical advertised
+form. See
+[`patterns/well-known-discovery-rfc.md`](../patterns/well-known-discovery-rfc.md);
+pairs with [`patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md).
+
+**Affected:**
+
+- `parachute-vault` — already conforms. Path-insertion routes added
+  in [#149](https://github.com/ParachuteComputer/parachute-vault/pull/149)
+  after the `/vault/<name>/` URL migration; path-append routes have
+  been there since launch. Reference: top of `route()` in
+  `src/routing.ts`.
+- `parachute-hub` (renaming from `parachute-cli` —
+  [cli#55](https://github.com/ParachuteComputer/parachute-cli/issues/55))
+  — picks this up when the hub becomes the IdP itself in Phase B2
+  ([cli#58](https://github.com/ParachuteComputer/parachute-cli/issues/58)).
+  Hub origin has no path component, so insertion and append collapse
+  to the same `/.well-known/<type>` URL — the distinction only
+  matters for issuers with a path.
+- `parachute-scribe`, `parachute-channel`, future modules — when they
+  begin serving OAuth metadata, serve both shapes for any path-rooted
+  issuer they advertise.
+
+**Status:** complete for vault on 2026-04-23 (PR #149). Other modules
+not yet OAuth-enforcing.
+
+---
+
 ## 2026-04-25 — CLI is the port authority at install time
 
 **Change:** `parachute install` now picks each service's port up front and
