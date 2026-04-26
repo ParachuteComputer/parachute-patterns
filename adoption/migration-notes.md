@@ -71,6 +71,39 @@ not yet OAuth-enforcing.
 
 ---
 
+## 2026-04-26 — Module JSON extensibility (target convention)
+
+**Change:** new pattern doc
+[`patterns/module-json-extensibility.md`](../patterns/module-json-extensibility.md)
+— third-party modules declare themselves via a `.parachute/module.json`
+file shipped in the npm package; `name` / `manifestName` /
+`displayName` / `tagline` / `kind` / `port` / `paths` / `health` /
+`startCmd` / `scopes` / `dependencies`. **No `@openparachute/` scope or
+`parachute-*` prefix required** — the contract is what makes a module
+a Parachute module, not its name. **Status: target, not yet
+implemented in `parachute install`.** Today the CLI uses a hardcoded
+`SERVICE_SPECS` fallback — a first-party shortcut, not an
+architectural limit.
+
+**Affected:**
+
+- `parachute-cli` — needs the `module.json` reader / validator /
+  installer step before this is real. Tracked as Phase 3 work in the
+  design doc. Hardcoded `SERVICE_SPECS` retires (or shrinks to a
+  transitional fallback) when `module.json` lands.
+- `parachute-vault`, `parachute-notes`, `parachute-scribe`,
+  `parachute-channel` — when the convention lands, ship
+  `.parachute/module.json` matching what each currently asserts
+  through `SERVICE_SPECS`. No runtime change.
+- Third-party authors — the canonical shape, today, is in
+  [`parachute.computer/design/2026-04-20-module-architecture.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md)
+  (extensibility section). The pattern doc is the durable reference.
+
+**Status:** convention documented; CLI implementation deferred to
+Phase 3.
+
+---
+
 ## 2026-04-26 — Mount-path convention documented
 
 **Change:** new pattern doc
