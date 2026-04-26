@@ -1,13 +1,20 @@
 # Token auth — `pvt_` tokens
 
-## [DRAFT] — canonicalizing the shape across modules
-
 ## Convention
 
-Parachute-issued bearer tokens use a `pvt_` prefix ("parachute token"), are
-stored as sha256 hashes (never in clear), are scoped to a vault / tenant /
-agent, and are revealed to the user exactly once via the issuing surface —
-typically a cookie-gated modal after creation.
+Parachute-issued **personal access tokens** use a `pvt_` prefix
+("parachute token"), are stored as sha256 hashes (never in clear), are
+scoped to a vault / tenant / agent, and are revealed to the user
+exactly once via the issuing surface — typically a cookie-gated modal
+after creation.
+
+`pvt_*` tokens are the **user-facing PAT** path: a logged-in human
+generates one in the issuing module's UI and pastes it into a script,
+a CLI, or a third-party tool. They sit alongside the **OAuth bearer
+token** path ([`hub-as-issuer.md`](./hub-as-issuer.md)), which is for
+agent-to-service and service-to-service flows where the consumer goes
+through the consent dance. Same scope vocabulary on both — see
+[`oauth-scopes.md`](./oauth-scopes.md).
 
 ## Shape
 
@@ -29,7 +36,10 @@ sha256(pvt_...) hex → (tenant_id, scope, created_at, last_used_at, label)
   issuance. Comparing: hash the incoming bearer, look up by hash.
 - **Scope is required.** Every token has a named scope
   (`vault:read`, `vault:write`, `agent:invoke`, etc.). A token without
-  scope is a bug.
+  scope is a bug. Scope strings follow
+  [`oauth-scopes.md`](./oauth-scopes.md) — `pvt_*` and OAuth bearer
+  tokens share one vocabulary so a `vault:read` grant means the same
+  thing on either side of the validator seam.
 - **Reveal once.** The UI that issues a token shows the full `pvt_...`
   exactly one time, gated by the user's active session cookie. After modal
   close, the UI shows only a last-4 suffix + label. The caller is
@@ -49,10 +59,13 @@ sha256(pvt_...) hex → (tenant_id, scope, created_at, last_used_at, label)
 
 ## Where this applies
 
-- `parachute-vault` — vault tokens for REST / MCP auth.
-- `parachute-cloud` — tenant-scoped vault access tokens.
-- `@openparachute/agent` — inbound webhook tokens for trigger auth (when the
-  runner exposes a webhook endpoint).
+- `parachute-vault` — vault tokens for REST / MCP auth. Today this is
+  the only shipped issuer of `pvt_*` tokens.
+- Future modules with a user-facing PAT surface — same shape, same
+  scope vocabulary. Modules whose only credentialed callers are agents
+  or other services should prefer the OAuth bearer path
+  ([`hub-as-issuer.md`](./hub-as-issuer.md)) over minting their own
+  `pvt_*` issuer.
 
 ## Open questions
 
