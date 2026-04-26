@@ -66,7 +66,8 @@ written at install time is the contract for the next boot, and
 
 The `occupied` set is built by `collectOccupiedPorts` in `install.ts`:
 union of (a) every `port` already in `services.json` for *other* services,
-and (b) any port in `1939–1949` that responds to a 150ms TCP probe at
+and (b) any port in the [`1939–1949`](./canonical-ports.md) range that
+responds to a 150ms TCP probe at
 `127.0.0.1:<port>`. The probe is fail-open — timeouts and errors return
 `false` so a flaky probe never blocks an install.
 
