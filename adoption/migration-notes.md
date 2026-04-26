@@ -71,6 +71,34 @@ not yet OAuth-enforcing.
 
 ---
 
+## 2026-04-26 — Parallel cross-repo PRs documented
+
+**Change:** new pattern doc
+[`patterns/parallel-cross-repo-PRs.md`](../patterns/parallel-cross-repo-PRs.md).
+When a single conceptual change spans multiple Parachute repos, the
+team-lead briefs each steward in parallel and each steward opens its
+own PR independently. No master PR, no orchestration branch, no
+"merge X first" instructions. The composition is parallel-safe by
+design — additive contracts, backwards-compatible shape changes, or
+symmetric contracts that exist on both sides. Captures the shipping
+shape already used for OAuth Phase 0 (4 simultaneous PRs) and
+stateless-scribe.
+
+**Affected:**
+
+- Team-lead / patterns steward — adopt the convention going forward;
+  use it to scope multi-repo changes before briefing the stewards.
+- Tentacle stewards — each PR's description references the shared
+  design doc / brief note; no cross-PR coordination mid-flight.
+- Future ecosystem-wide changes — design parallel-safe scope first,
+  brief stewards in parallel second.
+
+**Status:** convention documented on 2026-04-26. Already in active
+use during launch-week shipping (OAuth Phase 0, stateless scribe);
+this writes it down.
+
+---
+
 ## 2026-04-26 — Reviewer-agent convention documented
 
 **Change:** new pattern doc
