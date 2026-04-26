@@ -38,6 +38,35 @@ with [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
 
 ---
 
+## 2026-04-26 — Writes require `if_updated_at` (or explicit `force: true`)
+
+**Change:** Parachute write APIs require an `if_updated_at`
+precondition by default; `force: true` is the explicit opt-out.
+Conflicts return a structured 409 (`error_type: "conflict"` +
+`current_updated_at` / `your_updated_at` / `path` / `note_id`);
+missing precondition returns a structured 428 (RFC 6585,
+`error_type: "precondition_required"`). Single-resource reads
+always include `updated_at` so the next write has a token. See
+[`patterns/optimistic-concurrency.md`](../patterns/optimistic-concurrency.md).
+
+**Affected:**
+
+- `parachute-vault` — reference implementation.
+  [#153](https://github.com/ParachuteComputer/parachute-vault/pull/153)
+  landed required `if_updated_at` + the structured conflict shape.
+  Both HTTP (`src/routes.ts`) and MCP (`src/mcp-http.ts`) tool
+  surfaces enforce identically.
+- `parachute-notes` — must forward `if_updated_at` from PWA edits to
+  vault writes; don't strip it. PWA's local store should hold the
+  last-seen `updated_at` per note.
+- Future API-surface modules — adopt the same shape on every mutating
+  endpoint over a database-backed resource. Pattern doc has the rules.
+
+**Status:** complete for vault on 2026-04-23 (PR #153). Notes adoption
+ongoing — confirm on next touch.
+
+---
+
 ## 2026-04-25 — CLI is the port authority at install time
 
 **Change:** `parachute install` now picks each service's port up front and
