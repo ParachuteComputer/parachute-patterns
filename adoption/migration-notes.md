@@ -5,6 +5,39 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-04-26 — Hub is the OAuth issuer
+
+**Change:** the hub origin is the canonical OAuth issuer for the
+ecosystem. Vault still implements the OAuth endpoints, but advertises
+the hub as `issuer` (and stamps it into token `iss` claims) whenever
+the request reaches it via the hub origin. Falls back to the
+vault-local URL on direct loopback. See
+[`patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md); pairs
+with [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
+
+**Affected:**
+
+- `parachute-vault` — already implements the contract. Reference:
+  `resolveOAuthCoordinates` in `src/oauth.ts`, landed in
+  [#147](https://github.com/ParachuteComputer/parachute-vault/pull/147)
+  and refined in
+  [#152](https://github.com/ParachuteComputer/parachute-vault/pull/152).
+- `parachute-cli` (renaming to `parachute-hub` —
+  [cli#55](https://github.com/ParachuteComputer/parachute-cli/issues/55))
+  — derives the canonical hub origin in `src/hub-origin.ts` and passes
+  it through as `PARACHUTE_HUB_ORIGIN` on `expose up` / `start`.
+- `parachute-scribe`, `parachute-channel`, future modules — when they
+  begin OAuth enforcement, validate `iss` against the hub origin (not
+  their own URL). No code change needed before they implement OAuth.
+- Phase B2 cutover (hub becomes IdP itself) tracked in
+  [cli#58](https://github.com/ParachuteComputer/parachute-cli/issues/58)
+  and
+  [vault#169](https://github.com/ParachuteComputer/parachute-vault/issues/169).
+
+**Status:** Phase 0+1 complete on 2026-04-23. Phase B2 in design.
+
+---
+
 ## 2026-04-25 — CLI is the port authority at install time
 
 **Change:** `parachute install` now picks each service's port up front and
