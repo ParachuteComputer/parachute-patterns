@@ -11,6 +11,14 @@ The single source of truth is the `PORT_RESERVATIONS` table in
 This pattern doc tracks the same shape for cross-reference; if the two
 ever disagree, the code wins and this doc is wrong.
 
+The CLI is the **active authority** on which port a given install lands
+on — it consults this table at install time, picks the canonical slot
+(or walks the unassigned reservations on collision), and writes the
+chosen port into the service's `.env`. See
+[`cli-as-port-authority.md`](./cli-as-port-authority.md) for the
+assignment algorithm, idempotency rules, and the service-side contract
+this doc's reservations get enforced through.
+
 ## Reservations (state of the world, 2026-04-25)
 
 | Port | Service | Tier | Status | Notes |
