@@ -38,6 +38,37 @@ with [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
 
 ---
 
+## 2026-04-26 — Context-in-payload pattern documented
+
+**Change:** new pattern doc
+[`patterns/context-in-payload.md`](../patterns/context-in-payload.md). The
+provider pre-fetches narrowly-scoped context (a few dozen names) and ships
+it inline in the trigger payload — multipart `context` part for attachment
+sends, top-level `context: {...}` field for JSON sends. The consumer is
+stateless: parses tolerantly and never calls back into the provider. Empty
+payload → no part attached. Reference pair: `parachute-vault` →
+`parachute-scribe` for transcription proper-noun correction (vault
+[#156](https://github.com/ParachuteComputer/parachute-vault/pull/156)).
+
+**Affected:**
+
+- `parachute-vault` — already conformant. `src/context.ts`
+  (`fetchContextEntries`, `appendContextPart`) implements the provider
+  side; trigger config exposes `include_context` (predicate list with
+  `tag` / `exclude_tag` / `include_metadata`).
+- `parachute-scribe` — already conformant. `src/context.ts`
+  (`parseContextPayload`, `buildProperNounsBlockFromEntries`) implements
+  the tolerant consumer side.
+- Future modules taking context-relevant free-text (cleanup, summarization,
+  classification) — adopt the same `entries[]` shape on receive. Future
+  context-providing modules — emit the exact same shape, do not fork into a
+  per-provider schema.
+
+**Status:** complete on 2026-04-26. Pattern doc captures live behavior; no
+service-side changes required.
+
+---
+
 ## 2026-04-25 — CLI is the port authority at install time
 
 **Change:** `parachute install` now picks each service's port up front and
