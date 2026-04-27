@@ -162,7 +162,8 @@ provider doesn't try to format for the consumer.
   becomes an MCP client and pulls what it needs, with auth.
 - **An auth or trust mechanism.** The context payload is in the
   request body, alongside the actual workload. It piggybacks on
-  whatever inter-service auth (`service-to-service-auth.md`)
+  whatever inter-service auth
+  ([`service-to-service-auth.md`](./service-to-service-auth.md))
   already protects the request.
 
 ## Open questions

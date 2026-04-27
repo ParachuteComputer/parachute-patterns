@@ -76,9 +76,10 @@ the endpoint or skip discovery.
 - **Never inline a token in the markdown** when the file is checked into a
   repo or stored in vault. Use `token_env` and supply the secret via the
   runner's environment.
-- **Scope the token.** Follow `patterns/token-auth.md` — every Parachute
-  token has a declared scope; MCP tokens typically have something like
-  `vault:read` or `agent:invoke`.
+- **Scope the token.** Follow [`token-auth.md`](./token-auth.md) — every
+  Parachute token has a declared scope; MCP tokens typically have something
+  like `vault:read` or `agent:invoke` (see
+  [`oauth-scopes.md`](./oauth-scopes.md) for the shared vocabulary).
 - **Path convention.** Servers should mount MCP at `/mcp` (not `/api/mcp`,
   not `/v1/mcp`). Keeps client URLs uniform.
 

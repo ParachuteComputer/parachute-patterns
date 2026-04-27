@@ -30,11 +30,11 @@ with [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
   begin OAuth enforcement, validate `iss` against the hub origin (not
   their own URL). No code change needed before they implement OAuth.
 - Phase B2 cutover (hub becomes IdP itself) tracked in
-  [cli#58](https://github.com/ParachuteComputer/parachute-cli/issues/58)
+  [hub#58](https://github.com/ParachuteComputer/parachute-hub/issues/58)
   and
   [vault#169](https://github.com/ParachuteComputer/parachute-vault/issues/169).
 
-**Status:** Phase 0+1 complete on 2026-04-23. Phase B2 in design.
+**Status:** Phase 0+1 complete on 2026-04-20. Phase B2 in design.
 
 ---
 
@@ -55,10 +55,10 @@ pairs with [`patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md).
   after the `/vault/<name>/` URL migration; path-append routes have
   been there since launch. Reference: top of `route()` in
   `src/routing.ts`.
-- `parachute-hub` (renaming from `parachute-cli` —
+- `parachute-hub` (renamed from `parachute-cli` —
   [cli#55](https://github.com/ParachuteComputer/parachute-cli/issues/55))
   — picks this up when the hub becomes the IdP itself in Phase B2
-  ([cli#58](https://github.com/ParachuteComputer/parachute-cli/issues/58)).
+  ([hub#58](https://github.com/ParachuteComputer/parachute-hub/issues/58)).
   Hub origin has no path component, so insertion and append collapse
   to the same `/.well-known/<type>` URL — the distinction only
   matters for issuers with a path.
@@ -66,7 +66,7 @@ pairs with [`patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md).
   begin serving OAuth metadata, serve both shapes for any path-rooted
   issuer they advertise.
 
-**Status:** complete for vault on 2026-04-23 (PR #149). Other modules
+**Status:** complete for vault on 2026-04-20 (PR #149). Other modules
 not yet OAuth-enforcing.
 
 ---
@@ -135,13 +135,13 @@ file shipped in the npm package; `name` / `manifestName` /
 `startCmd` / `scopes` / `dependencies`. **No `@openparachute/` scope or
 `parachute-*` prefix required** — the contract is what makes a module
 a Parachute module, not its name. **Status: target, not yet
-implemented in `parachute install`.** Today the CLI uses a hardcoded
+implemented in `parachute install`.** Today the hub uses a hardcoded
 `SERVICE_SPECS` fallback — a first-party shortcut, not an
 architectural limit.
 
 **Affected:**
 
-- `parachute-cli` — needs the `module.json` reader / validator /
+- `parachute-hub` — needs the `module.json` reader / validator /
   installer step before this is real. Tracked as Phase 3 work in the
   design doc. Hardcoded `SERVICE_SPECS` retires (or shrinks to a
   transitional fallback) when `module.json` lands.
@@ -153,7 +153,7 @@ architectural limit.
   [`parachute.computer/design/2026-04-20-module-architecture.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md)
   (extensibility section). The pattern doc is the durable reference.
 
-**Status:** convention documented; CLI implementation deferred to
+**Status:** convention documented; hub implementation deferred to
 Phase 3.
 
 ---
@@ -210,7 +210,7 @@ and [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
 
 **Affected:**
 
-- `parachute-cli` — already implements the trust broker in
+- `parachute-hub` — already implements the trust broker in
   `src/auto-wire.ts` (mints `SCRIBE_AUTH_TOKEN`, writes to vault `.env`
   and scribe `config.json`, idempotent, restarts vault). No code
   change needed; pattern documents what's there.
@@ -222,7 +222,7 @@ and [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
   with a one-shot warning.
 - Phase B2 cutover (`validateToken` body becomes JWT verify; shared
   scope-guard library) tracked in
-  [cli#59](https://github.com/ParachuteComputer/parachute-cli/issues/59).
+  [hub#59](https://github.com/ParachuteComputer/parachute-hub/issues/59).
 - Future inter-service pairs — declare the env var name in
   `.parachute/module.json` and `auto-wire` provisions on install.
 
