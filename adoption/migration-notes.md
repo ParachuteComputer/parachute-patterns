@@ -5,6 +5,46 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-04-28 — Vault scopes are resource-bound (`vault:<name>:<verb>`)
+
+**Change:** the hub's OAuth picker rewrites an unnamed `vault:<verb>`
+request to `vault:<picked>:<verb>` before issuing the auth code; vault
+rejects bare `vault:<verb>` from hub-issued JWTs and strict-checks
+`aud=vault.<name>` on each request. `pvt_*` tokens unaffected (legacy
+direct-token path bypasses JWT validation). Closes the design discussion
+in [`parachute-vault#179`](https://github.com/ParachuteComputer/parachute-vault/pull/179);
+landed in [`parachute-vault#180`](https://github.com/ParachuteComputer/parachute-vault/pull/180)
+and [`parachute-hub#95`](https://github.com/ParachuteComputer/parachute-hub/pull/95).
+Pattern doc: [`oauth-scopes.md`](../patterns/oauth-scopes.md).
+
+Also captured in the same pattern update:
+- `claw:read` / `claw:write` / `claw:admin` registered (paraclaw vocabulary
+  with admin ⊇ write ⊇ read inheritance).
+- `parachute:host:admin` introduced as the first **non-requestable**
+  operator-only scope (cross-vault host admin, used for hub-orchestrated
+  vault provisioning via `POST /vaults`).
+
+**Affected:**
+
+- `parachute-vault` — reference implementation (PR #180 + #184 + #187).
+  Hub-JWT bearers now go through resource-bound + audience-bound
+  enforcement.
+- `parachute-hub` — picker UI + `POST /vaults` + `NON_REQUESTABLE_SCOPES`
+  enforcement (PR #95). Operator tokens auto-include
+  `parachute:host:admin` on next mint.
+- `parachute-notes` / `paraclaw` / `parachute-scribe` — no current code
+  carries hardcoded `vault:read|write|admin` strings (verified at write
+  time). New OAuth flows will pick up the picker rewrite automatically.
+  Watch for any future hardcoded scope literal — they'd start receiving
+  401s from JWT-validating vault paths.
+- Existing `pvt_*` tokens keep working without change (different code
+  path, no audience check). Operator-token rotation needed to pick up
+  `parachute:host:admin` (run `parachute auth rotate-operator`).
+
+**Status:** complete on 2026-04-28.
+
+---
+
 ## 2026-04-26 — Hub is the OAuth issuer
 
 **Change:** the hub origin is the canonical OAuth issuer for the
