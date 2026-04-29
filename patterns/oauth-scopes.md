@@ -22,12 +22,16 @@ Parachute OAuth tokens carry **whitespace-separated scope strings**
 
 | Scope | Grants |
 | --- | --- |
-| `vault:read` | Read any vault via REST + MCP |
-| `vault:write` | Write + read (inheritance) |
-| `vault:admin` | Write + read + `/.parachute/config*` |
+| `vault:<name>:read` | Read the named vault via REST + MCP |
+| `vault:<name>:write` | Write + read (inheritance) |
+| `vault:<name>:admin` | Write + read + `/.parachute/config*` |
 | `scribe:transcribe` | POST audio to scribe's transcription endpoint |
 | `scribe:admin` | Manage scribe config |
-| `hub:admin` | Reserved; not yet enforced |
+| `claw:read` | Read agent groups + vault attachments via paraclaw API/MCP |
+| `claw:write` | Mutate agent groups, secrets, channel wires, sessions |
+| `claw:admin` | Full paraclaw admin (write + create/delete groups) |
+| `hub:admin` | Manage hub services catalog + OAuth config (Reserved; not yet enforced) |
+| `parachute:host:admin` | Provision new vaults via hub `POST /vaults` and other host-level admin (operator-only-mintable; not requestable from third-party clients) |
 | `channel:send` | Post messages via channel |
 
 Third-party modules declare their own namespace (`my-service:read`, etc.)
@@ -36,33 +40,63 @@ and the hub renders consent for those scopes the same way.
 ## Inheritance
 
 ```
-admin ⊇ write ⊇ read       (for vault)
+admin ⊇ write ⊇ read       (for vault and claw)
 ```
 
-- `vault:admin` satisfies any check for `vault:write` or `vault:read`.
-- `vault:write` satisfies `vault:read`.
-- **Non-vault scopes exact-match only.** `scribe:admin` does **not**
+- `vault:<name>:admin` satisfies any check for `vault:<name>:write` or
+  `vault:<name>:read` on the same vault. Inheritance is per-resource —
+  `vault:work:admin` does **not** satisfy a `vault:personal:read` check.
+- `claw:admin` satisfies `claw:write` and `claw:read` (single-namespace,
+  no per-resource binding — paraclaw is one-installation-one-resource).
+- **Non-inheritance scopes exact-match only.** `scribe:admin` does **not**
   currently imply `scribe:transcribe` — each non-inheritance-tree scope
   stands alone. This is deliberate: we add inheritance per-service
   when the verb set clearly lines up as read/write/admin.
 
-Canonical implementation:
-[`parachute-vault/src/scopes.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/scopes.ts)
-(`hasScope`, `parseScopes`, `scopeForMethod`). Enforcement landed in
-[PR #97](https://github.com/ParachuteComputer/parachute-vault/pull/97).
+Canonical implementations:
+- vault — [`parachute-vault/src/scopes.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/scopes.ts)
+  (`hasScope`, `hasScopeForVault`, `findBroadVaultScopes`,
+  `parseScopes`, `verbForMethod`). Per-vault narrowing landed in
+  [PR #180](https://github.com/ParachuteComputer/parachute-vault/pull/180).
 
 ## Parser rules
 
 - **Split on whitespace** for the scope string; **split on `:`** for each
   scope.
-- **`vault:<name>:<verb>` collapses** to `vault:<verb>` during parse
-  (Phase 2 synonym — per-vault narrowing is a Phase 2+ feature).
+- **`vault:<name>:<verb>` is the enforced shape** — hub-issued JWTs MUST
+  carry resource-bound vault scopes. The hub's OAuth picker rewrites a
+  client's unnamed `vault:<verb>` request to `vault:<picked>:<verb>`
+  before issuing the auth code (see [parachute-hub/src/oauth-handlers.ts]).
+  Vault rejects bare `vault:<verb>` from JWT-shaped bearers.
+- **Per-vault audience binding.** Hub-issued vault JWTs carry
+  `aud=vault.<name>` and vault strict-checks it on each request — a token
+  scoped for one vault cannot be replayed against another.
+- **`pvt_*` tokens are unaffected.** They predate the resource-bound
+  shape; they're scoped at issue-time inside vault's own DB and the JWT
+  validation layer is bypassed for them.
 - **Empty resource segments are preserved verbatim** (`vault::read` stays
-  `vault::read`, so it can't satisfy a `vault:read` check — a one-line
-  defence against a malformed DB row).
+  `vault::read`, so it can't satisfy any vault check — a one-line defence
+  against a malformed DB row).
 - **Unknown scopes pass through** the parser untouched. They simply won't
   match anything, which is the right failure mode for a future-scope that
   reaches an old server.
+
+## Operator-only scopes
+
+Some scopes are marked **non-requestable** — the hub will refuse to issue
+them to any third-party OAuth client. They can only be minted on the
+operator-token path (the locally-stored `~/.parachute/operator.token`
+that ships with hub install).
+
+- `parachute:host:admin` — provisioning new vaults via hub `POST /vaults`.
+  Cross-vault data sovereignty; high blast radius. The asymmetry vs
+  `hub:admin` (which IS requestable) is deliberate: `hub:admin` manages
+  service registration, `parachute:host:admin` creates new long-lived
+  data resources on the host filesystem.
+
+Implementation: hub maintains a `NON_REQUESTABLE_SCOPES` set checked at
+`/oauth/authorize` request time; `invalid_scope` per RFC 6749 if a third
+party requests one.
 
 ## 403 response shape
 
