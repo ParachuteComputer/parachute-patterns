@@ -37,15 +37,16 @@ Backwards-compatible — every new field is optional with a sensible
 - `parachute-vault` — emit `hasAuth: true`, `init: { command:
   ["parachute-vault", "init"] }`, and `urlForEntry.perConsumer["claude.ai"]:
   { appendPath: "/mcp" }` in `.parachute/module.json`. One PR.
-- `parachute-scribe` — emit `hasAuth: false` (until `SCRIBE_AUTH_TOKEN`
-  ships) and `urlForEntry.perConsumer` if needed. One PR.
+- `parachute-scribe` — omit `hasAuth` (absent = `false`, the conservative
+  default until `SCRIBE_AUTH_TOKEN` ships); emit `urlForEntry.perConsumer`
+  if needed. One PR.
 - `parachute-notes` — emit baseline fields (no `hasAuth`, no `init`).
   One PR.
 - `parachute-hub` (cleanup) — delete each module's `FALLBACK:` entry in
   `src/service-spec.ts` once its upstream `module.json` ships the
   equivalent declarations. One PR per module.
 
-**Status:** pattern doc landed (`parachute-patterns#TBD`). Downstream
+**Status:** pattern doc landed (`parachute-patterns#19`). Downstream
 parser + emit + retirement PRs pending.
 
 ---

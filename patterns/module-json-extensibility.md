@@ -148,6 +148,7 @@ the data directory already exists).
 ```ts
 urlForEntry?: {
   perConsumer: {
+    // exactly one of appendPath or replaceWith per consumer entry
     [consumerId: string]: {
       appendPath?: string;   // suffix appended to the canonical URL
       replaceWith?: string;  // full URL override (escape hatch)
