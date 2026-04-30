@@ -5,6 +5,51 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-04-30 — `module.json` gains `hasAuth`, `init`, `urlForEntry`
+
+**Change:** [`module-json-extensibility.md`](../patterns/module-json-extensibility.md)
+adds three optional fields so the canonical schema can carry behaviors
+hub's transitional `FIRST_PARTY_FALLBACKS.extras` block currently holds:
+
+- `hasAuth: boolean` — module is itself an OAuth resource server. Drives
+  the default `publicExposure` for `kind: "api" | "tool"` services.
+- `init: { command: [string, ...string[]] }` — post-install one-shot.
+  Safety constraint: `command[0]` must equal a bin from the installed
+  npm package (rejects e.g. `["rm", "-rf", "/"]` at install time).
+- `urlForEntry.perConsumer.<consumerId>: { appendPath? | replaceWith? }`
+  — declarative URL adjustment per well-known consumer (today's only
+  case: claude.ai → vault gets `/mcp` appended).
+
+Aaron's call recorded 2026-04-30: **path 1 (extend the schema) over
+path 2 (codify a permanent extras lane)**. Closes
+[`parachute-hub#100`](https://github.com/ParachuteComputer/parachute-hub/issues/100).
+Backwards-compatible — every new field is optional with a sensible
+"absent" default, so existing `module.json` files stay valid.
+
+**Affected:**
+
+- `parachute-patterns` — pattern doc updated (this PR). No code change.
+- `parachute-hub` — needs a parser update in `src/module-manifest.ts`
+  (read the three new fields, route them through `composeServiceSpec`)
+  and an install-time bin-name check for `init.command[0]` (resolved
+  via the installed package's `package.json` `bin` field). Tracked by
+  hub#100.
+- `parachute-vault` — emit `hasAuth: true`, `init: { command:
+  ["parachute-vault", "init"] }`, and `urlForEntry.perConsumer["claude.ai"]:
+  { appendPath: "/mcp" }` in `.parachute/module.json`. One PR.
+- `parachute-scribe` — emit `hasAuth: false` (until `SCRIBE_AUTH_TOKEN`
+  ships) and `urlForEntry.perConsumer` if needed. One PR.
+- `parachute-notes` — emit baseline fields (no `hasAuth`, no `init`).
+  One PR.
+- `parachute-hub` (cleanup) — delete each module's `FALLBACK:` entry in
+  `src/service-spec.ts` once its upstream `module.json` ships the
+  equivalent declarations. One PR per module.
+
+**Status:** pattern doc landed (`parachute-patterns#TBD`). Downstream
+parser + emit + retirement PRs pending.
+
+---
+
 ## 2026-04-28 — Vault scopes are resource-bound (`vault:<name>:<verb>`)
 
 **Change:** the hub's OAuth picker rewrites an unnamed `vault:<verb>`

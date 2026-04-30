@@ -37,7 +37,14 @@ one file the author controls.
   "port": 7001,
   "paths": ["/my-service"],
   "health": "/health",
+  "hasAuth": true,
   "startCmd": ["bin/my-service", "serve"],
+  "init": { "command": ["my-service", "init"] },
+  "urlForEntry": {
+    "perConsumer": {
+      "claude.ai": { "appendPath": "/mcp" }
+    }
+  },
   "scopes": { "defines": ["my-service:read", "my-service:write"] },
   "dependencies": {
     "vault": { "optional": true, "scopes": ["vault:read"] }
@@ -55,9 +62,147 @@ one file the author controls.
 | `port` | Default loopback port. Pick outside the reserved Parachute range (`1939–1949`) — see [`canonical-ports.md`](./canonical-ports.md). The CLI warns on collision but does not block. |
 | `paths` | URL paths the module serves under the hub origin. |
 | `health` | Path for liveness probes. |
+| `hasAuth` | `true` if the module is itself an OAuth resource server (gates its own endpoints behind auth). Drives default public-exposure policy and tunnel/funnel treatment. Optional; defaults to `false`. See [Install-time behaviors](#install-time-behaviors) below. |
 | `startCmd` | Argv the CLI invokes for `parachute start <name>`. Resolved relative to the installed package. |
+| `init` | Optional post-install one-shot the CLI runs after `parachute install <name>`. Object with a `command` argv. Safety: first arg must equal a bin defined by the installed npm package. See [Install-time behaviors](#install-time-behaviors). |
+| `urlForEntry` | Optional declarative URL adjustments keyed by consumer. Today's only operations: `appendPath` (append a suffix) or `replaceWith` (full override). See [Install-time behaviors](#install-time-behaviors). |
 | `scopes.defines` | OAuth scopes the module owns. Namespaced by `name` so collisions don't happen — see [`oauth-scopes.md`](./oauth-scopes.md). |
 | `dependencies` | Other modules this one wants to talk to. Each entry has `optional` and `scopes` fields; CLI uses these to auto-wire on install (env-var injection) — see [`service-to-service-auth.md`](./service-to-service-auth.md). |
+
+## Install-time behaviors
+
+`hasAuth`, `init`, and `urlForEntry` were added 2026-04-30 (parachute-hub#100)
+to close the gap between `module.json` and the hub's transitional
+`FIRST_PARTY_FALLBACKS` extras block. Aaron's call: **path 1 — extend the
+schema — over path 2 — codify a permanent extras lane.** Rationale: extras
+exists only for first-party modules and is meant to retire; if a behavior
+is real enough to ship in vault, it's real enough to be declarable by any
+module. All three fields are optional and missing defaults to "no" /
+"none", so existing manifests are valid unchanged.
+
+### `hasAuth: boolean`
+
+```ts
+hasAuth?: boolean;  // default false
+```
+
+Declares the module as an OAuth resource server — i.e., it validates
+bearer tokens on its own endpoints. The hub uses this to derive
+`publicExposure`'s default for `kind: "api" | "tool"` services: with
+`hasAuth: true` they default to `"allowed"` (safe to expose because the
+module gates itself); without it they default to `"auth-required"`
+(treated as loopback at expose time until the operator opts in
+explicitly). It also informs how `parachute expose` and the discovery
+surface treat bearer-bearing modules. `kind: "frontend"` modules ignore
+this field — they default to `"allowed"` regardless.
+
+Trivially declarative — the value doesn't change at runtime. If a
+module's auth gate is conditional on a config flag (e.g., scribe with /
+without `SCRIBE_AUTH_TOKEN`), declare the conservative default here and
+let the runtime overwrite via an explicit `publicExposure` write to its
+`services.json` row when configuration confirms auth is on.
+
+### `init: { command: [string, ...string[]] }`
+
+```ts
+init?: {
+  command: readonly [string, ...string[]];  // non-empty argv
+};
+```
+
+Post-install one-shot the CLI runs once after `parachute install <name>`
+completes. Used today by vault to seed its data directory:
+
+```json
+{ "init": { "command": ["parachute-vault", "init"] } }
+```
+
+**Safety constraint (mandatory).** The first arg of `command` MUST equal
+a bin name declared by the installed npm package (resolved at install
+time via the package's `package.json` `bin` field). The hub rejects the
+manifest at install time otherwise. This rules out things like:
+
+```json
+{ "init": { "command": ["rm", "-rf", "/"] } }   // REJECTED at install time
+{ "init": { "command": ["curl", "evil.example"] } }  // REJECTED
+```
+
+The constraint is structural, not advisory. It means a malicious or
+broken `module.json` cannot trick the CLI into invoking arbitrary
+binaries on the user's `$PATH` — the only thing `init` can run is the
+package's own published code. Subsequent args (after the bin name) are
+passed through verbatim and are the module's own concern.
+
+**Failure mode.** If the init command exits non-zero, `parachute install`
+fails hard and surfaces the exit code + stderr. No retries, no silent
+continue — partial-init state is the kind of bug that's worse to mask
+than to surface.
+
+**Idempotency is the module's responsibility.** The CLI runs `init` once
+per `parachute install` invocation; modules whose init touches durable
+state should make repeated runs safe (e.g., vault's `init` is a no-op if
+the data directory already exists).
+
+### `urlForEntry.perConsumer`
+
+```ts
+urlForEntry?: {
+  perConsumer: {
+    [consumerId: string]: {
+      appendPath?: string;   // suffix appended to the canonical URL
+      replaceWith?: string;  // full URL override (escape hatch)
+    };
+  };
+};
+```
+
+Declarative URL adjustments for specific consumers. Replaces the
+`urlForEntry: (entry) => string` JS callback the hub's `VAULT_FALLBACK`
+carries today.
+
+The canonical URL for a service is `http://127.0.0.1:<port><paths[0]>`
+(with trailing slashes stripped). Most clients hit that URL directly.
+A few well-known consumers need an adjustment because their conventions
+diverge — today's only real case is claude.ai, which expects vault's MCP
+endpoint at `<base>/mcp` rather than the bare mount path:
+
+```json
+{
+  "urlForEntry": {
+    "perConsumer": {
+      "claude.ai": { "appendPath": "/mcp" }
+    }
+  }
+}
+```
+
+**Operations (exactly one per consumer entry).**
+
+- `appendPath`: string suffix concatenated to the canonical URL after
+  trailing-slash normalization. Most common case.
+- `replaceWith`: full absolute URL replacing the canonical one entirely.
+  Escape hatch for services whose endpoint isn't path-derivable from the
+  module's mount (e.g., scribe today serves at the bare port root, not
+  under `/scribe`).
+
+Specifying both is a validation error. Specifying neither is a
+validation error.
+
+**Consumer-id resolution.** The `consumerId` key is matched against a
+list of well-known consumer IDs the hub curates (e.g., `claude.ai`,
+`chatgpt.com`). The hub publishes the list at `/.parachute/consumers`
+(target — not yet shipped); for now, treat the list as the union of
+consumers any first-party module references. Unknown consumer IDs in a
+manifest are validated for shape but ignored at lookup time — they
+become live the moment the hub adds their definition. The lookup is
+exact-match on the consumer ID string; no regex or template
+substitution at v1.
+
+**Why no template / regex / per-request logic.** YAGNI. The vault
+`urlForEntry` callback the hub ships today is a closure over a single
+constant `/mcp` suffix; a regex lookup table is more complexity than the
+problem warrants. Re-evaluate if a third consumer needs a non-`appendPath`
+shape that doesn't reduce to `replaceWith`.
 
 ## Why this shape
 
@@ -113,6 +258,11 @@ packages that pre-date the convention, then retires.
   outside; the CLI warns but does not block.
 - **`startCmd` must be argv, not a shell string.** Avoids
   shell-injection weirdness when users have spaces in package paths.
+- **`init.command[0]` must be a bin from the installed package.** The
+  CLI rejects manifests at install time when `init.command[0]` isn't
+  declared as a bin in the package's `package.json`. This keeps `init`
+  from invoking arbitrary `$PATH` binaries — see [Install-time
+  behaviors](#install-time-behaviors) above.
 - **`module.json` is shipped in the npm artifact.** Not in
   `.gitignore`, not generated at install time. The CLI reads it
   post-install from the installed package directory.
@@ -152,15 +302,50 @@ packages that pre-date the convention, then retires.
   is the live shape until this pattern doc and the CLI implementation
   catch up.
 
+## Versioning
+
+The schema is **backwards-compatible**. Every field added to date —
+including the 2026-04-30 `hasAuth` / `init` / `urlForEntry` extension —
+is optional with a sensible "absent" default. Existing manifests stay
+valid; existing parsers ignore fields they don't understand. When (if)
+the shape evolves breakingly, we'll add a `manifestVersion: 1`
+discriminator. Defer until a v2 shape is real.
+
+## Migration
+
+The 2026-04-30 schema extension exists to retire hub's transitional
+`FIRST_PARTY_FALLBACKS.extras` block (see
+`parachute-hub/src/service-spec.ts`). Sequence:
+
+1. **This PR (parachute-patterns)** — define the three fields. Done.
+2. **parachute-hub parser update** — extend `module-manifest.ts`'s
+   validator to read the new fields, route them through
+   `composeServiceSpec` so the spec produced from a real `module.json`
+   carries the same `hasAuth` / `init` / `urlForEntry` semantics the
+   fallback's `extras` block does. Add the `init.command[0]` bin-name
+   check at install time (resolved via the installed package's
+   `package.json` `bin`).
+3. **vault / scribe / notes** — emit the new fields in their shipped
+   `.parachute/module.json`. One PR per module.
+4. **parachute-hub fallback retirement** — delete each module's
+   `FALLBACK:` entry once the corresponding upstream `module.json`
+   carries the equivalent declarations.
+
+Until step 2 ships, the new fields validate only against this doc, not
+against running code. Authors writing third-party modules can include
+them today; the hub will start honoring them once the parser update
+lands.
+
 ## Open questions
 
 - **Schema location.** Do we publish a JSON Schema for `module.json`
   (e.g. `https://parachute.computer/schemas/module.json/v1`)?
   Defer until the validator is being written — premature otherwise.
-- **Versioning.** Today there's no `version` field on `module.json`
-  itself (separate from the package's `version`). If/when the shape
-  evolves breakingly, we'll need a `manifestVersion: 1` discriminator.
-  Defer until a v2 shape is real.
+- **Consumer registry.** `urlForEntry.perConsumer` keys against the
+  hub's curated consumer list. Today that list is implicit (defined by
+  the union of `module.json` references). Surface it as
+  `/.parachute/consumers` once a third consumer arrives; until then the
+  list of "well-known" consumers is short enough to keep in code.
 - **Capabilities.** The richer `manifest` shape in the design doc has
   `capabilities`, `iconUrl`, `endpoints` etc. Today most of those
   duplicate what `/.parachute/info` already exposes at runtime.
