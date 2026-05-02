@@ -5,6 +5,45 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-02 — `module.json` gains `managementUrl`
+
+**Change:** [`module-json-extensibility.md`](../patterns/module-json-extensibility.md)
+adds one optional field — `managementUrl?: string` — declaring where a
+module's admin UI lives.
+
+- Relative path (e.g. `"/admin"`) — hub resolves against the module's
+  well-known origin (`<module-url><managementUrl>`).
+- Full absolute URL — hub uses verbatim.
+- Absent — no link rendered (CLI-only management, or no admin surface).
+
+Aaron's call recorded 2026-05-02: per-module admin UIs live with the
+modules. Hub stays a thin directory + link-out; each module owns its
+admin surface end-to-end. Avoids hub leaking module-internal API shapes
+(vault's name list, scribe's job queue, etc.) into the portal.
+Backwards-compatible — same rule as `hasAuth` / `init` / `urlForEntry`:
+absent = "not present". Continues the schema work from
+[`parachute-patterns#19`](https://github.com/ParachuteComputer/parachute-patterns/pull/19).
+Closes [`parachute-patterns#20`](https://github.com/ParachuteComputer/parachute-patterns/issues/20).
+
+**Affected:**
+
+- `parachute-patterns` — pattern doc updated (this PR). No code change.
+- `parachute-vault` — will declare `managementUrl: "/admin"` once
+  vault-side SPA Phase A ships
+  ([`parachute-vault#216`](https://github.com/ParachuteComputer/parachute-vault/issues/216)).
+- `parachute-hub` — reads `managementUrl` from each module's well-known
+  doc and renders a "Manage <displayName>" link on the vault list /
+  directory page
+  ([`parachute-hub#158`](https://github.com/ParachuteComputer/parachute-hub/issues/158)).
+- `parachute-scribe`, `parachute-notes`, `paraclaw` — opportunity to
+  adopt later (each can ship its own admin UI if/when one materializes;
+  not on the immediate roadmap).
+
+**Status:** pattern doc landed (this PR). Vault adoption + hub render
+PRs pending.
+
+---
+
 ## 2026-04-30 — `module.json` gains `hasAuth`, `init`, `urlForEntry`
 
 **Change:** [`module-json-extensibility.md`](../patterns/module-json-extensibility.md)

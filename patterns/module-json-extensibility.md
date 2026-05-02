@@ -45,6 +45,7 @@ one file the author controls.
       "claude.ai": { "appendPath": "/mcp" }
     }
   },
+  "managementUrl": "/admin",
   "scopes": { "defines": ["my-service:read", "my-service:write"] },
   "dependencies": {
     "vault": { "optional": true, "scopes": ["vault:read"] }
@@ -66,6 +67,7 @@ one file the author controls.
 | `startCmd` | Argv the CLI invokes for `parachute start <name>`. Resolved relative to the installed package. |
 | `init` | Optional post-install one-shot the CLI runs after `parachute install <name>`. Object with a `command` argv. Safety: first arg must equal a bin defined by the installed npm package. See [Install-time behaviors](#install-time-behaviors). |
 | `urlForEntry` | Optional declarative URL adjustments keyed by consumer. Today's only operations: `appendPath` (append a suffix) or `replaceWith` (full override). See [Install-time behaviors](#install-time-behaviors). |
+| `managementUrl` | Optional path-or-full-URL where the module's admin UI lives. Hub renders a "Manage" link when present. See [Hub UI fields](#hub-ui-fields). |
 | `scopes.defines` | OAuth scopes the module owns. Namespaced by `name` so collisions don't happen — see [`oauth-scopes.md`](./oauth-scopes.md). |
 | `dependencies` | Other modules this one wants to talk to. Each entry has `optional` and `scopes` fields; CLI uses these to auto-wire on install (env-var injection) — see [`service-to-service-auth.md`](./service-to-service-auth.md). |
 
@@ -205,6 +207,53 @@ constant `/mcp` suffix; a regex lookup table is more complexity than the
 problem warrants. Re-evaluate if a third consumer needs a non-`appendPath`
 shape that doesn't reduce to `replaceWith`.
 
+## Hub UI fields
+
+Render-time fields the hub reads from a module's `module.json` (surfaced
+via the module's well-known doc) to shape its directory page. Optional;
+absent means "the hub renders nothing for this concern" — existing
+manifests stay valid unchanged.
+
+### `managementUrl: string`
+
+```ts
+managementUrl?: string;  // path or full URL
+```
+
+Where the module's admin UI lives. The hub reads this from the module's
+well-known doc and renders a "Manage <displayName>" link on its
+directory page. Added 2026-05-02 alongside the hub vault-management SPA
+work (parachute-hub#158, parachute-vault#216).
+
+**Resolution.**
+
+- **Relative path** (e.g., `"/admin"`): hub resolves against the module's
+  well-known origin — `<module-url><managementUrl>`. For first-party
+  modules under the hub origin this means `<hub-origin>/<short><managementUrl>`
+  (e.g., `https://parachute.tailnet/vault/admin`).
+- **Full absolute URL** (e.g., `"https://admin.example.com"`): hub uses
+  verbatim. Escape hatch for modules whose admin UI is hosted somewhere
+  other than the module's own origin.
+
+**Auth seam.** The module's UI handles its own auth — typically a
+hub-issued JWT scoped narrowly to that module (e.g., a vault-admin scope
+for vault's SPA). The hub doesn't proxy module internals or sniff auth
+headers; it links out and the module's own SPA boots up under its
+origin and runs its own OAuth dance against the hub if it needs one.
+
+**Backwards-compatible.** Absent field = no link rendered. Modules that
+manage purely via CLI, or have no admin surface at all, simply omit the
+field. Same rule as `hasAuth` / `init` / `urlForEntry`.
+
+**Why this lives with the module, not the hub.** Per-module admin UIs
+need to render module-internal API shapes — vault's name list, scribe's
+job queue, paraclaw's bot wiring. Putting the UI in the hub leaks those
+shapes into the portal and breaks the modular contract. Putting it
+under the module's own origin keeps the boundary clean: hub stays a
+thin directory + link-out; each module owns its admin surface
+end-to-end. Decision recorded 2026-05-02 (Aaron's call) after an
+initial pass at hub-side per-vault detail pages was reverted.
+
 ## Why this shape
 
 - **Author-controlled.** The package author declares everything in one
@@ -306,11 +355,12 @@ packages that pre-date the convention, then retires.
 ## Versioning
 
 The schema is **backwards-compatible**. Every field added to date —
-including the 2026-04-30 `hasAuth` / `init` / `urlForEntry` extension —
-is optional with a sensible "absent" default. Existing manifests stay
-valid; existing parsers ignore fields they don't understand. When (if)
-the shape evolves breakingly, we'll add a `manifestVersion: 1`
-discriminator. Defer until a v2 shape is real.
+including the 2026-04-30 `hasAuth` / `init` / `urlForEntry` extension
+and the 2026-05-02 `managementUrl` addition — is optional with a
+sensible "absent" default. Existing manifests stay valid; existing
+parsers ignore fields they don't understand. When (if) the shape
+evolves breakingly, we'll add a `manifestVersion: 1` discriminator.
+Defer until a v2 shape is real.
 
 ## Migration
 
