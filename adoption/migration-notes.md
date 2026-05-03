@@ -5,7 +5,29 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
-## 2026-05-03 — Tag data model reshape (vault — pending)
+## 2026-05-03 — `_schemas/*` retirement to `note_schemas` + `schema_mappings` (vault)
+
+**Change:** [`tag-data-model.md`](../patterns/tag-data-model.md) approach extended to note-validation schemas. Companion to the tag-data-model reshape (#245). Retires the `_schemas/<name>` config-note pattern + the singleton `_schema_defaults` note in favor of two SQL tables: `note_schemas (name PK, fields JSON, description, required JSON)` for schema definitions, and `schema_mappings (schema_name FK, match_kind ENUM 'path_prefix' | 'tag', match_value)` for the path-prefix + tag-based mapping rules.
+
+Schema migration v14 → v15: additive; data migration copies existing `_schemas/<name>` notes' metadata + `_schema_defaults` mappings → new tables. Migration is transactional (BEGIN IMMEDIATE / COMMIT or ROLLBACK), idempotent on re-runs, and verified on byte-identical copies of all three of Aaron's real DBs.
+
+New MCP/HTTP authoring surface: `update-note-schema` / `delete-note-schema` / `list-note-schemas` / `set-schema-mapping` / `delete-schema-mapping`. MCP tool count: 10 → 16.
+
+Tag-scope auth-check is threaded through `handleNoteSchemas` consistent with the `handleTags` precedent — tag-scoped tokens cannot enumerate or write `tag`-kind mappings outside their allowlist. `path_prefix` mappings are orthogonal to tag scope (no filter applied). String-form fallback honored.
+
+`_schemas/<name>` notes + `_schema_defaults` note left in place post-migration as harmless historical record.
+
+**Affected:**
+
+- `parachute-vault` — adopted in [`vault#249`](https://github.com/ParachuteComputer/parachute-vault/pull/249), shipped at rc.33
+- `parachute-patterns` — `tag-scoped-tokens.md` had stale references to `_schemas/<name>` notes scrubbed out alongside this entry (same patterns PR)
+- `parachute-notes` / clients — Notes app and other vault clients should migrate any direct reads/writes against `_schemas/<name>` paths to the new MCP/HTTP surface; legacy reads still work for backwards-compat but won't reflect the latest schema state
+
+**Status:** Shipped. Arc complete (tag-data-model + schemas-retirement landed across vault#245 + vault#249).
+
+---
+
+## 2026-05-03 — Tag data model reshape (vault)
 
 **Change:** [`tag-data-model.md`](../patterns/tag-data-model.md) introduced.
 Retires the notes-as-config pattern for tag concerns: collapses
@@ -34,8 +56,7 @@ markdown from tables when needed.
   it fires on `tags` row writes. Update on next patterns PR alongside the
   vault implementation merge
 
-**Status:** Design merged via patterns#29. Implementation tracking issue
-vault#244. Block on vault implementation landing before declaring "done."
+**Status:** Design merged via patterns#29. Implementation shipped in [`vault#245`](https://github.com/ParachuteComputer/parachute-vault/pull/245) at rc.31. Companion `_schemas/*` retirement shipped at rc.33 via vault#249 — see entry above. Arc complete.
 
 ---
 
