@@ -1,4 +1,4 @@
-# Tag-scoped tokens [DRAFT]
+# Tag-scoped tokens
 
 > One-line summary: a vault token can be narrowed to a specific set of root tags. The token only sees and writes notes that carry one of those tags (or a sub-tag of one of them).
 
@@ -7,7 +7,7 @@
 A vault token (`pvt_*`) optionally declares a **tag-allowlist** at mint time. Once set, the token's effective access is the intersection of:
 
 1. **Scope** (existing) — `vault:<name>:read | write | admin` per `oauth-scopes.md`
-2. **Tag allowlist** (new) — list of root tag names. Sub-tags inherit per the existing `_tags/<name>` hierarchy machinery (vault#214 / store-routing fix).
+2. **Tag allowlist** (new) — list of root tag names. Sub-tags inherit per the existing `_tags/<name>` hierarchy machinery (vault#214 / store-routing fix). The allowlist is **immutable** for the life of the token; editing the allowlist means minting a new token and revoking the old.
 
 Pseudocode for the auth check:
 
@@ -23,6 +23,17 @@ function authCheck(token, note, action) {
 
 Where `rootOf(t)` is `t.split('/')[0]` so `health/food` resolves to `health` for the allowlist check.
 
+### Hierarchy match semantics
+
+A token whose allowlist contains `health` matches:
+
+- A note tagged `#health` (direct match)
+- A note tagged ONLY with `#health/food` (hierarchy expansion via `_tags/<name>`)
+- A note tagged ONLY with `#health/doctor` (same)
+- A note tagged with `#health/food/breakfast` (recursive sub-tag)
+
+The expansion uses vault's existing `getTagDescendants` machinery (same path that `query-notes` routes through post-#214 / #231).
+
 ## Why
 
 [From Aaron's notes 2026-04-27 + 2026-04-30]
@@ -33,20 +44,31 @@ Where `rootOf(t)` is `t.split('/')[0]` so `health/food` resolves to `health` for
 
 The use case: per-purpose paraclaw bots. A `#health` Claw, a `#work` Claw, a `#journal` Claw — each spawned from the same vault, but with isolated visibility into the slice of notes the operator has tagged for it. Currently isolation is per-vault (separate `default` / `boulder` / `techne` vaults); this lets you slice within one vault.
 
+Schema = tag in this design — the `_tags/<name>` config note IS the schema for tag `<name>`.
+
 ## How it composes
 
 - **Read paths** — query-notes / GET /api/notes/:id / list-attachments filter results to only return notes with at least one allowlisted-root-tag (or sub-tag thereof).
 - **Write paths** — POST /api/notes / PATCH require the new note to carry at least one allowlisted root-tag. POST without any matching tag returns `403 forbidden`.
 - **Delete paths** — DELETE /api/notes/:id requires the existing note to be within scope. A token can't delete a note it can't read.
 - **Tag operations** — list-tags returns only tags reachable from the allowlist (root tags + sub-tags). create-tag is allowed only if the new tag is a sub-tag of one of the allowlisted roots.
-- **Schema operations** — `_tags/<name>` config notes are write-protected unless the token has `vault:<name>:admin` AND the tag is in the allowlist.
+- **Schema operations** — `_tags/<name>` config notes are write-protected unless the token has `vault:<name>:admin` AND the tag is in the allowlist. A tag-scoped admin CAN modify the schema for tags within their allowlist.
 
 ## Composability with existing scopes
 
 - `vault:<name>:read` + tag-allowlist `[health]` — token can READ notes tagged with `#health` or any `#health/*` sub-tag, nothing else.
 - `vault:<name>:write` + tag-allowlist `[health]` — token can READ + WRITE within the `#health` slice. Cannot write notes outside `#health`.
-- `vault:<name>:admin` + tag-allowlist `[health]` — admin ops (config, schema) restricted to the `#health` slice.
+- `vault:<name>:admin` + tag-allowlist `[health]` — admin ops (config, schema for `#health` and sub-tags) restricted to the `#health` slice.
 - `vault:<name>:admin` + tag-allowlist `null` — current full-vault admin behavior.
+
+## Mint authority
+
+A tag-scoped admin **cannot** mint new tokens with broader allowlists. The mint endpoint enforces: *"a token's allowlist must be a subset of the minter's allowlist."* This prevents privilege escalation via mint:
+
+- Admin with `[health]` minting a token with `[health, work]` → `403 forbidden`
+- Admin with `[health]` minting a token with `[health/food]` → OK (subset)
+- Admin with `[health]` minting a token with `[health]` → OK (equal)
+- Admin with `null` (unscoped) minting any allowlist → OK (null is the universe)
 
 ## Token issuance
 
@@ -89,33 +111,20 @@ Keeping `tags` as a separate token field is cleaner. Hub-issued JWTs only carry 
 
 Hub doesn't need to know about tag-allowlists at the OAuth level. Tokens with tag scope are minted via vault's `/admin/tokens` endpoint, not via the hub OAuth flow. The hub is the directory + issuer for cross-module tokens; tag-scoped tokens are within-vault.
 
-If we later want third-party clients to request tag-scoped tokens via OAuth consent, that's a Phase 2 conversation about scope-string shape.
+If we later want third-party clients to request tag-scoped tokens via OAuth consent, that's a separate conversation about scope-string shape.
 
 ## Adoption
 
 | Module | Action |
 | --- | --- |
-| **vault** | Implement: schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests |
+| **vault** | Phase 1 — schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests. All in one PR per Aaron's call (UI + API together). |
 | **paraclaw** | Update `attach-vault` flow to optionally accept a tag-list; surface in agent-group settings UI; pass through to spawned-container env |
 | **hub** | No change at the OAuth layer — token shape stays the same |
 | **notes** | No change — Notes app uses operator-scope tokens (full access) by default |
 
-## Open questions
-
-1. **What does "tag-scoped admin" actually grant?** A `vault:<name>:admin` + `tags: [health]` token: can it modify the `#health` schema (`_tags/health`)? The `#health/food` sub-schema? My read: yes to both — admin within the allowlist. Aaron, confirm?
-
-2. **Tag-allowlist immutability** — once minted, can the allowlist be edited? Or is it like the scope (immutable for the life of the token, edit = new token)? My read: immutable — same shape as scope. Add tags = new token with revoke of old. Aaron, confirm?
-
-3. **Hierarchy expansion semantics** — when a token's allowlist contains `health`, does it match a note tagged ONLY with `health/food` (no direct `health` tag)? My read: yes — the hierarchy expansion already does this for `query-notes` (vault#214). The auth check uses the same expansion. Aaron, confirm?
-
-4. **Token visibility** — a tag-scoped token's `list-tokens` view (vault admin SPA) shows the allowlist. But should the vault admin SPA itself be scope-restricted? E.g., should a `vault:<name>:admin` + `tags: [health]` token be able to mint *new* tokens with broader allowlists? My read: NO — admin within the allowlist means admin restricted to that slice. The mint endpoint enforces "can only mint tokens whose allowlist is a subset of mine."
-
-5. **"Schema" in your 2026-04-27 note** — you wrote about "scoped tokens that can only write within a schema." Is "schema" here distinct from "tag," or is it the same thing (since `_tags/<name>` config notes ARE the schema)? My read: same thing — schema = tag config note, tag-scope IS schema-scope. Aaron, confirm?
-
-6. **First implementation milestone** — should the first PR ship just the data-model + auth-check (no UI), or include the mint-UI tag-picker? My read: data-model + auth-check first as a fixed-shape API; UI in Phase 2 once the contract is settled. Aaron, confirm?
-
 ## Adoption notes
 
-- This pattern is `[DRAFT]` until at least vault has shipped Phase 1 (data-model + auth-check) and Aaron has confirmed it works for at least one real bot use-case.
-- Once that happens, file an entry in `adoption/migration-notes.md` and remove the `[DRAFT]` marker.
-- Filing issues for: vault (Phase 1 + Phase 2), paraclaw (attach-vault flow), notes (mint UI for tag-scoped tokens).
+- Aaron approved this design 2026-05-02 (PR #24).
+- Vault Phase 1 implementation includes API + UI in a single PR; the mint flow's tag-picker validates against existing root-tags via list-tags.
+- Once shipped, file an entry in `adoption/migration-notes.md`.
+- Follow-up issues to file: vault Phase 1, paraclaw `attach-vault` integration.
