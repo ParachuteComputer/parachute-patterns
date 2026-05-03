@@ -5,6 +5,40 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-03 — Tag data model reshape (vault — pending)
+
+**Change:** [`tag-data-model.md`](../patterns/tag-data-model.md) introduced.
+Retires the notes-as-config pattern for tag concerns: collapses
+`tags + tag_schemas + _tags/<name>` into a single row on `tags` carrying
+`description`, `fields`, `relationships`, and `parent_names` columns. Adds
+typed-relationship declarations (named cardinality vocabulary: `one`,
+`optional`, `many`, `many-required`) — declared but not enforced in Phase 1.
+The hierarchy resolver swaps its data source from `_tags/*` notes to the
+new `parent_names` column; cache invalidation moves to `tags` row writes.
+Companion retirement of `_schemas/*` pattern (note-validation defaults)
+folds in the same sprint.
+
+**Why:** notes are user content; system configuration belongs in tables.
+The historical config-as-note convention pre-dated tags being first-class
+SQL identities and conflated "what is a note" with "what is system
+configuration." Vault is SQLite, not files-on-disk; export logic can derive
+markdown from tables when needed.
+
+**Affected:**
+
+- `parachute-vault` — implementation pending in vault#244 (single PR on
+  `ag-unforced-dev`); schema migration v13 → v14 + data migration from
+  `tag_schemas` and `_tags/*` notes
+- `parachute-patterns` — `tag-scoped-tokens.md` §Storage details still
+  describes cache invalidation as firing on `_tags/*` writes; post-migration
+  it fires on `tags` row writes. Update on next patterns PR alongside the
+  vault implementation merge
+
+**Status:** Design merged via patterns#29. Implementation tracking issue
+vault#244. Block on vault implementation landing before declaring "done."
+
+---
+
 ## 2026-05-03 — Tag-scoped tokens Phase 1 (vault)
 
 **Change:** [`tag-scoped-tokens.md`](../patterns/tag-scoped-tokens.md) Phase 1
