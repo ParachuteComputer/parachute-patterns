@@ -127,17 +127,19 @@ If we later want third-party clients to request tag-scoped tokens via OAuth cons
 
 **Tag rename cascades** (Aaron's directive 2026-05-02). When operator runs `PATCH /api/tags/<old_name>` with `{ name: <new_name> }`:
 
-1. Tag `tag_id` is preserved (already true — `note_tags` joins by id, not name).
-2. The tag's `name` field is updated.
-3. Sub-tags whose name has prefix `<old_name>/` are renamed to `<new_name>/...` recursively. Sub-tag IDs preserved.
-4. Tokens whose `scoped_tags` JSON array contains `<old_name>` (root-form) are auto-updated to contain `<new_name>` instead. Allowlist content changes; token id, label, and scope are preserved. Sub-tag renames (e.g., `_tags/health/food` → `_tags/health/snack`) are a no-op for token allowlists, since only root-form entries are stored there.
-5. Note bodies referencing `#<old_name>` or `#<old_name>/...` are auto-updated. Wikilinks `[[_tags/<old_name>...]]` likewise.
+1. The `tags` row's `name` PK is updated. `note_tags`, `tag_schemas` (legacy, retired post-vault#244), and any other FK referencing `tags.name` cascade-update.
+2. Sub-tags whose name has prefix `<old_name>/` are renamed to `<new_name>/...` recursively (each is its own row in `tags` with its own `parent_names`).
+3. **`tags.parent_names` cascade** (post-vault#244): every tag with `<old_name>` in its `parent_names` JSON is rewritten to `<new_name>`. Without this, the hierarchy edge silently breaks on rename.
+4. Tokens whose `scoped_tags` JSON array contains `<old_name>` (root-form) are auto-updated to contain `<new_name>` instead. Allowlist content changes; token id, label, and scope are preserved. Sub-tag renames (e.g., `health/food` → `health/snack`) are a no-op for token allowlists, since only root-form entries are stored there.
+5. Note bodies referencing `#<old_name>` or `#<old_name>/...` are auto-updated.
 
-The cascade is transactional — partial failure rolls back. Audit log entry per cascade with old → new mapping. **Implementation is filed as `vault#240`** (separate from Phase 1 of patterns#24); auth check in Phase 1 is robust to rename via the stable-id model.
+The cascade is transactional — partial failure rolls back. Audit log entry per cascade with old → new mapping. **Implementation is filed as `vault#240`** (separate from Phase 1 of patterns#24); the v13 auth check stays robust to rename via the string-form fallback (per §Storage details mechanism 2). Note: tags use `name TEXT PRIMARY KEY` — no separate stable-id column; rename is a multi-table data migration not a single-column update.
 
 **Tag delete fails closed if tokens reference it.** When operator runs `DELETE /api/tags/<name>` and any token has `<name>` (root-form) in its `scoped_tags` allowlist, the delete returns `409 Conflict` with the list of referencing token labels. Operator must revoke or re-mint those tokens (with the tag removed from allowlist) before retrying the delete. This is loud-fail by design: tag deletion is destructive and the operator should notice the dependency.
 
-**Orphan sub-tag — fail-open.** A note carries tag `#health/food`. The schema note `_tags/health/food` is later deleted. A token with allowlist `[health]` evaluating against this note: the auth check still returns true. The string-form `/`-prefix hierarchy (`rootOf("health/food") = "health"`) is the source of truth; missing schemas don't gate access. Schemas are about indexed fields and descriptions, not auth.
+**Orphan sub-tag — fail-open.** A note carries tag `#health/food`. There's no schema declared for `health/food` (no `tags.parent_names` entry pointing at `health`). A token with allowlist `[health]` evaluating against this note: the auth check still returns true. The string-form `/`-prefix hierarchy (`rootOf("health/food") = "health"`) is the source of truth; missing schema declarations don't gate access. Schemas are about indexed fields and declared relationships, not auth.
+
+> **Note (post-vault#244 / patterns#29):** Tag schemas + hierarchy parents now live as columns on the `tags` row (`tags.fields`, `tags.parent_names`), not in `_tags/<name>` config notes. The legacy `_tags/<name>` notes remain in vaults as inert historical record. The orphan-sub-tag concept above refers to "no `parent_names` entry declaring this sub-tag's parent," not "no `_tags/<name>` config note." Behavior unchanged; vocabulary updated.
 
 ## Storage details
 
@@ -145,7 +147,7 @@ The cascade is transactional — partial failure rolls back. Audit log entry per
 
 The `scoped_tags` JSON array contains root tag names only — no path separators in allowlist values themselves. The auth check expands implicitly via two mechanisms (in this order):
 
-1. **Schema-driven expansion** (when available): `getTagDescendants(<root>)` returns the set of all schema-declared sub-tags under that root. Cached per-tag with sync invalidation on `_tags/*` writes.
+1. **Schema-driven expansion** (when available): `getTagDescendants(<root>)` returns the set of all schema-declared sub-tags under that root. Cached per-tag with sync invalidation on `tags.parent_names` row writes (post-vault#244 / patterns#29; previously fired on `_tags/*` note writes).
 2. **String-form fallback** (always): for each note tag `t`, compute `rootOf(t) = t.split("/")[0]`. If `rootOf(t)` is in the allowlist, the note tag is in scope. This catches orphan sub-tags (no schema declared) AND catches the case where the schema cache is stale.
 
 The fallback makes the auth check robust to:
