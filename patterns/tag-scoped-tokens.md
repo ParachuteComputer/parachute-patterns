@@ -7,7 +7,7 @@
 A vault token (`pvt_*`) optionally declares a **tag-allowlist** at mint time. Once set, the token's effective access is the intersection of:
 
 1. **Scope** (existing) — `vault:<name>:read | write | admin` per `oauth-scopes.md`
-2. **Tag allowlist** (new) — list of root tag names. Sub-tags inherit per the existing `_tags/<name>` hierarchy machinery (vault#214 / store-routing fix). The allowlist is **immutable** for the life of the token; editing the allowlist means minting a new token and revoking the old.
+2. **Tag allowlist** (new) — list of root tag names. Sub-tags inherit per the `tags.parent_names` hierarchy (post-vault#244; previously backed by `_tags/<name>` config notes per vault#214 / store-routing fix). The allowlist is **immutable** for the life of the token; editing the allowlist means minting a new token and revoking the old.
 
 Pseudocode for the auth check:
 
@@ -124,13 +124,13 @@ If we later want third-party clients to request tag-scoped tokens via OAuth cons
 
 **Out-of-scope writes return 403 (not 404).** Writes are gated *before* the write happens; the existence of the target isn't being probed. Returning 403 here is the correct shape — the operator/agent attempted a write outside their allowlist; the system tells them so explicitly.
 
-**Tag string is the authority.** A note's `note_tags` rows are what the auth check evaluates against. The `_tags/<name>` config notes provide schema (indexed fields, descriptions) but don't gate the auth check directly. A tag string `#health/food` on a note participates in scope evaluation regardless of whether `_tags/health/food` exists as a schema note (the string-form `/`-prefix hierarchy is sufficient).
+**Tag string is the authority.** A note's `note_tags` rows are what the auth check evaluates against. The `tags` row carries the schema (description, fields, relationships, parent_names) but doesn't gate the auth check directly. A tag string `#health/food` on a note participates in scope evaluation regardless of whether `health/food` has a `tags.parent_names` entry pointing at `health` (the string-form `/`-prefix hierarchy is sufficient — see §Storage details mechanism 2).
 
 ## Lifecycle
 
 **Tag rename cascades** (Aaron's directive 2026-05-02). When operator runs `PATCH /api/tags/<old_name>` with `{ name: <new_name> }`:
 
-1. The `tags` row's `name` PK is updated. `note_tags`, `tag_schemas` (legacy, retired post-vault#244), and any other FK referencing `tags.name` cascade-update.
+1. The `tags` row's `name` PK is updated. `note_tags` and any other FK referencing `tags.name` cascade-update. (The legacy `tag_schemas` sidecar table was dropped in the v14 migration; no longer in scope for cascade.)
 2. Sub-tags whose name has prefix `<old_name>/` are renamed to `<new_name>/...` recursively (each is its own row in `tags` with its own `parent_names`).
 3. **`tags.parent_names` cascade** (post-vault#244): every tag with `<old_name>` in its `parent_names` JSON is rewritten to `<new_name>`. Without this, the hierarchy edge silently breaks on rename.
 4. Tokens whose `scoped_tags` JSON array contains `<old_name>` (root-form) are auto-updated to contain `<new_name>` instead. Allowlist content changes; token id, label, and scope are preserved. Sub-tag renames (e.g., `health/food` → `health/snack`) are a no-op for token allowlists, since only root-form entries are stored there.
