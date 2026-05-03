@@ -5,6 +5,51 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-03 — Tag-scoped tokens Phase 1 (vault)
+
+**Change:** [`tag-scoped-tokens.md`](../patterns/tag-scoped-tokens.md) Phase 1
+lands in vault — per-token `scoped_tags` (whitelist of tag roots; absent =
+unrestricted) enforced on read and write across HTTP and MCP. Schema
+migration v13 adds the `scoped_tags TEXT` column on `tokens` (JSON array,
+nullable). Auth checks the parsed allowlist with a **string-form fallback**
+on the raw root: `t.split("/")[0]` is matched against the token's raw scope
+list, so an orphan sub-tag (one without a `tag_schemas` row for its root)
+stays accessible to a token scoped to that root — fail-open on the read
+path so missing schema rows can never silently hide notes. Mint validation
+rejects path-form scopes (`vault:foo/bar:read`) — only roots are
+mintable. Tag-dependency 409 guards on `DELETE /tags/:name`,
+`POST /tags/merge`, and `POST /tags/:name/rename` (and the MCP `delete-tag`
+tool) refuse the operation when any live token references the tag, returning
+`{error_type: "tag_in_use_by_tokens", tag, referenced_by: [{id, label}]}` —
+fail-closed so token authorities can't be silently invalidated by a
+schema-side rename or delete. Out-of-scope reads return 404 (not 403);
+out-of-scope writes return 403 `tag_scope_violation`.
+
+**Affected:**
+
+- `parachute-vault` — adopted in
+  [`#241`](https://github.com/ParachuteComputer/parachute-vault/pull/241)
+  (rc.30, merged 2026-05-03). Reference: `src/tag-scope.ts`
+  (`noteWithinTagScope` / `tagsWithinScope` / `filterNotesByTagScope`),
+  `src/token-store.ts` (`findTokensReferencingTag`), `src/mcp-tools.ts`
+  (`applyTagDependencyGuards` always-on wrapper, `applyTagScopeWrappers`
+  scoped-only). Phase 2 (rename cascade across token rows + path-form
+  scope semantics) tracked in
+  [`#240`](https://github.com/ParachuteComputer/parachute-vault/issues/240).
+- `paraclaw` — Phase 2 work; will gain a parallel `claw:` scope-tag
+  vocabulary once vault Phase 2 ships. No code change required for
+  Phase 1.
+- `parachute-notes` — no change. PWA reads/writes go through the
+  existing token; out-of-scope cells materialize as 404 from vault.
+- `parachute-hub` — no OAuth-layer change. `vault:<name>:<verb>` scope
+  shape unchanged; tag scoping is a vault-internal token attribute,
+  not exposed in OAuth picker UI for Phase 1.
+
+**Status:** Phase 1 complete on 2026-05-03 (vault rc.30). Phase 2
+(cascade + path-form) deferred pending data-model architecture doc.
+
+---
+
 ## 2026-05-02 — `module.json` gains `managementUrl`
 
 **Change:** [`module-json-extensibility.md`](../patterns/module-json-extensibility.md)
