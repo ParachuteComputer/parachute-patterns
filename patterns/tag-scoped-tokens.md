@@ -32,7 +32,7 @@ A token whose allowlist contains `health` matches:
 - A note tagged ONLY with `#health/doctor` (same)
 - A note tagged with `#health/food/breakfast` (recursive sub-tag)
 
-The expansion uses vault's existing `getTagDescendants` machinery (same path that `query-notes` routes through post-#214 / #231).
+The expansion uses vault's existing `getTagDescendants` machinery (same path that `query-notes` routes through post-#214 / #231). See §Storage details below for the full evaluation including the string-form fallback.
 
 ## Why
 
@@ -130,7 +130,7 @@ If we later want third-party clients to request tag-scoped tokens via OAuth cons
 1. Tag `tag_id` is preserved (already true — `note_tags` joins by id, not name).
 2. The tag's `name` field is updated.
 3. Sub-tags whose name has prefix `<old_name>/` are renamed to `<new_name>/...` recursively. Sub-tag IDs preserved.
-4. Tokens whose `scoped_tags` JSON array contains `<old_name>` (root-form) are auto-updated to contain `<new_name>` instead. Allowlist content changes; token id, label, and scope are preserved.
+4. Tokens whose `scoped_tags` JSON array contains `<old_name>` (root-form) are auto-updated to contain `<new_name>` instead. Allowlist content changes; token id, label, and scope are preserved. Sub-tag renames (e.g., `_tags/health/food` → `_tags/health/snack`) are a no-op for token allowlists, since only root-form entries are stored there.
 5. Note bodies referencing `#<old_name>` or `#<old_name>/...` are auto-updated. Wikilinks `[[_tags/<old_name>...]]` likewise.
 
 The cascade is transactional — partial failure rolls back. Audit log entry per cascade with old → new mapping. **Implementation is filed as `vault#240`** (separate from Phase 1 of patterns#24); auth check in Phase 1 is robust to rename via the stable-id model.
@@ -180,7 +180,7 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 
 | Module | Action |
 | --- | --- |
-| **vault** | Phase 1 — schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests. All in one PR (UI + API together). Tracking issue: `vault#NEXT` (Aaron's `ag-unforced-dev` branch). |
+| **vault** | Phase 1 — schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests. All in one PR on `ag-unforced-dev` (UI + API together). Tracking PR will be filed under vault as Phase 1 implementation; this row will be updated with the PR number when it opens. |
 | **vault** | Tag-rename-cascade implementation: `vault#240` (separate, post-Phase 1). |
 | **vault** | Path/folder/name split design: `vault#238` (deferred design exploration). |
 | **vault** | Wikilinks + tag-scope handling: `vault#239` (deferred design exploration). |
