@@ -32,7 +32,7 @@ A token whose allowlist contains `health` matches:
 - A note tagged ONLY with `#health/doctor` (same)
 - A note tagged with `#health/food/breakfast` (recursive sub-tag)
 
-The expansion uses vault's existing `getTagDescendants` machinery (same path that `query-notes` routes through post-#214 / #231).
+The expansion uses vault's existing `getTagDescendants` machinery (same path that `query-notes` routes through post-#214 / #231). See §Storage details below for the full evaluation including the string-form fallback.
 
 ## Why
 
@@ -113,14 +113,80 @@ Hub doesn't need to know about tag-allowlists at the OAuth level. Tokens with ta
 
 If we later want third-party clients to request tag-scoped tokens via OAuth consent, that's a separate conversation about scope-string shape.
 
+## Semantics
+
+**Per-request auth, no session affinity.** The auth check runs on every request against the current token state and current tag hierarchy. There is no session-level cache; if a tag is renamed mid-session, the next request reflects the rename. Race conditions where a note is being edited concurrently with an auth check are intentional — the note's tags at the moment of the auth check are what's evaluated, and any client retries against fresh state.
+
+**Out-of-scope reads return 404, not 403.** A `[health]`-allowlisted token requesting a `#work`-tagged note gets `404 Not Found`, not `403 Forbidden`. This prevents existence-leakage across the scope boundary — the token can't infer that a note exists by getting a `403`. Same shape applies to find-path hops and link expansion: out-of-scope notes are silently filtered; the agent sees a partial graph rather than gaps marked "you can't see this."
+
+**Out-of-scope writes return 403 (not 404).** Writes are gated *before* the write happens; the existence of the target isn't being probed. Returning 403 here is the correct shape — the operator/agent attempted a write outside their allowlist; the system tells them so explicitly.
+
+**Tag string is the authority.** A note's `note_tags` rows are what the auth check evaluates against. The `_tags/<name>` config notes provide schema (indexed fields, descriptions) but don't gate the auth check directly. A tag string `#health/food` on a note participates in scope evaluation regardless of whether `_tags/health/food` exists as a schema note (the string-form `/`-prefix hierarchy is sufficient).
+
+## Lifecycle
+
+**Tag rename cascades** (Aaron's directive 2026-05-02). When operator runs `PATCH /api/tags/<old_name>` with `{ name: <new_name> }`:
+
+1. Tag `tag_id` is preserved (already true — `note_tags` joins by id, not name).
+2. The tag's `name` field is updated.
+3. Sub-tags whose name has prefix `<old_name>/` are renamed to `<new_name>/...` recursively. Sub-tag IDs preserved.
+4. Tokens whose `scoped_tags` JSON array contains `<old_name>` (root-form) are auto-updated to contain `<new_name>` instead. Allowlist content changes; token id, label, and scope are preserved. Sub-tag renames (e.g., `_tags/health/food` → `_tags/health/snack`) are a no-op for token allowlists, since only root-form entries are stored there.
+5. Note bodies referencing `#<old_name>` or `#<old_name>/...` are auto-updated. Wikilinks `[[_tags/<old_name>...]]` likewise.
+
+The cascade is transactional — partial failure rolls back. Audit log entry per cascade with old → new mapping. **Implementation is filed as `vault#240`** (separate from Phase 1 of patterns#24); auth check in Phase 1 is robust to rename via the stable-id model.
+
+**Tag delete fails closed if tokens reference it.** When operator runs `DELETE /api/tags/<name>` and any token has `<name>` (root-form) in its `scoped_tags` allowlist, the delete returns `409 Conflict` with the list of referencing token labels. Operator must revoke or re-mint those tokens (with the tag removed from allowlist) before retrying the delete. This is loud-fail by design: tag deletion is destructive and the operator should notice the dependency.
+
+**Orphan sub-tag — fail-open.** A note carries tag `#health/food`. The schema note `_tags/health/food` is later deleted. A token with allowlist `[health]` evaluating against this note: the auth check still returns true. The string-form `/`-prefix hierarchy (`rootOf("health/food") = "health"`) is the source of truth; missing schemas don't gate access. Schemas are about indexed fields and descriptions, not auth.
+
+## Storage details
+
+**Auth check semantics: root-only allowlist with `/`-prefix expansion.**
+
+The `scoped_tags` JSON array contains root tag names only — no path separators in allowlist values themselves. The auth check expands implicitly via two mechanisms (in this order):
+
+1. **Schema-driven expansion** (when available): `getTagDescendants(<root>)` returns the set of all schema-declared sub-tags under that root. Cached per-tag with sync invalidation on `_tags/*` writes.
+2. **String-form fallback** (always): for each note tag `t`, compute `rootOf(t) = t.split("/")[0]`. If `rootOf(t)` is in the allowlist, the note tag is in scope. This catches orphan sub-tags (no schema declared) AND catches the case where the schema cache is stale.
+
+The fallback makes the auth check robust to:
+- Sub-tags that lack a schema note
+- Schema cache rebuilds (the cache might briefly miss a descendant; the fallback covers it)
+- Renamed tags during cascade (the fallback works on string state, not schema state)
+
+**Storage of scoped_tags:**
+
+```sql
+ALTER TABLE tokens ADD COLUMN scoped_tags TEXT;
+-- JSON-encoded array, NULL = unscoped (full vault access)
+-- Empty array `[]` is rejected at mint — would mean "see nothing"
+```
+
+Validation at the API boundary: must be a JSON array of strings, each string a valid root-tag name (no `/` separators, no whitespace, no leading `_` since those are config-note conventions).
+
+## Future evolution
+
+The following extensions are explicitly deferred. Each is sound; none block Phase 1.
+
+| Extension | Sketch | When to revisit |
+| --- | --- | --- |
+| **Read/write split** | Token has `read_tags` AND `write_tags`, where `read_tags ⊇ write_tags`. PostgreSQL RLS-style `USING` (read filter) and `WITH CHECK` (write filter). Use case: a journal bot that *reads* dreams (`#journal/dream`) but only *writes* logs (`#journal/log`). | When a real bot use-case wants asymmetric access. Track demand. |
+| **Path-form allowlist** | Token's `scoped_tags` accepts `["health/food"]` for finer-than-root scoping. Root-form (`["health"]`) remains the default. | When operators want to delegate to a sub-team (e.g., a `#health/food` Claw with no access to other `#health/*` sub-tags). |
+| **Tag groups / abstractions** | Define `[tag_group]` config notes (similar to `_tags/<name>`) that bundle several tags. Token allowlist can reference a group; group membership is dynamic. | After 3+ tokens have the same allowlist literally. |
+| **Multi-vault tokens** | Token allowlist becomes `{ "default": ["health"], "boulder": ["health"] }`. Cross-vault scoping via single token. | When operators want a single agent identity working across multiple vaults. |
+| **Scope by metadata** | Token carries metadata-conditions (e.g., `source: "prism"`). Composes with tag-scope. Filed as `parachute-patterns#25`. | Phase 2+ of the agents-as-channels arc. |
+| **Time-bounded per-tag scope** | `scoped_tags: [{tag: "health", until: "2026-12-31"}]` — different tags have different lifetimes. | When token-level expiry isn't enough granularity. |
+
 ## Adoption
 
 | Module | Action |
 | --- | --- |
-| **vault** | Phase 1 — schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests. All in one PR per Aaron's call (UI + API together). |
-| **paraclaw** | Update `attach-vault` flow to optionally accept a tag-list; surface in agent-group settings UI; pass through to spawned-container env |
-| **hub** | No change at the OAuth layer — token shape stays the same |
-| **notes** | No change — Notes app uses operator-scope tokens (full access) by default |
+| **vault** | Phase 1 — schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests. All in one PR on `ag-unforced-dev` (UI + API together). Tracking PR will be filed under vault as Phase 1 implementation; this row will be updated with the PR number when it opens. |
+| **vault** | Tag-rename-cascade implementation: `vault#240` (separate, post-Phase 1). |
+| **vault** | Path/folder/name split design: `vault#238` (deferred design exploration). |
+| **vault** | Wikilinks + tag-scope handling: `vault#239` (deferred design exploration). |
+| **paraclaw** | Update `attach-vault` flow to optionally accept a tag-list; surface in agent-group settings UI; pass through to spawned-container env. |
+| **hub** | No change at the OAuth layer — token shape stays the same. |
+| **notes** | No change — Notes app uses operator-scope tokens (full access) by default. |
 
 ## Adoption notes
 
