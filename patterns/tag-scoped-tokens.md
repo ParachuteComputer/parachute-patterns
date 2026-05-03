@@ -137,7 +137,9 @@ The cascade is transactional — partial failure rolls back. Audit log entry per
 
 **Tag delete fails closed if tokens reference it.** When operator runs `DELETE /api/tags/<name>` and any token has `<name>` (root-form) in its `scoped_tags` allowlist, the delete returns `409 Conflict` with the list of referencing token labels. Operator must revoke or re-mint those tokens (with the tag removed from allowlist) before retrying the delete. This is loud-fail by design: tag deletion is destructive and the operator should notice the dependency.
 
-**Orphan sub-tag — fail-open.** A note carries tag `#health/food`. The schema note `_tags/health/food` is later deleted. A token with allowlist `[health]` evaluating against this note: the auth check still returns true. The string-form `/`-prefix hierarchy (`rootOf("health/food") = "health"`) is the source of truth; missing schemas don't gate access. Schemas are about indexed fields and descriptions, not auth.
+**Orphan sub-tag — fail-open.** A note carries tag `#health/food`. There's no schema declared for `health/food` (no `tags.parent_names` entry pointing at `health`). A token with allowlist `[health]` evaluating against this note: the auth check still returns true. The string-form `/`-prefix hierarchy (`rootOf("health/food") = "health"`) is the source of truth; missing schema declarations don't gate access. Schemas are about indexed fields and declared relationships, not auth.
+
+> **Note (post-vault#244 / patterns#29):** Tag schemas + hierarchy parents now live as columns on the `tags` row (`tags.fields`, `tags.parent_names`), not in `_tags/<name>` config notes. The legacy `_tags/<name>` notes remain in vaults as inert historical record. The orphan-sub-tag concept above refers to "no `parent_names` entry declaring this sub-tag's parent," not "no `_tags/<name>` config note." Behavior unchanged; vocabulary updated.
 
 ## Storage details
 
@@ -145,7 +147,7 @@ The cascade is transactional — partial failure rolls back. Audit log entry per
 
 The `scoped_tags` JSON array contains root tag names only — no path separators in allowlist values themselves. The auth check expands implicitly via two mechanisms (in this order):
 
-1. **Schema-driven expansion** (when available): `getTagDescendants(<root>)` returns the set of all schema-declared sub-tags under that root. Cached per-tag with sync invalidation on `_tags/*` writes.
+1. **Schema-driven expansion** (when available): `getTagDescendants(<root>)` returns the set of all schema-declared sub-tags under that root. Cached per-tag with sync invalidation on `tags.parent_names` row writes (post-vault#244 / patterns#29; previously fired on `_tags/*` note writes).
 2. **String-form fallback** (always): for each note tag `t`, compute `rootOf(t) = t.split("/")[0]`. If `rootOf(t)` is in the allowlist, the note tag is in scope. This catches orphan sub-tags (no schema declared) AND catches the case where the schema cache is stale.
 
 The fallback makes the auth check robust to:
