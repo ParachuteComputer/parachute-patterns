@@ -7,7 +7,7 @@
 A vault token (`pvt_*`) optionally declares a **tag-allowlist** at mint time. Once set, the token's effective access is the intersection of:
 
 1. **Scope** (existing) — `vault:<name>:read | write | admin` per `oauth-scopes.md`
-2. **Tag allowlist** (new) — list of root tag names. Sub-tags inherit per the `tags.parent_names` hierarchy (post-vault#244; previously backed by `_tags/<name>` config notes per vault#214 / store-routing fix). The allowlist is **immutable** for the life of the token; editing the allowlist means minting a new token and revoking the old.
+2. **Tag allowlist** (new) — list of root tag names. Sub-tags inherit per the `tags.parent_names` hierarchy (see [`tag-data-model.md`](./tag-data-model.md)). The allowlist is **immutable** for the life of the token; editing the allowlist means minting a new token and revoking the old.
 
 Pseudocode for the auth check:
 
@@ -32,7 +32,7 @@ A token whose allowlist contains `health` matches:
 - A note tagged ONLY with `#health/doctor` (same)
 - A note tagged with `#health/food/breakfast` (recursive sub-tag)
 
-The expansion uses vault's existing `getTagDescendants` machinery (same path that `query-notes` routes through post-#214 / #231). See §Storage details below for the full evaluation including the string-form fallback.
+The expansion uses vault's `getTagDescendants` resolver (reads from `tags.parent_names` per [`tag-data-model.md`](./tag-data-model.md); same path `query-notes` routes through). See §Storage details below for the full evaluation including the string-form fallback.
 
 ## Why
 
@@ -51,7 +51,7 @@ Schema-on-tag is a load-bearing concept in this design — see [`tag-data-model.
 - **Read paths** — query-notes / GET /api/notes/:id / list-attachments filter results to only return notes with at least one allowlisted-root-tag (or sub-tag thereof).
 - **Write paths** — POST /api/notes / PATCH require the new note to carry at least one allowlisted root-tag. POST without any matching tag returns `403 forbidden`.
 - **Delete paths** — DELETE /api/notes/:id requires the existing note to be within scope. A token can't delete a note it can't read.
-- **Tag operations** — list-tags returns only tags reachable from the allowlist (root tags + sub-tags). create-tag is allowed only if the new tag is a sub-tag of one of the allowlisted roots.
+- **Tag operations** — list-tags returns only tags reachable from the allowlist (root tags + sub-tags). `update-tag` (the upsert tool — see [`tag-data-model.md`](./tag-data-model.md)) is allowed only if the target tag is at-or-under one of the allowlisted roots; same gate on `delete-tag`.
 - **Schema operations** — the `update-tag` API (which writes to the `tags` row's schema columns: `description`, `fields`, `relationships`, `parent_names`) is gated by `vault:<name>:admin` + tag-in-allowlist. A tag-scoped admin CAN modify the schema for tags within their allowlist. Same gating applies to `update-note-schema` / `set-schema-mapping` for note-validation schemas.
 
 ## Composability with existing scopes
@@ -140,9 +140,7 @@ The cascade is transactional — partial failure rolls back. Audit log entry per
 
 **Tag delete fails closed if tokens reference it.** When operator runs `DELETE /api/tags/<name>` and any token has `<name>` (root-form) in its `scoped_tags` allowlist, the delete returns `409 Conflict` with the list of referencing token labels. Operator must revoke or re-mint those tokens (with the tag removed from allowlist) before retrying the delete. This is loud-fail by design: tag deletion is destructive and the operator should notice the dependency.
 
-**Orphan sub-tag — fail-open.** A note carries tag `#health/food`. There's no schema declared for `health/food` (no `tags.parent_names` entry pointing at `health`). A token with allowlist `[health]` evaluating against this note: the auth check still returns true. The string-form `/`-prefix hierarchy (`rootOf("health/food") = "health"`) is the source of truth; missing schema declarations don't gate access. Schemas are about indexed fields and declared relationships, not auth.
-
-> **Note (post-vault#244 / patterns#29):** Tag schemas + hierarchy parents now live as columns on the `tags` row (`tags.fields`, `tags.parent_names`), not in `_tags/<name>` config notes. The legacy `_tags/<name>` notes remain in vaults as inert historical record. The orphan-sub-tag concept above refers to "no `parent_names` entry declaring this sub-tag's parent," not "no `_tags/<name>` config note." Behavior unchanged; vocabulary updated.
+**Orphan sub-tag — fail-open.** A note carries tag `#health/food`. There's no `tags` row for `health/food`, or its `parent_names` doesn't include `health`. A token with allowlist `[health]` evaluating against this note: the auth check still returns true. The string-form `/`-prefix hierarchy (`rootOf("health/food") = "health"`) is the source of truth; a missing or incomplete `tags`-row hierarchy doesn't gate access. The `tags` row carries indexed fields and declared relationships, not auth state.
 
 ## Storage details
 
@@ -150,13 +148,13 @@ The cascade is transactional — partial failure rolls back. Audit log entry per
 
 The `scoped_tags` JSON array contains root tag names only — no path separators in allowlist values themselves. The auth check expands implicitly via two mechanisms (in this order):
 
-1. **Schema-driven expansion** (when available): `getTagDescendants(<root>)` returns the set of all schema-declared sub-tags under that root. Cached per-tag with sync invalidation on `tags.parent_names` row writes (post-vault#244 / patterns#29; previously fired on `_tags/*` note writes).
-2. **String-form fallback** (always): for each note tag `t`, compute `rootOf(t) = t.split("/")[0]`. If `rootOf(t)` is in the allowlist, the note tag is in scope. This catches orphan sub-tags (no schema declared) AND catches the case where the schema cache is stale.
+1. **Hierarchy-driven expansion** (when available): `getTagDescendants(<root>)` returns the set of all hierarchy-declared sub-tags under that root (i.e., tags whose `parent_names` transitively includes the root). Cached per-tag with sync invalidation on `tags.parent_names` row writes.
+2. **String-form fallback** (always): for each note tag `t`, compute `rootOf(t) = t.split("/")[0]`. If `rootOf(t)` is in the allowlist, the note tag is in scope. This catches orphan sub-tags (no `parent_names` entry) AND catches the case where the descendants cache is stale.
 
 The fallback makes the auth check robust to:
-- Sub-tags that lack a schema note
-- Schema cache rebuilds (the cache might briefly miss a descendant; the fallback covers it)
-- Renamed tags during cascade (the fallback works on string state, not schema state)
+- Sub-tags that lack a `parent_names` entry
+- Descendants cache rebuilds (the cache might briefly miss a descendant; the fallback covers it)
+- Renamed tags during cascade (the fallback works on string state, not table state)
 
 **Storage of scoped_tags:**
 
@@ -166,7 +164,7 @@ ALTER TABLE tokens ADD COLUMN scoped_tags TEXT;
 -- Empty array `[]` is rejected at mint — would mean "see nothing"
 ```
 
-Validation at the API boundary: must be a JSON array of strings, each string a valid root-tag name (no `/` separators, no whitespace, no leading `_` since those are config-note conventions).
+Validation at the API boundary: must be a JSON array of strings, each string a valid root-tag name (no `/` separators, no whitespace, no leading `_`).
 
 ## Future evolution
 
@@ -176,7 +174,7 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 | --- | --- | --- |
 | **Read/write split** | Token has `read_tags` AND `write_tags`, where `read_tags ⊇ write_tags`. PostgreSQL RLS-style `USING` (read filter) and `WITH CHECK` (write filter). Use case: a journal bot that *reads* dreams (`#journal/dream`) but only *writes* logs (`#journal/log`). | When a real bot use-case wants asymmetric access. Track demand. |
 | **Path-form allowlist** | Token's `scoped_tags` accepts `["health/food"]` for finer-than-root scoping. Root-form (`["health"]`) remains the default. | When operators want to delegate to a sub-team (e.g., a `#health/food` Claw with no access to other `#health/*` sub-tags). |
-| **Tag groups / abstractions** | Define `[tag_group]` config notes (similar to `_tags/<name>`) that bundle several tags. Token allowlist can reference a group; group membership is dynamic. | After 3+ tokens have the same allowlist literally. |
+| **Tag groups / abstractions** | Add a `tag_groups` table (or a `members` JSON column on `tag_groups` rows) bundling several tags. Token allowlist can reference a group; group membership resolves at auth-check time. | After 3+ tokens have the same allowlist literally. |
 | **Multi-vault tokens** | Token allowlist becomes `{ "default": ["health"], "boulder": ["health"] }`. Cross-vault scoping via single token. | When operators want a single agent identity working across multiple vaults. |
 | **Scope by metadata** | Token carries metadata-conditions (e.g., `source: "prism"`). Composes with tag-scope. Filed as `parachute-patterns#25`. | Phase 2+ of the agents-as-channels arc. |
 | **Time-bounded per-tag scope** | `scoped_tags: [{tag: "health", until: "2026-12-31"}]` — different tags have different lifetimes. | When token-level expiry isn't enough granularity. |
@@ -185,7 +183,7 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 
 | Module | Action |
 | --- | --- |
-| **vault** | Phase 1 — schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests. All in one PR on `ag-unforced-dev` (UI + API together). Tracking PR will be filed under vault as Phase 1 implementation; this row will be updated with the PR number when it opens. |
+| **vault** | Phase 1 — schema migration, auth-check, query-notes filtering, mint UI in admin SPA, regression tests. Shipped in [`vault#241`](https://github.com/ParachuteComputer/parachute-vault/pull/241) at rc.30 (2026-05-03). |
 | **vault** | Tag-rename-cascade implementation: `vault#240` (separate, post-Phase 1). |
 | **vault** | Path/folder/name split design: `vault#238` (deferred design exploration). |
 | **vault** | Wikilinks + tag-scope handling: `vault#239` (deferred design exploration). |
@@ -196,6 +194,6 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 ## Adoption notes
 
 - Aaron approved this design 2026-05-02 (PR #24).
-- Vault Phase 1 implementation includes API + UI in a single PR; the mint flow's tag-picker validates against existing root-tags via list-tags.
-- Once shipped, file an entry in `adoption/migration-notes.md`.
-- Follow-up issues to file: vault Phase 1, paraclaw `attach-vault` integration.
+- Vault Phase 1 shipped 2026-05-03 ([`vault#241`](https://github.com/ParachuteComputer/parachute-vault/pull/241), rc.30); the mint flow's tag-picker validates against existing root-tags via list-tags.
+- Migration-notes entry: `adoption/migration-notes.md` (2026-05-03 — Tag-scoped tokens Phase 1).
+- Outstanding follow-up: paraclaw `attach-vault` integration (no issue filed yet).
