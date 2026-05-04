@@ -91,7 +91,7 @@ INSERT INTO tags (name, parent_names) VALUES
 
 The `getTagDescendants` resolver walks the `parent_names` graph backwards (build child→parent index, invert to parent→children, transitive closure). Functionally equivalent to today's `_tags/*` scanner; mechanically simpler.
 
-**Cache invalidation moves with the data source.** The current implementation invalidates the per-tag descendants cache on `_tags/*` note writes. Post-migration, the trigger is `tags` row writes (specifically when `parent_names` changes). The cache key + lookup shape is unchanged — only the write-side invalidation hook moves. The companion `tag-scoped-tokens.md` §Storage details references the older invalidation trigger; update at the same PR sprint.
+**Cache invalidation moves with the data source.** The current implementation invalidates the per-tag descendants cache on `_tags/*` note writes. Post-migration, the trigger is `tags` row writes (specifically when `parent_names` changes). The cache key + lookup shape is unchanged — only the write-side invalidation hook moves.
 
 The string-form sub-tag fallback (per `patterns/tag-scoped-tokens.md` §Storage details) STILL applies — `health/food` matches a `[health]`-allowlisted token via `rootOf("health/food") = "health"`, regardless of whether `parent_names` is set. The two mechanisms (parent_names-driven hierarchy + string-form fallback) coexist.
 
