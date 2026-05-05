@@ -27,9 +27,9 @@ Parachute OAuth tokens carry **whitespace-separated scope strings**
 | `vault:<name>:admin` | Write + read + `/.parachute/config*` |
 | `scribe:transcribe` | POST audio to scribe's transcription endpoint |
 | `scribe:admin` | Manage scribe config |
-| `claw:read` | Read agent groups + vault attachments via paraclaw API/MCP |
-| `claw:write` | Mutate agent groups, secrets, channel wires, sessions |
-| `claw:admin` | Full paraclaw admin (write + create/delete groups) |
+| `agent:read` | Read agent groups + vault attachments via parachute-agent API/MCP |
+| `agent:write` | Mutate agent groups, secrets, channel wires, sessions |
+| `agent:admin` | Full parachute-agent admin (write + create/delete groups) |
 | `hub:admin` | Manage hub services catalog + OAuth config (Reserved; not yet enforced) |
 | `parachute:host:admin` | Provision new vaults via hub `POST /vaults` and other host-level admin (operator-only-mintable; not requestable from third-party clients) |
 | `channel:send` | Post messages via channel |
@@ -40,14 +40,14 @@ and the hub renders consent for those scopes the same way.
 ## Inheritance
 
 ```
-admin ⊇ write ⊇ read       (for vault and claw)
+admin ⊇ write ⊇ read       (for vault and agent)
 ```
 
 - `vault:<name>:admin` satisfies any check for `vault:<name>:write` or
   `vault:<name>:read` on the same vault. Inheritance is per-resource —
   `vault:work:admin` does **not** satisfy a `vault:personal:read` check.
-- `claw:admin` satisfies `claw:write` and `claw:read` (single-namespace,
-  no per-resource binding — paraclaw is one-installation-one-resource).
+- `agent:admin` satisfies `agent:write` and `agent:read` (single-namespace,
+  no per-resource binding — parachute-agent is one-installation-one-resource).
 - **Non-inheritance scopes exact-match only.** `scribe:admin` does **not**
   currently imply `scribe:transcribe` — each non-inheritance-tree scope
   stands alone. This is deliberate: we add inheritance per-service

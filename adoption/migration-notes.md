@@ -5,6 +5,55 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-04 — `paraclaw` renamed to `parachute-agent`
+
+**Change:** the exploration package previously called `paraclaw` is
+renamed to `parachute-agent` for naming-pattern cohesion with the rest
+of the ecosystem (`parachute-vault`, `parachute-hub`, `parachute-scribe`,
+`parachute-notes`). Surfaces:
+
+| Surface | From | To |
+| --- | --- | --- |
+| Repo | `ParachuteComputer/paraclaw` | `ParachuteComputer/parachute-agent` |
+| npm | `paraclaw` (unpublished) | `@openparachute/agent` |
+| CLI binary | `claw` | `parachute-agent` |
+| Mount path | `/claw` | `/agent` |
+| Service registry name (services.json key) | `claw` | `agent` |
+| Display name | `Paraclaw` | `Parachute Agent` |
+| Container labels | `paraclaw-install=…` | `parachute-agent-install=…` |
+| OAuth scopes | `claw:read` / `claw:write` / `claw:admin` | `agent:read` / `agent:write` / `agent:admin` |
+
+The friendly informal handle `claw` is retained for local-dev tooling
+(`.claude/skills/claw`, `scripts/claw`). This rename is for the formal
+published surfaces — pattern docs use `parachute-agent` / `agent`
+consistently going forward.
+
+Since `paraclaw` was never published to npm, no `claw:*` tokens exist
+in the wild — the OAuth scope namespace flip is a cosmetic rename, not
+a breaking change for any minted bearer.
+
+**Affected:**
+
+- `parachute-agent` (was `paraclaw`) — full source rename in the
+  upstream repo (separate PR there).
+- `parachute-hub` — `SERVICE_SPECS` entry renamed; on hub start, a
+  one-shot migration in `services-manifest.ts` rewrites `services.json`
+  rows whose key was `claw` to `agent` (separate PR there).
+- `parachute.computer` — site copy updated (separate PR there).
+- `parachute-patterns` — this scrub: `oauth-scopes.md` (registered
+  scope namespace), `tag-data-model.md` (adoption row),
+  `tag-scoped-tokens.md` (use-case copy + adoption row + follow-up),
+  `module-json-extensibility.md` (one rationale line),
+  `research/tag-scoped-tokens-survey.md` (one informal mention).
+  Historical migration-notes entries left in place as point-in-time
+  records — readers should interpret pre-2026-05-04 references to
+  `paraclaw` / `claw:*` as the package now known as `parachute-agent`.
+
+**Status:** patterns scrub: this PR. Cross-repo PRs landing on
+2026-05-04 ahead of tomorrow afternoon's publish.
+
+---
+
 ## 2026-05-03 — `_schemas/*` retirement to `note_schemas` + `schema_mappings` (vault)
 
 **Change:** [`tag-data-model.md`](../patterns/tag-data-model.md) approach extended to note-validation schemas. Companion to the tag-data-model reshape (#245). Retires the `_schemas/<name>` config-note pattern + the singleton `_schema_defaults` note in favor of two SQL tables: `note_schemas (name PK, fields JSON, description, required JSON)` for schema definitions, and `schema_mappings (schema_name FK, match_kind ENUM 'path_prefix' | 'tag', match_value)` for the path-prefix + tag-based mapping rules.

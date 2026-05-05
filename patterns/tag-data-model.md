@@ -136,7 +136,7 @@ Three reasons:
 | Module | Action |
 | --- | --- |
 | **vault** | Phase 1 implementation: schema migration v14, `update-tag` API gains `relationships` + `parent_names`, `getTagDescendants` resolver swap, retire `tag_schemas` sidecar, leave `_tags/<name>` notes in place post-migration as harmless historical record. Same for `_schemas/*` retirement. Single PR on `ag-unforced-dev`. |
-| **paraclaw** | No change — paraclaw doesn't touch tag schema state |
+| **parachute-agent** | No change — parachute-agent doesn't touch tag schema state |
 | **hub** | No change |
 | **notes** | The Notes UI may surface tag schemas (declared fields + relationships) in note-edit views; tracked separately |
 
