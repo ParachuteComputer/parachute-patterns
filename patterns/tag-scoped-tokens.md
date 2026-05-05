@@ -42,7 +42,7 @@ The expansion uses vault's `getTagDescendants` resolver (reads from `tags.parent
 
 > *"If I make a tag called #health and then a sub-tag #health/food, then I could have a bot that is just scoped on all of my #health tags including any sub-tags."*
 
-The use case: per-purpose paraclaw bots. A `#health` Claw, a `#work` Claw, a `#journal` Claw — each spawned from the same vault, but with isolated visibility into the slice of notes the operator has tagged for it. Currently isolation is per-vault (separate `default` / `boulder` / `techne` vaults); this lets you slice within one vault.
+The use case: per-purpose parachute-agent instances. A `#health` agent, a `#work` agent, a `#journal` agent — each spawned from the same vault, but with isolated visibility into the slice of notes the operator has tagged for it. Currently isolation is per-vault (separate `default` / `boulder` / `techne` vaults); this lets you slice within one vault.
 
 Schema-on-tag is a load-bearing concept in this design — see [`tag-data-model.md`](./tag-data-model.md) for the schema authoring shape. Each tag carries its own schema (description + indexed fields + typed relationships) directly on the `tags` row.
 
@@ -173,7 +173,7 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 | Extension | Sketch | When to revisit |
 | --- | --- | --- |
 | **Read/write split** | Token has `read_tags` AND `write_tags`, where `read_tags ⊇ write_tags`. PostgreSQL RLS-style `USING` (read filter) and `WITH CHECK` (write filter). Use case: a journal bot that *reads* dreams (`#journal/dream`) but only *writes* logs (`#journal/log`). | When a real bot use-case wants asymmetric access. Track demand. |
-| **Path-form allowlist** | Token's `scoped_tags` accepts `["health/food"]` for finer-than-root scoping. Root-form (`["health"]`) remains the default. | When operators want to delegate to a sub-team (e.g., a `#health/food` Claw with no access to other `#health/*` sub-tags). |
+| **Path-form allowlist** | Token's `scoped_tags` accepts `["health/food"]` for finer-than-root scoping. Root-form (`["health"]`) remains the default. | When operators want to delegate to a sub-team (e.g., a `#health/food` agent with no access to other `#health/*` sub-tags). |
 | **Tag groups / abstractions** | Add a `tag_groups` table (or a `members` JSON column on `tag_groups` rows) bundling several tags. Token allowlist can reference a group; group membership resolves at auth-check time. | After 3+ tokens have the same allowlist literally. |
 | **Multi-vault tokens** | Token allowlist becomes `{ "default": ["health"], "boulder": ["health"] }`. Cross-vault scoping via single token. | When operators want a single agent identity working across multiple vaults. |
 | **Scope by metadata** | Token carries metadata-conditions (e.g., `source: "prism"`). Composes with tag-scope. Filed as `parachute-patterns#25`. | Phase 2+ of the agents-as-channels arc. |
@@ -187,7 +187,7 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 | **vault** | Tag-rename-cascade implementation: `vault#240` (separate, post-Phase 1). |
 | **vault** | Path/folder/name split design: `vault#238` (deferred design exploration). |
 | **vault** | Wikilinks + tag-scope handling: `vault#239` (deferred design exploration). |
-| **paraclaw** | Update `attach-vault` flow to optionally accept a tag-list; surface in agent-group settings UI; pass through to spawned-container env. |
+| **parachute-agent** | Update `attach-vault` flow to optionally accept a tag-list; surface in agent-group settings UI; pass through to spawned-container env. |
 | **hub** | No change at the OAuth layer — token shape stays the same. |
 | **notes** | No change — Notes app uses operator-scope tokens (full access) by default. |
 
@@ -196,4 +196,4 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 - Aaron approved this design 2026-05-02 (PR #24).
 - Vault Phase 1 shipped 2026-05-03 ([`vault#241`](https://github.com/ParachuteComputer/parachute-vault/pull/241), rc.30); the mint flow's tag-picker validates against existing root-tags via list-tags.
 - Migration-notes entry: `adoption/migration-notes.md` (2026-05-03 — Tag-scoped tokens Phase 1).
-- Outstanding follow-up: paraclaw `attach-vault` integration (no issue filed yet).
+- Outstanding follow-up: parachute-agent `attach-vault` integration (no issue filed yet).
