@@ -93,10 +93,38 @@ bearer tokens on its own endpoints. The hub uses this to derive
 `publicExposure`'s default for `kind: "api" | "tool"` services: with
 `hasAuth: true` they default to `"allowed"` (safe to expose because the
 module gates itself); without it they default to `"auth-required"`
-(treated as loopback at expose time until the operator opts in
-explicitly). It also informs how `parachute expose` and the discovery
-surface treat bearer-bearing modules. `kind: "frontend"` modules ignore
-this field — they default to `"allowed"` regardless.
+(the module hasn't claimed auth, so non-loopback layers are gated by
+hub on its behalf). It also informs how `parachute expose` and the
+discovery surface treat bearer-bearing modules. `kind: "frontend"`
+modules ignore this field — they default to `"allowed"` regardless.
+
+#### Runtime behavior — hub-side per-request layer-gate
+
+`publicExposure` is enforced **per request, in hub**, not at expose
+time. Every reverse-proxied request is tagged with the layer it
+arrived on — `loopback` (127.0.0.1), `tailnet` (Tailscale), or
+`public` (Cloudflare Tunnel / Funnel) — and hub consults the target
+service's `publicExposure` value to decide whether to proxy or 404.
+The expose surface (tailnet, public) is collapsed to a single hub
+catchall; per-service expose toggles do not exist as independent
+state anymore. See [parachute-hub#187](https://github.com/ParachuteComputer/parachute-hub/pull/187)
+for the implementing change (2026-05-08).
+
+Access matrix:
+
+| `publicExposure` | Loopback | Tailnet | Public | Gated by |
+| --- | --- | --- | --- | --- |
+| `"allowed"` | reaches | reaches | reaches | service's own auth (none required by hub) |
+| `"loopback"` | reaches | 404 | 404 | hub layer-gate (the service never sees the request) |
+| `"auth-required"` | reaches | reaches | reaches | service's own auth (same gate behavior as `"allowed"`; the value documents "I have auth and I'm enforcing it" vs. `"allowed"`'s "no opinion / open") |
+
+Concretely: `"loopback"` is the only value that withholds traffic
+from non-loopback layers. `"allowed"` and `"auth-required"` produce
+identical hub behavior — the difference is documentary: `"allowed"`
+asserts the service is intentionally open or has no sensitive
+surface; `"auth-required"` asserts the service is enforcing auth on
+its own endpoints. Hub forwards in both cases and trusts the service
+to handle authn/z.
 
 Trivially declarative — the value doesn't change at runtime. If a
 module's auth gate is conditional on a config flag (e.g., scribe with /

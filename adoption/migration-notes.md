@@ -5,6 +5,49 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-08 — `publicExposure` is a hub-side per-request layer-gate
+
+**Change:** [`module-json-extensibility.md`](../patterns/module-json-extensibility.md)
+refreshed — the `hasAuth` section's runtime description was stale.
+`publicExposure` is now enforced **per request, in hub**, not at expose
+time. Every reverse-proxied request is tagged with the layer it arrived
+on (`loopback` / `tailnet` / `public`) and hub consults the target
+service's `publicExposure` to decide whether to proxy or 404. The expose
+surface collapses to a single hub catchall on the tailnet; per-service
+expose toggles are no longer independent state.
+
+Access matrix codified by [parachute-hub#187](https://github.com/ParachuteComputer/parachute-hub/pull/187):
+
+| `publicExposure` | Loopback | Tailnet | Public | Gated by |
+| --- | --- | --- | --- | --- |
+| `"allowed"` | reaches | reaches | reaches | service's own auth |
+| `"loopback"` | reaches | 404 | 404 | hub layer-gate |
+| `"auth-required"` | reaches | reaches | reaches | service's own auth |
+
+`"allowed"` and `"auth-required"` produce identical hub behavior; the
+distinction is documentary intent. `"loopback"` is the only value that
+withholds non-loopback traffic. The pre-#187 wording — "treated as
+loopback at expose time until the operator opts in explicitly" —
+described an at-expose-time filtering model that no longer matches the
+runtime; scrubbed.
+
+Closes [`parachute-patterns#39`](https://github.com/ParachuteComputer/parachute-patterns/issues/39).
+
+**Affected:**
+
+- `parachute-patterns` — pattern doc updated (this PR). No code change.
+- `parachute-hub` — already shipped the runtime in
+  [`#187`](https://github.com/ParachuteComputer/parachute-hub/pull/187).
+  Pattern doc now matches.
+- Module authors (vault, scribe, notes, agent, third-party) — no
+  manifest change required. `hasAuth` semantics are unchanged; only the
+  doc's description of how hub honors the derived `publicExposure` is
+  refreshed.
+
+**Status:** complete on 2026-05-08.
+
+---
+
 ## 2026-05-04 — `paraclaw` renamed to `parachute-agent`
 
 **Change:** the exploration package previously called `paraclaw` is
