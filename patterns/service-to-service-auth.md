@@ -29,7 +29,7 @@ install`:
    it would keep the stale value and silently 401).
 
 Canonical implementation:
-[`parachute-cli/src/auto-wire.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/auto-wire.ts).
+[`parachute-hub/src/auto-wire.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/auto-wire.ts).
 
 The callee (scribe) validates with a single function:
 
@@ -66,7 +66,7 @@ export function validateToken(token: string | undefined): AuthResult {
 ```
 
 The shared scope-guard library is proposed in
-[`parachute-cli#59`](https://github.com/ParachuteComputer/parachute-cli/issues/59).
+[`parachute-hub#59`](https://github.com/ParachuteComputer/parachute-hub/issues/59).
 Every service uses the same `verifyJwt(...)` helper and pins trust
 to the hub origin (see [`hub-as-issuer.md`](./hub-as-issuer.md)).
 
@@ -123,7 +123,7 @@ secret should never appear on a user-facing surface.
   posts audio attachments to scribe with `Authorization: Bearer
   ${SCRIBE_AUTH_TOKEN}`. Scribe validates via
   [`src/auth.ts`](https://github.com/ParachuteComputer/parachute-scribe/blob/main/src/auth.ts).
-- **`parachute-hub`** (`parachute-cli` today) — implements the trust
+- **`parachute-hub`** — implements the trust
   broker in `auto-wire.ts`. Future inter-service pairs (e.g.
   channel → vault for triggered actions) follow the same pattern: a
   named env on the caller, a config field on the callee, idempotent

@@ -18,7 +18,7 @@ Examples:
 - `ParachuteComputer/parachute-scribe`
 - `ParachuteComputer/parachute-notes`
 - `ParachuteComputer/parachute-channel`
-- `ParachuteComputer/parachute-cli` — the umbrella; ships the `parachute` bin
+- `ParachuteComputer/parachute-hub` — the umbrella; ships the `parachute` bin
 - `ParachuteComputer/parachute-patterns` (this repo)
 - `ParachuteComputer/parachute.computer` — the website (kept literal, matching
   the domain)
@@ -48,5 +48,5 @@ Examples:
   under a personal namespace. Decision not urgent.
 - The `ParachuteComputer/openparachute-cli` repo predated the
   `parachute-` prefix decision; it's no longer the active CLI source
-  (active source is `parachute-cli`). Archive or redirect — tracked but
+  (active source is `parachute-hub`). Archive or redirect — tracked but
   not urgent.

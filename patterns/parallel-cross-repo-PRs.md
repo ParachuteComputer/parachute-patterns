@@ -120,7 +120,7 @@ Four parallel PRs:
 - `parachute-vault` — implement `/oauth/authorize`, `/oauth/token`,
   `resolveOAuthCoordinates`, advertise hub as `iss`. PR
   [#147](https://github.com/ParachuteComputer/parachute-vault/pull/147).
-- `parachute-cli` — derive hub origin in `src/hub-origin.ts`, pass
+- `parachute-hub` — derive hub origin in `src/hub-origin.ts`, pass
   `PARACHUTE_HUB_ORIGIN` to vault on `expose up` / `start`.
 - `parachute-notes` — register OAuth client, request consent, store
   PKCE state. PR
@@ -145,7 +145,7 @@ Similar fan-out:
 - `parachute-scribe` — drop the `vault:` config block; accept inline
   `context` part; tolerant parser falls through to "no context" on
   malformed payload.
-- `parachute-cli` — `auto-wire` mints `SCRIBE_AUTH_TOKEN` and
+- `parachute-hub` — `auto-wire` mints `SCRIBE_AUTH_TOKEN` and
   installs it on both ends.
 - `parachute-patterns` — write down `context-in-payload.md`,
   `service-to-service-auth.md`.

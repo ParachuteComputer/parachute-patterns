@@ -29,7 +29,7 @@ exist on this machine and how to reach them.
 }
 ```
 
-Canonical shape: [`parachute-cli/src/services-manifest.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/services-manifest.ts).
+Canonical shape: [`parachute-hub/src/services-manifest.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/services-manifest.ts).
 
 ### 2. Runtime — `/.parachute/*` endpoints
 
@@ -60,7 +60,7 @@ iterate, then fan out to each service's `/.parachute/info` for live
 metadata.
 
 Shape (see
-[`parachute-cli/src/well-known.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/well-known.ts)):
+[`parachute-hub/src/well-known.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/well-known.ts)):
 
 ```json
 {
@@ -71,9 +71,9 @@ Shape (see
 ```
 
 Served by
-[`parachute-cli/src/hub-server.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/hub-server.ts);
+[`parachute-hub/src/hub-server.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub-server.ts);
 the hub page fetch lives in
-[`parachute-cli/src/hub.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/hub.ts).
+[`parachute-hub/src/hub.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub.ts).
 
 ## Why
 

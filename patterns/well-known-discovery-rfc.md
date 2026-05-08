@@ -93,7 +93,7 @@ Path-append cases are handled inside the per-vault block. Landed in
 
 - **`parachute-vault`** — reference implementation. Both shapes,
   byte-identical bodies, path-insertion advertised. PR #149.
-- **`parachute-hub`** (`parachute-cli` today) — when hub becomes the
+- **`parachute-hub`** — when hub becomes the
   IdP itself in Phase B2 (see [`hub-as-issuer.md`](./hub-as-issuer.md)),
   hub takes over both routes. Issuer is `https://hub.example` (no path
   component), so the path-insertion vs. path-append distinction
