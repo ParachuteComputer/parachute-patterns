@@ -19,7 +19,7 @@ chosen port into the service's `.env`. See
 assignment algorithm, idempotency rules, and the service-side contract
 this doc's reservations get enforced through.
 
-## Reservations (state of the world, 2026-04-25)
+## Reservations (state of the world, 2026-05-08)
 
 | Port | Service | Tier | Status | Notes |
 |---|---|---|---|---|
@@ -27,8 +27,8 @@ this doc's reservations get enforced through.
 | 1940 | `parachute-vault` | committed core | assigned | REST + MCP at `/vault/<name>/`. |
 | 1942 | `parachute-notes` | committed core | assigned | Static server over the PWA bundle. |
 | 1943 | `parachute-scribe` | committed core | assigned | Whisper-compatible transcription API at root. |
+| 1944 | `parachute-agent` | committed core | assigned | Web UI + agent runtime. De facto since launch; formally assigned 2026-05-08 to reflect agent's compiled-in default and `module.json` services.json seed. |
 | 1941 | `parachute-channel` | working module | assigned | Daemon. Exploratory; may retire — not part of the committed ecosystem. |
-| 1944 | unassigned | — | reserved | |
 | 1945 | unassigned | — | reserved | |
 | 1946 | unassigned | — | reserved | |
 | 1947 | unassigned | — | reserved | |
@@ -36,9 +36,7 @@ this doc's reservations get enforced through.
 | 1949 | unassigned | — | reserved | |
 
 The **committed core** is the set of modules the Parachute ecosystem
-commits to maintaining: hub, vault, notes, scribe, agent. Agent is
-also committed-core but doesn't reserve a port in this range — it
-ships its own `services.json` entry via `module.json`. **Working
+commits to maintaining: hub, vault, notes, scribe, agent. **Working
 modules** like channel exist and run, but the ecosystem does not
 commit to them as long-term first-party citizens.
 
@@ -91,7 +89,7 @@ than walking up into a service's slot.
 - **A registry of running services.** That's `~/.parachute/services.json`
   — see [module-protocol.md](./module-protocol.md). The reservation
   table says what *should* be at a port; services.json says what *is*.
-- **A roadmap.** Slots `1944–1949` are unassigned, not earmarked.
+- **A roadmap.** Slots `1945–1949` are unassigned, not earmarked.
   Whichever module ships first into the range claims the next free slot.
 
 ## Open questions
