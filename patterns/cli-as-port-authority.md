@@ -3,11 +3,17 @@
 ## Convention
 
 `parachute-hub` is the **port authority** for the Parachute ecosystem. At
-install time the CLI picks a port for each service, persists it as
-`PORT=<port>` in `~/.parachute/<svc>/.env`, and reflects the chosen port in
-`~/.parachute/services.json`. Services read `PORT` from env on boot with a
-compiled-in fallback (e.g. vault → 1940), so a stand-alone `bun run` still
-works — but the CLI's value wins on installs the CLI manages.
+install time the CLI picks a port for each service and reflects the chosen
+port in `~/.parachute/services.json` (also stamping `PORT=<port>` into
+`~/.parachute/<svc>/.env` as a dev-shell convenience).
+
+Services resolve their listen port at boot via a four-tier ladder:
+**`services.json` entry → service-specific env (`<SERVICE>_PORT`) → bare
+`PORT` env → compiled-in canonical default**. The hub's `parachute install`
+and the operator's manifest edits both feed `services.json`; env tiers are
+dev-shell / PaaS overrides; the canonical default (e.g. vault → 1940) is
+the final fallback so a stand-alone `bun run` still works. See
+"Service-side contract" below.
 
 The authoritative implementation is
 [`parachute-hub/src/port-assign.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/port-assign.ts).
@@ -131,11 +137,16 @@ migrated (a port carried over from a previous host). Treating
 fallback closes the loop where a service's own boot rewrites the
 operator's manifest from a stale env.
 
-The ladder is the same shape for every service. Scribe and agent
-implement it today (see "Implementing changes" below); vault and notes
-have services.json reads for other purposes but haven't yet adopted the
-ladder for port resolution — adoption is the follow-up work. Operators
-reading the rule from one service should not be surprised by another.
+The ladder is the same shape for every service. Scribe implements all
+four tiers today
+([`parachute-scribe#41`](https://github.com/ParachuteComputer/parachute-scribe/pull/41)).
+Agent implements three — `services.json` → `PARACHUTE_AGENT_WEB_PORT` →
+default — pending
+[`parachute-agent#147`](https://github.com/ParachuteComputer/paraclaw/issues/147)
+to add the bare `PORT` env tier for full symmetry. Vault and notes have
+services.json reads for other purposes but haven't yet adopted the ladder
+for port resolution — adoption is the follow-up work. Operators reading
+the rule from one service should not be surprised by another.
 
 The CLI's `lifecycle.start` merges `~/.parachute/<svc>/.env` into the
 spawn env before exec, so a CLI-managed boot still sees the assigned
