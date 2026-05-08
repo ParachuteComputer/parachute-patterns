@@ -7,7 +7,7 @@ Every Parachute ecosystem service that runs locally claims a slot in the
 stay out of it.
 
 The single source of truth is the `PORT_RESERVATIONS` table in
-[`parachute-cli/src/service-spec.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/service-spec.ts).
+[`parachute-hub/src/service-spec.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/service-spec.ts).
 This pattern doc tracks the same shape for cross-reference; if the two
 ever disagree, the code wins and this doc is wrong.
 
@@ -36,10 +36,9 @@ this doc's reservations get enforced through.
 | 1949 | unassigned | — | reserved | |
 
 The **committed core** is the set of modules the Parachute ecosystem
-commits to maintaining: hub, vault, notes, scribe (and the umbrella
-`parachute-cli` that ties them together, which doesn't claim a port of
-its own). **Working modules** like channel exist and run, but the
-ecosystem does not commit to them as long-term first-party citizens.
+commits to maintaining: hub, vault, notes, scribe. **Working modules**
+like channel exist and run, but the ecosystem does not commit to them
+as long-term first-party citizens.
 
 ## Why a fixed range
 
@@ -68,7 +67,7 @@ than walking up into a service's slot.
 - **New first-party modules claim a slot at the time they ship, not
   before.** No speculative reservations for roadmap modules — the table
   reflects what runs today, not what might run later. Open a PR against
-  `parachute-cli/src/service-spec.ts` adding a `PortReservation` entry
+  `parachute-hub/src/service-spec.ts` adding a `PortReservation` entry
   when the module actually ships, and add a row here in the same PR.
 - **Don't reuse a port across instances.** Multi-tenant modules (e.g.
   multiple vaults) take *one* port and disambiguate via path — see

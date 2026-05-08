@@ -17,7 +17,7 @@ First match on PATH wins (same as shell lookup). This means `parachute vault
 ...` works as soon as `@openparachute/vault` is installed anywhere on PATH,
 without the umbrella having to know about it at build time.
 
-See: [parachute-cli/src/cli.ts](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/cli.ts).
+See: [parachute-hub/src/cli.ts](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/cli.ts).
 
 ## Current bins (state of the world, 2026-04-25)
 
@@ -26,7 +26,7 @@ See: [parachute-cli/src/cli.ts](https://github.com/ParachuteComputer/parachute-c
 | `@openparachute/cli` | `parachute` | umbrella dispatcher |
 | `@openparachute/vault` | `parachute-vault` | conformant (renamed in [vault #134](https://github.com/ParachuteComputer/parachute-vault/pull/134)) |
 | `@openparachute/scribe` | `parachute-scribe` | conformant (renamed in [scribe #9](https://github.com/ParachuteComputer/parachute-scribe/pull/9)) |
-| `@openparachute/notes` | *(no bin)* | frontend; served by `parachute-cli`'s `notes-serve` shim, no own bin |
+| `@openparachute/notes` | *(no bin)* | frontend; served by `parachute-hub`'s `notes-serve` shim, no own bin |
 | `@openparachute/channel` | `parachute-channel`, `parachute-channel-bridge` | conformant |
 | `@openparachute/agent` | `parachute-agent`, `parachute-agent-ui` | conformant |
 | `@openparachute/narrate` | `parachute-narrate` | planned; not yet published |

@@ -6,7 +6,7 @@
 > and committed to as the third-party path. The CLI's
 > `parachute install` does not yet read `.parachute/module.json` —
 > today it falls back to a hardcoded `SERVICE_SPECS` table in
-> [`parachute-cli/src/service-spec.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/service-spec.ts).
+> [`parachute-hub/src/service-spec.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/service-spec.ts).
 > That hardcoding is a **first-party shortcut, not an architectural
 > limit**. This pattern doc nails the contract so third-party authors
 > and the eventual CLI implementation agree on the shape.
@@ -368,7 +368,7 @@ packages that pre-date the convention, then retires.
 ## Where this applies
 
 - **Today:** first-party modules (vault, notes, scribe, channel) are
-  hardcoded in `parachute-cli/src/service-spec.ts`. The shape lives in
+  hardcoded in `parachute-hub/src/service-spec.ts`. The shape lives in
   `PORT_RESERVATIONS` + `SERVICE_SPECS` and is functionally a
   pre-`module.json` ancestor.
 - **Tomorrow (target):** every module — first-party and third-party —

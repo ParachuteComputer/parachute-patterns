@@ -2,7 +2,7 @@
 
 ## Convention
 
-`parachute-cli` is the **port authority** for the Parachute ecosystem. At
+`parachute-hub` is the **port authority** for the Parachute ecosystem. At
 install time the CLI picks a port for each service, persists it as
 `PORT=<port>` in `~/.parachute/<svc>/.env`, and reflects the chosen port in
 `~/.parachute/services.json`. Services read `PORT` from env on boot with a
@@ -10,9 +10,9 @@ compiled-in fallback (e.g. vault → 1940), so a stand-alone `bun run` still
 works — but the CLI's value wins on installs the CLI manages.
 
 The authoritative implementation is
-[`parachute-cli/src/port-assign.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/port-assign.ts).
+[`parachute-hub/src/port-assign.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/port-assign.ts).
 The install hook lives in
-[`parachute-cli/src/commands/install.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/commands/install.ts).
+[`parachute-hub/src/commands/install.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/install.ts).
 This pattern doc captures the why and the rules; if the two ever disagree,
 the code wins and this doc is wrong.
 
@@ -61,7 +61,7 @@ written at install time is the contract for the next boot, and
   **preserves it** and returns `source: "preserved"` without writing.
 - Otherwise calls `assignPort`, upserts `PORT=<n>` into the file
   (preserving surrounding lines via
-  [`env-file.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/env-file.ts)),
+  [`env-file.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/env-file.ts)),
   and returns the chosen port plus the assignment source.
 
 The `occupied` set is built by `collectOccupiedPorts` in `install.ts`:
@@ -98,7 +98,7 @@ To force a re-pick: delete the `PORT=` line from
 - **Read-back verify after every write.** A silent upsert failure (perms,
   external writer races) surfaces as a loud log line instead of a phantom
   "registered" claim. Surfaced by
-  [parachute-cli#44](https://github.com/ParachuteComputer/parachute-cli/issues/44):
+  [parachute-hub#44](https://github.com/ParachuteComputer/parachute-hub/issues/44):
   notes silently missing from `services.json` on a fresh bun 1.2.x install.
 
 ## Service-side contract
@@ -140,13 +140,13 @@ outside it.
 ## Examples
 
 - Helper:
-  [`parachute-cli/src/port-assign.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/port-assign.ts).
+  [`parachute-hub/src/port-assign.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/port-assign.ts).
 - Install hook (port assignment + manifest sync):
-  [`parachute-cli/src/commands/install.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/commands/install.ts).
+  [`parachute-hub/src/commands/install.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/install.ts).
 - Test matrix:
-  [`parachute-cli/src/__tests__/port-assign.test.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/__tests__/port-assign.test.ts).
+  [`parachute-hub/src/__tests__/port-assign.test.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/__tests__/port-assign.test.ts).
 - Originating PR:
-  [parachute-cli#54](https://github.com/ParachuteComputer/parachute-cli/pull/54)
+  [parachute-hub#54](https://github.com/ParachuteComputer/parachute-hub/pull/54)
   (closes #53).
 
 ## Open questions

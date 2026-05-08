@@ -76,7 +76,7 @@ documented across every CLAUDE.md the same week.
 
 Every Parachute repo with code that gets `bun link`-ed for development:
 
-- [`parachute-cli`](https://github.com/ParachuteComputer/parachute-cli/blob/main/CLAUDE.md#post-merge-hygiene)
+- [`parachute-hub`](https://github.com/ParachuteComputer/parachute-hub/blob/main/CLAUDE.md#post-merge-hygiene)
 - [`parachute-vault`](https://github.com/ParachuteComputer/parachute-vault/blob/main/CLAUDE.md#post-merge-hygiene)
 - [`parachute-notes`](https://github.com/ParachuteComputer/parachute-notes/blob/main/CLAUDE.md#post-merge-hygiene)
 - [`parachute-scribe`](https://github.com/ParachuteComputer/parachute-scribe/blob/main/CLAUDE.md#post-merge-hygiene)

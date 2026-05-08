@@ -31,10 +31,10 @@ Canonical implementation:
 [`parachute-vault/src/oauth.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/oauth.ts)
 (`resolveOAuthCoordinates`, `resolvePublicOrigin`). The hub origin is
 derived once by the CLI in
-[`parachute-cli/src/hub-origin.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/hub-origin.ts)
+[`parachute-hub/src/hub-origin.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub-origin.ts)
 (`deriveHubOrigin`) and passed through to vault as `PARACHUTE_HUB_ORIGIN`
 on `expose up` / `start` (see
-[`parachute-cli/src/commands/expose.ts`](https://github.com/ParachuteComputer/parachute-cli/blob/main/src/commands/expose.ts)).
+[`parachute-hub/src/commands/expose.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/expose.ts)).
 
 ## Why
 
@@ -70,7 +70,7 @@ directly; vault becomes a pure resource server that validates
 hub-issued JWTs via JWKS. A small shared scope-guard library lives in
 [`parachute-patterns`](./oauth-scopes.md)'s upstream code home (TBD)
 so every module enforces the same scope semantics. Tracked in
-[`parachute-cli#58`](https://github.com/ParachuteComputer/parachute-cli/issues/58)
+[`parachute-hub#58`](https://github.com/ParachuteComputer/parachute-hub/issues/58)
 and
 [`parachute-vault#169`](https://github.com/ParachuteComputer/parachute-vault/issues/169).
 
@@ -100,22 +100,12 @@ change between Phase 1 and Phase B2. Only the implementation does.
   [`well-known-discovery-rfc.md`](./well-known-discovery-rfc.md) (when
   it lands) for the path-component subtleties.
 
-## Naming note
-
-The hub repo is currently named `parachute-cli`. A rename to
-`parachute-hub` is in flight
-([`parachute-cli#55`](https://github.com/ParachuteComputer/parachute-cli/issues/55))
-— "the CLI" is one surface of the hub, not its identity. Throughout
-this doc and going forward, use **hub** / **`parachute-hub`** for the
-role and the eventual repo name. Source links above point at the
-current repo path; they'll redirect after the rename.
-
 ## Where this applies
 
 - **`parachute-vault`** — implements the issuer surface; honours
   `PARACHUTE_HUB_ORIGIN`. Reference `resolveOAuthCoordinates` in
   `src/oauth.ts`.
-- **`parachute-hub`** (`parachute-cli` today) — derives the canonical
+- **`parachute-hub`** — derives the canonical
   hub origin once, passes it through to every service it spawns. See
   `src/hub-origin.ts` + `src/commands/expose.ts`.
 - **`parachute-scribe`** — scopes declared, OAuth enforcement waiting
