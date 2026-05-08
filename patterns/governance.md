@@ -10,9 +10,12 @@ open PRs and report status; team-lead reviews and writes a verification
 summary; the repo owner (currently Aaron) clicks merge.
 
 - All Parachute repos with code or content (`parachute-hub`, `parachute-vault`,
-  `parachute-notes`, `parachute-scribe`, `parachute.computer`,
-  `parachute-patterns`) have **branch protection on `main`**: no force-push,
-  no branch deletion, PR-required for changes.
+  `parachute-notes`, `parachute-scribe`, `parachute-agent`,
+  `parachute.computer`, `parachute-patterns`) have **branch protection on
+  `main`**: no force-push, no branch deletion, PR-required for changes.
+  `parachute-agent` joined this set on its committed-core promotion
+  (2026-05-05) and is subject to the same review-discipline / RC-versioning /
+  patterns-check rules as the original five.
 - **Required-review count is calibrated to team size**:
   - **Solo human team (today):** required approvals = `0`. The single human
     *is* both reviewer and merger; a separate "approve" click before "merge"
