@@ -339,7 +339,7 @@ with [`patterns/oauth-scopes.md`](../patterns/oauth-scopes.md).
   [#147](https://github.com/ParachuteComputer/parachute-vault/pull/147)
   and refined in
   [#152](https://github.com/ParachuteComputer/parachute-vault/pull/152).
-- `parachute-cli` (renaming to `parachute-hub` —
+- `parachute-hub` (renamed from `parachute-cli` —
   [cli#55](https://github.com/ParachuteComputer/parachute-cli/issues/55))
   — derives the canonical hub origin in `src/hub-origin.ts` and passes
   it through as `PARACHUTE_HUB_ORIGIN` on `expose up` / `start`.

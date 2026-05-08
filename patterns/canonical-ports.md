@@ -36,9 +36,11 @@ this doc's reservations get enforced through.
 | 1949 | unassigned | — | reserved | |
 
 The **committed core** is the set of modules the Parachute ecosystem
-commits to maintaining: hub, vault, notes, scribe. **Working modules**
-like channel exist and run, but the ecosystem does not commit to them
-as long-term first-party citizens.
+commits to maintaining: hub, vault, notes, scribe, agent. Agent is
+also committed-core but doesn't reserve a port in this range — it
+ships its own `services.json` entry via `module.json`. **Working
+modules** like channel exist and run, but the ecosystem does not
+commit to them as long-term first-party citizens.
 
 ## Why a fixed range
 
