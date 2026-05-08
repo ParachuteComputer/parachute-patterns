@@ -103,29 +103,78 @@ To force a re-pick: delete the `PORT=` line from
 
 ## Service-side contract
 
-Services don't have to change to participate. They keep doing what they
-already do:
+A service resolves its listen port at boot via this precedence ladder
+(highest priority first):
 
-1. Read `PORT` from `process.env` on boot.
-2. If absent, fall back to a compiled-in default (vault → 1940, notes →
-   1942, scribe → 1943).
-3. Bind and serve.
+1. **`services.json` entry's `port`** for the service's name in
+   `~/.parachute/services.json`. This is the operator-canonical record.
+2. **`<SERVICE>_PORT` env** — service-scoped explicit override
+   (`PARACHUTE_SCRIBE_PORT`, `PARACHUTE_AGENT_WEB_PORT`, etc.).
+3. **`PORT` env** — generic / PaaS-style override and what the hub's
+   port-assigner writes into `~/.parachute/<svc>/.env` at install time.
+4. **Compiled-in canonical default** (vault → 1940, notes → 1942,
+   scribe → 1943, agent → 1944).
+
+The service then binds and serves. On `EADDRINUSE` (or any bind error)
+the service **fails loudly** with a named conflict — port number, the
+source the port came from (`services.json` / env var name / `default`),
+and an actionable hint — and exits non-zero. **It does not silently
+re-pick** another port at runtime: re-picking would let services drift
+out of the manifest the hub uses to compute proxy targets, exactly the
+class of bug up-front assignment exists to prevent.
+
+Why `services.json` outranks env: env values can be stale (the hub's
+port-assigner stamps a value once and never clears it; a later
+operator-edited `services.json` is the more authoritative record) or
+migrated (a port carried over from a previous host). Treating
+`services.json` as the source of truth and env as a first-run / dev-shell
+fallback closes the loop where a service's own boot rewrites the
+operator's manifest from a stale env.
+
+The ladder is the same shape for every service. Scribe and agent
+implement it today (see "Implementing changes" below); vault and notes
+have services.json reads for other purposes but haven't yet adopted the
+ladder for port resolution — adoption is the follow-up work. Operators
+reading the rule from one service should not be surprised by another.
 
 The CLI's `lifecycle.start` merges `~/.parachute/<svc>/.env` into the
-spawn env before exec, so a CLI-managed boot sees the assigned `PORT`. A
-direct `bun run` outside the CLI still works on the compiled-in fallback.
+spawn env before exec, so a CLI-managed boot still sees the assigned
+`PORT` if no `services.json` entry exists (first install). A direct
+`bun run` outside the CLI works the same way — env override or
+compiled-in default.
 
-This means: **third-party modules need no integration with the port
-authority to coexist.** Drop them in, point `parachute install` at them,
-and they'll land on a free slot in the reserved range or a warned slot
-outside it.
+This means: **third-party modules participate by implementing the
+ladder.** A module that only reads env (skipping `services.json`) won't
+respect operator edits to the manifest after first install. The
+implementation is small (one resolver function + a manifest read) and
+the service-scoped env name (`<SERVICE>_PORT`) is the module's choice.
+
+**Implementing changes:**
+
+- [`parachute-scribe#41`](https://github.com/ParachuteComputer/parachute-scribe/pull/41) /
+  commit [`9f28ad2`](https://github.com/ParachuteComputer/parachute-scribe/commit/9f28ad27c508f95bc5ebc678ada28b5a338ce324)
+  — landed the ladder in scribe; pure `resolvePort()` helper +
+  `readServiceEntry()` accessor + named bind-failure logging.
+- [`parachute-agent#146`](https://github.com/ParachuteComputer/paraclaw/pull/146) /
+  commit [`b919fc2`](https://github.com/ParachuteComputer/paraclaw/commit/b919fc2da5c9dfbd230225bea80e2a5f135fa78a)
+  — symmetric fix in agent (the GitHub repo slug is still `paraclaw`
+  pending the rename to `parachute-agent`; see
+  [`adoption/migration-notes.md`](../adoption/migration-notes.md#2026-05-04--paraclaw-renamed-to-parachute-agent)).
+  Initial cut had `env > services.json`; reviewer fold-fix inverted to
+  match scribe.
+
+Both shipped 2026-05-08 in response to a real collision: stale
+`PORT=1944` env on scribe + agent's hardcoded slot raced for the same
+port, services.json edits were silently reverted on every boot. The
+ladder change makes the manifest stick.
 
 ## Rules
 
 - **The CLI is the authority on installed services.** A service that
-  hard-codes a port without honoring `process.env.PORT` breaks the
-  authority and will collide on contested machines. Always read env first,
-  fall back compiled-in second.
+  hard-codes a port — or ignores the resolution ladder above — breaks the
+  authority and will collide on contested machines. Resolve in order:
+  `services.json` entry → `<SERVICE>_PORT` env → `PORT` env → compiled-in
+  default.
 - **Don't write `PORT` from inside a service's own init.** The CLI writes
   it during install. A service init that also writes `PORT` creates two
   sources of truth and an idempotency hole.
