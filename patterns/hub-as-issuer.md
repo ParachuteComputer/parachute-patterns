@@ -135,6 +135,8 @@ change between Phase 1 and Phase B2. Only the implementation does.
 ## What's out of scope here
 
 - **Scope format and inheritance** — see [`oauth-scopes.md`](./oauth-scopes.md).
+- **DCR client approval lifecycle** (`pending` → `approved`, the four
+  operator paths) — see [`oauth-dcr-approval.md`](./oauth-dcr-approval.md).
 - **Well-known metadata path math (RFC 8414 + RFC 9728)** — see
   [`well-known-discovery-rfc.md`](./well-known-discovery-rfc.md) when
   it lands.
