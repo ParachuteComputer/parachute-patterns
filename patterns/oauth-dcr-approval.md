@@ -28,40 +28,80 @@ the code, the code wins and this doc is wrong.
 
 ## Lifecycle
 
+Two related-but-distinct lifecycles run alongside each other: the
+**client** lifecycle (does this `client_id` exist on this hub, and is it
+allowed to complete a flow?) and the **grant** lifecycle (has the
+operator consented to *this* client requesting *these* scopes?). The
+diagram conflated them in an earlier draft; they're separate.
+
+### Client lifecycle
+
 ```
             register (no auth)
 public DCR ─────────────────────► pending
                                      │
                                      │ operator demonstrates authority
                                      ▼
-                                 approved
-                                     │
-                                     │ parachute auth revoke-grant <id>
-                                     │ (or DB edit; explicit operator action)
-                                     ▼
-                                  removed
+                                 approved        (terminal)
 ```
 
 - **`pending` is the default** for any client registered via public DCR
   (`POST /oauth/register` with no auth headers).
 - **`pending` → `approved` is one-way and operator-driven.** No automatic
   promotion from a passive event (time, request volume, anything).
-- **`approved` does not expire.** Revocation is operator-explicit
-  (`parachute auth revoke-grant <id>` or removing the row from
-  `hub.db`).
+- **`approved` is terminal in the type system.** `ClientStatus` is
+  `"pending" | "approved"` — there is no `removed` status. Client
+  deletion is a row-delete on the `clients` table, performed by direct
+  `hub.db` edit (no `parachute auth` command exists for full client
+  deletion yet — file an issue if needed).
 - A pending client hitting `/oauth/token` gets `invalid_client` per RFC
   6749. A pending client hitting `/oauth/authorize` gets the
   human-readable "App not yet approved" page (with or without an inline
   approve button — see "Inline approve button" below).
 
+### Grant lifecycle
+
+```
+                                       parachute auth revoke-grant
+operator consents at /oauth/authorize ─────────────────────────────► (no grant row)
+                  │                                                       │
+                  ▼                                                       │
+              grant row in `grants` table                                 │
+              (user_id, client_id, scopes)                                │
+                  ▲                                                       │
+                  └─────── operator re-consents on next /oauth/authorize ─┘
+```
+
+- **A grant** is a row in the `grants` table keyed by
+  `(user_id, client_id)`, recording the scopes the operator approved.
+- **`parachute auth revoke-grant <client_id>`** deletes the grant row
+  (see [`grants.ts:revokeGrant`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/grants.ts)).
+  It does **not** change the client's status — the client stays
+  `approved`. The next time the operator runs the OAuth flow with that
+  client, `/oauth/authorize` re-prompts for consent and a fresh grant
+  row is created.
+- **Revoking a grant does not invalidate already-issued tokens.** Token
+  revocation is a separate operation via `/oauth/revoke` (and any future
+  CLI wrapper).
+
+### Revocation, distinguished
+
+- **Client revocation** is operator-explicit via direct `hub.db` row
+  delete on the `clients` table (no `parachute auth` command exists for
+  client deletion). After deletion the `client_id` no longer exists; any
+  use of it gets `invalid_client`.
+- **Grant revocation** uses `parachute auth revoke-grant <client_id>`
+  and removes the consent grant — the client stays approved; the next
+  OAuth flow re-prompts consent.
+
 ## Four paths to `approved`
 
 | Path | Trigger | Code | Originating PR |
 |---|---|---|---|
-| **Operator-bearer header** | `Authorization: Bearer <hub-admin-token>` (with `hub:admin` scope) on `POST /oauth/register` | [`oauth-handlers.ts:handleRegister`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts) — bearer branch | [hub#74](https://github.com/ParachuteComputer/parachute-hub/pull/74) |
+| **Operator-bearer header** | `Authorization: Bearer <hub-admin-token>` (with `hub:admin` scope) on `POST /oauth/register` | [`oauth-handlers.ts:handleRegister`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts) — bearer branch | [hub#74](https://github.com/ParachuteComputer/parachute-hub/issues/74) |
 | **Same-origin session cookie + matching Origin** | Hub session cookie present on `POST /oauth/register` AND request `Origin` matches `deps.issuer` | [`oauth-handlers.ts:handleRegister`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts) — cookie branch + `originMatchesIssuer` | [hub#200](https://github.com/ParachuteComputer/parachute-hub/pull/200) |
 | **Inline approve button** | Operator browser navigates to `/oauth/authorize` for a pending client; session detected → approve form rendered → operator clicks → `POST /oauth/authorize/approve` | [`oauth-handlers.ts:handleApproveClientPost`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts) + [`oauth-ui.ts:renderApprovePending`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-ui.ts) | [hub#209](https://github.com/ParachuteComputer/parachute-hub/pull/209) |
-| **CLI** | `parachute auth approve-client <id>` (operator with shell access to the hub install) | [`commands/auth.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/auth.ts) + [`clients.ts:approveClient`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/clients.ts) | [hub#74](https://github.com/ParachuteComputer/parachute-hub/pull/74) |
+| **CLI** | `parachute auth approve-client <id>` (operator with shell access to the hub install) | [`commands/auth.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/auth.ts) + [`clients.ts:approveClient`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/clients.ts) | [hub#74](https://github.com/ParachuteComputer/parachute-hub/issues/74) |
 
 The four paths exist because the operator demonstrates authority in
 different contexts and the right friction profile is different in each:
@@ -96,6 +136,9 @@ Each path has a different gate, sized to the context:
      cookie.
   2. Request `Origin` (or `Referer` fallback) matches `deps.issuer` —
      `originMatchesIssuer`. URL.origin compares scheme + host + port.
+     Opaque-origin requests (sandboxed iframes, `data:`/`file:`
+     documents) send `Origin: null` literally; this is parsed as a
+     malformed URL and rejected with the same shape as cross-origin.
   3. The session cookie itself is `SameSite=Lax`, so the browser blocks
      it from cross-site POSTs in the first place. The `originMatchesIssuer`
      check is the server-side belt for the cases where Lax doesn't cover
@@ -263,7 +306,7 @@ as deferred; this section is the canonical record of why.
 
 ## Implementing changes
 
-- [hub#74](https://github.com/ParachuteComputer/parachute-hub/pull/74)
+- [hub#74](https://github.com/ParachuteComputer/parachute-hub/issues/74)
   — base approval gate. Public DCR lands `pending`; operator-bearer
   and CLI paths land `approved`.
 - [hub#199](https://github.com/ParachuteComputer/parachute-hub/issues/199)
@@ -282,3 +325,8 @@ as deferred; this section is the canonical record of why.
   — inline approve button implementation. Adds
   `handleApproveClientPost` + the form section in
   `renderApprovePending`.
+- [paraclaw#140](https://github.com/ParachuteComputer/paraclaw/issues/140),
+  [paraclaw#144](https://github.com/ParachuteComputer/paraclaw/pull/144)
+  — agent SPA companion issues; closed when A4 (inline button) was
+  chosen, since cross-origin SPA-side `credentials: 'include'` doesn't
+  help.
