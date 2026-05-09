@@ -5,6 +5,41 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-09 — Tag schema inheritance, `_default`, rename cascade, MCP discovery (vault)
+
+**Change:** [`tag-data-model.md`](../patterns/tag-data-model.md) refreshed
+top-to-bottom and [`vault-mcp-discovery.md`](../patterns/vault-mcp-discovery.md)
+added, reflecting four vault PRs that landed today against vault 0.4.1-rc.4:
+
+1. [`vault#269`](https://github.com/ParachuteComputer/parachute-vault/pull/269) (`f7c47f1`) — audit-driven cleanup. Ripped `note_schemas` + `schema_mappings` tables and the six MCP tools that authored them (`update-note-schema`, `delete-note-schema`, `list-note-schemas`, `set-schema-mapping`, `delete-schema-mapping`, `synthesize-notes`). MCP tool count: 16 → 9. Schema migration v16 → v17. The 2026-05-03 `_schemas/*` retirement entry below is now superseded — that subsystem existed for ~6 days before being consolidated back onto `tags.fields`.
+2. [`vault#272`](https://github.com/ParachuteComputer/parachute-vault/pull/272) (`fc8db55`) — multi-inheritance via `tags.parent_names`. A child tag inherits all ancestors' `fields` recursively (cycle-safe). `_default` is the implicit universal parent: when a `_default` row exists, its `fields` apply to every note as a low-precedence fallback (appended last in the resolver walk; never auto-written into any `parent_names` array). Conflict resolution: first-in-walk wins; the loser surfaces as a `schema_conflict` warning on `validation_status.warnings` (joins `type_mismatch` and `enum_mismatch`). `getTagDescendants("_default")` returns every tag, so `query-notes { tag: "_default" }` means "every note."
+3. [`vault#273`](https://github.com/ParachuteComputer/parachute-vault/pull/273) (`4ca781f`) — `vault-info` expanded with full schema projection (`tags`, `effective_parents`, `effective_fields`, `relationships`, `indexed_fields`, `query_hints`, optional `stats`). MCP `getServerInstruction` rewritten to render the same projection as a markdown brief at session `initialize`. Both surfaces tag-scope-filtered (symmetric — neither leaks out-of-scope tags). Single source: `core/src/vault-projection.ts::buildVaultProjection`.
+4. [`vault#275`](https://github.com/ParachuteComputer/parachute-vault/pull/275) (`5a278cc`) — full transactional tag-rename cascade. Single `BEGIN IMMEDIATE`, ROLLBACK on any throw. Pre-flight collision check returns `{error: "target_exists", conflicting: [...]}` without touching the DB. Cascades through `tags.name` PK + sub-tag prefixes (recursive), `note_tags.tag_name`, `tags.parent_names` JSON, `tokens.scoped_tags` JSON, `indexed_fields.declarer_tags` JSON, note body content (`#oldname` / `[[_tags/oldname]]`), and `_tags/<oldname>` paths. Returns structured cascade stats. Replaces the prior fail-closed 409 on token-referenced tags.
+
+**Affected:**
+
+- `parachute-patterns` — `tag-data-model.md` rewritten to describe the
+  shipped model (multi-inheritance, `_default`, schema_conflict warning,
+  rename cascade); migration history section added recording the
+  three-step arc (vault#245 → vault#249 → vault#269+#272). New
+  `vault-mcp-discovery.md` covers the projection + brief shape and the
+  scope-filtering symmetry.
+- `parachute-vault` — already shipped today; this patterns PR catches the
+  doc up to reality. Future-work issues filed against vault for auto-init
+  / title-templates / named-queries / AI commands (separate tracker).
+- `parachute-notes` / clients — no breaking change. The Notes UI still
+  reads tag schema via `list-tags { include_schema: true }` (unchanged
+  surface). Clients integrating MCP get the new connect-time brief
+  automatically. Clients that called the now-deleted note-schema /
+  schema-mapping / synthesize-notes MCP tools must migrate to writing
+  `fields` on tag records via `update-tag` (or `_default` for the
+  universal-fallback case).
+
+**Status:** patterns refresh: this PR. Vault implementation: complete in
+0.4.1-rc.4.
+
+---
+
 ## 2026-05-08 — `publicExposure` is a hub-side per-request layer-gate
 
 **Change:** [`module-json-extensibility.md`](../patterns/module-json-extensibility.md)
@@ -98,6 +133,8 @@ a breaking change for any minted bearer.
 ---
 
 ## 2026-05-03 — `_schemas/*` retirement to `note_schemas` + `schema_mappings` (vault)
+
+> **Superseded 2026-05-09 by vault#269.** The `note_schemas` + `schema_mappings` two-table subsystem and the six MCP tools introduced here were ripped six days later when an audit found zero operator use of the path-prefix mapping kind, and tag-mapped schemas were fully redundant with `tags.fields`. Note-validation now lives on `tags.fields` with `_default` as the universal-fallback ancestor. See the 2026-05-09 entry above. Entry kept for migration history.
 
 **Change:** [`tag-data-model.md`](../patterns/tag-data-model.md) approach extended to note-validation schemas. Companion to the tag-data-model reshape (#245). Retires the `_schemas/<name>` config-note pattern + the singleton `_schema_defaults` note in favor of two SQL tables: `note_schemas (name PK, fields JSON, description, required JSON)` for schema definitions, and `schema_mappings (schema_name FK, match_kind ENUM 'path_prefix' | 'tag', match_value)` for the path-prefix + tag-based mapping rules.
 
