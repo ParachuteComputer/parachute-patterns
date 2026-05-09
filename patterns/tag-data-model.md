@@ -166,7 +166,7 @@ How an AI client learns the vault's schema shape lives in [`vault-mcp-discovery.
 
 ```
 MCP tool: update-tag
-HTTP:     PATCH /vault/<name>/api/tags/<tag>
+HTTP:     PUT /vault/<name>/api/tags/<tag>
 SPA:      vault admin tag editor
 ```
 

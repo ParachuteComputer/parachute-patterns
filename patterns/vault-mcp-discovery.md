@@ -33,7 +33,9 @@ Built by `core/src/vault-projection.ts::buildVaultProjection(db, { includeStats?
 
 Returns the full `VaultProjection` JSON. Agents call this to refresh mid-session when schema or tags have changed (the connect-time brief is sent only once).
 
-Defaults to including `stats`; the caller can flip `include_stats: false` to skip the stats roll-up. The wrapper threads tag-scope filtering through (see §Scope filtering).
+Stats are omitted by default; pass `include_stats: true` to include note/tag counts and the monthly distribution. The connect-time markdown brief sets `includeStats: true` internally so the brief always carries counts — that's the brief's behavior, not the JSON tool's default. The wrapper threads tag-scope filtering through (see §Scope filtering).
+
+Only tags carrying their own `description` or `fields` appear in `tags[]`. Hierarchy-only tags — those that exist only as parents to other tags via `parent_names` — drive inheritance for descendants but do not surface as standalone entries in the projection. Their fields appear via descendants' `effective_fields`.
 
 ### `getServerInstruction` — markdown brief at MCP `initialize`
 
