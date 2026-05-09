@@ -194,3 +194,10 @@ The parser already knows to split on `:`; the matcher is what gains the
 - Rotation / step-up story: a token granted `vault:read` requests
   `vault:write` later via refresh flow, hub re-prompts. Specced in the
   module-architecture design doc, not yet implemented.
+
+## See also
+
+- [`oauth-dcr-approval.md`](./oauth-dcr-approval.md) — the
+  `pending` → `approved` lifecycle for OAuth clients registered via
+  Dynamic Client Registration. Orthogonal to scopes (a client must be
+  *approved* before its requested scopes are even evaluated).
