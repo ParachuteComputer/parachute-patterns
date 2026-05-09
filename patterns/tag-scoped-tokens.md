@@ -128,7 +128,7 @@ If we later want third-party clients to request tag-scoped tokens via OAuth cons
 
 ## Lifecycle
 
-**Tag rename cascades** (Aaron's directive 2026-05-02). When operator runs `PATCH /api/tags/<old_name>` with `{ name: <new_name> }`:
+**Tag rename cascades** (Aaron's directive 2026-05-02). When operator runs `POST /api/tags/<old_name>/rename` with `{ new_name: <new_name> }`:
 
 1. The `tags` row's `name` PK is updated. `note_tags` and any other FK referencing `tags.name` cascade-update. (The legacy `tag_schemas` sidecar table was dropped in the v14 migration; no longer in scope for cascade.)
 2. Sub-tags whose name has prefix `<old_name>/` are renamed to `<new_name>/...` recursively (each is its own row in `tags` with its own `parent_names`).

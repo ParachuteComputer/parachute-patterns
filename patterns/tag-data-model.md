@@ -1,6 +1,6 @@
 # Tag data model
 
-> One-line summary: a tag is a single SQL row carrying its identity, description, indexed fields, declared typed relationships, and parent-tag pointers. No notes-as-config for tag concerns. Vault is SQLite; tags belong in tables.
+> One-line summary: a tag is a single SQL row carrying its identity, description, indexed fields, declared typed relationships, and parent-tag pointers. Schemas inherit through `parent_names`; `_default` is the implicit universal parent. No notes-as-config for tag concerns. Vault is SQLite; tags belong in tables.
 
 ## Convention
 
@@ -12,15 +12,15 @@ CREATE TABLE tags (
   description TEXT,                  -- markdown blurb describing the tag
   fields TEXT,                       -- JSON: indexed metadata fields per `query-operators.md`
   relationships TEXT,                -- JSON: typed-link declarations per §Typed relationships below
-  parent_names TEXT,                 -- JSON array of parent tag names (hierarchy)
+  parent_names TEXT,                 -- JSON array of parent tag names (multi-inheritance, see §Schema inheritance)
   created_at TEXT NOT NULL,
   updated_at TEXT
 );
 ```
 
-**One tag = one row.** No sidecar table for fields. No config notes for hierarchy parents. Authoring is via direct API (`update-tag` MCP tool / vault admin SPA).
+**One tag = one row.** No sidecar table for fields. No sidecar table for note-validation defaults. No config notes for hierarchy parents. Authoring is via direct API (`update-tag` MCP tool / vault admin SPA).
 
-The legacy `tag_schemas` sidecar table and `_tags/<name>` config-note pattern (and the parallel `_schemas/*` pattern for note-validation defaults) are retired in favor of in-table state.
+The legacy `tag_schemas` sidecar table, the `_tags/<name>` config-note pattern, the `_schemas/*` notes-as-config pattern, and the short-lived `note_schemas` + `schema_mappings` two-table subsystem are all retired in favor of in-table state on `tags`. See §Migration history.
 
 ## Why
 
@@ -30,7 +30,7 @@ The conflation between "this is a note" and "this is system configuration" was c
 
 ## Typed relationships
 
-A tag declares the **expected** typed-link shapes for notes carrying that tag. The declaration is informational — used by agents to understand what links a typed note "should" have, and used by the UI to surface affordances. It is **not enforced** at write time (Phase 1 — see §Future evolution).
+A tag declares the **expected** typed-link shapes for notes carrying that tag. The declaration is informational — used by agents to understand what links a typed note "should" have, and used by the UI to surface affordances. It is **not enforced** at write time (see §Future evolution).
 
 Schema shape (stored as JSON in `tags.relationships`):
 
@@ -74,11 +74,11 @@ The vault `links` table already stores edges as `(source_id, target_id, relation
 - Tells the UI what affordances to surface (an "Add author" button on a `#book` note's edit view)
 - Stays informational — doesn't reject writes if a `#book` note has no author
 
-Future enforcement (Phase 2 — see §Future evolution) layers validation on top.
+Future enforcement (see §Future evolution) layers validation on top.
 
 ## Hierarchy via `parent_names`
 
-Tag hierarchy moves from `_tags/<name>` config notes to a column on the tag row.
+Tag hierarchy lives as a column on the tag row.
 
 ```sql
 -- example data:
@@ -89,11 +89,78 @@ INSERT INTO tags (name, parent_names) VALUES
   ('health/food',  '[]');                      -- string-form sub-tag has no explicit parent
 ```
 
-The `getTagDescendants` resolver walks the `parent_names` graph backwards (build child→parent index, invert to parent→children, transitive closure). Functionally equivalent to today's `_tags/*` scanner; mechanically simpler.
+The `getTagDescendants` resolver walks the `parent_names` graph backwards (build child→parent index, invert to parent→children, transitive closure). Functionally equivalent to the historical `_tags/*` scanner; mechanically simpler.
 
-**Cache invalidation moves with the data source.** The current implementation invalidates the per-tag descendants cache on `_tags/*` note writes. Post-migration, the trigger is `tags` row writes (specifically when `parent_names` changes). The cache key + lookup shape is unchanged — only the write-side invalidation hook moves.
+**Cache invalidation moves with the data source.** Pre-migration the resolver invalidated on `_tags/*` note writes. The trigger now is `tags` row writes (specifically when `parent_names` changes). Same cache-key shape; only the write-side hook differs.
 
 The string-form sub-tag fallback (per `patterns/tag-scoped-tokens.md` §Storage details) STILL applies — `health/food` matches a `[health]`-allowlisted token via `rootOf("health/food") = "health"`, regardless of whether `parent_names` is set. The two mechanisms (parent_names-driven hierarchy + string-form fallback) coexist.
+
+## Schema inheritance
+
+Schema inheritance is real: a tag's effective field map is its own `fields` ∪ every ancestor's `fields`, with **first-in-walk** precedence. Shipped in vault#272 (closed vault#270).
+
+### Walk semantics
+
+For a note carrying tags `[A, B, ...]`, the resolver visits, in order:
+
+1. Each note tag, then its `parent_names` (depth-first, declaration order), cycle-protected via a visited Set.
+2. The implicit universal parent `_default` (see below), appended last.
+
+The first specification encountered for any field name wins. Operator-controlled precedence is therefore "first-in-`parent_names`-array wins" — a tag's earlier parents outrank its later parents.
+
+Conflicts (same field declared by two ancestors with diverging `type` or `enum`) surface as advisory `schema_conflict` warnings on the response's `validation_status.warnings`. The warning carries:
+
+- `field` — the contested field name
+- `schema` — the tag whose declaration won
+- `loser_schema` — the tag whose declaration was overridden (set only on `schema_conflict`)
+- `reason: "schema_conflict"`
+- `message` — human-readable
+
+`schema_conflict` joins the existing `type_mismatch` and `enum_mismatch` warning reasons. Validation remains advisory: writes are never blocked. Schemas guide; they don't gate.
+
+### `_default` is the implicit universal parent
+
+A tag named `_default` is special at *resolution* time only — it's never auto-written into any `parent_names` array, never auto-applied at the storage layer.
+
+- When a `_default` row exists in `tags`, it's appended to every note's effective ancestor walk (including untagged notes). Its `fields` apply to every note as a low-precedence fallback.
+- Because `_default` is appended **last**, any field a real tag declares wins over `_default`'s declaration of the same field.
+- `getTagDescendants("_default")` returns every tag — used by `query-notes { tag: "_default" }` to mean "every note."
+- When `_default` is *not* declared as a tag row, the magic is inert. The behavior is opt-in via `update-tag` like any other tag.
+
+`_default` can technically carry its own `parent_names` and the resolver handles it (cycle guard + visited Set), but the resulting interaction is non-obvious. Treat `_default` as a root tag in normal use.
+
+This collapses the prior `note_schemas` + `schema_mappings` two-table design into a single mechanism: instead of mapping schemas to notes by path-prefix or tag, schemas live on tags and inherit, with `_default` covering the universal-fallback case that `_schema_defaults` used to handle. Zero operator vaults used the path-prefix mapping kind, and tag-mapped schemas were fully redundant with `tags.fields` — see vault#267 for the audit.
+
+### Field reuse across tags
+
+The "discoverable shared field" pattern (Tana §8.1.b in `research/tana-deep-dive.md`) is implicitly delivered through inheritance: a tag with `parent_names: ["task"]` inherits task's `due`, `assignee`, etc., without redeclaring them. A field shared across many sibling tags becomes an ancestor-tag concern: declare once on the parent, every child inherits.
+
+## Tag rename is a transactional cascade
+
+Renaming a tag (`task` → `todo`, say) is a single transactional cascade across every surface where the old name lives. Shipped in vault#275 (closed vault#240 + vault#247). Replaces the prior fail-closed 409 on token-referenced tags.
+
+Surfaces touched by the cascade:
+
+1. `tags.name` PK row.
+2. Sub-tag rows: `task/work` → `todo/work`, recursively (sub-tags follow their root).
+3. `note_tags.tag_name` FK references for every renamed name.
+4. `tags.parent_names` JSON arrays in OTHER tag rows.
+5. `tokens.scoped_tags` JSON arrays.
+6. `indexed_fields.declarer_tags` JSON arrays.
+7. Note body `content`: `#oldname[/...]` references rewritten to `#newname[/...]`. `[[_tags/oldname]]` wikilinks rewritten.
+8. `_tags/<oldname>...` paths (post-v14 these are inert historical breadcrumbs, but renaming for hygiene keeps the vault internally consistent).
+
+**Atomicity:** a single `BEGIN IMMEDIATE` transaction. Any failure rolls back the entire cascade — no half-applied state. Pre-flight collision check covers the root rename and every sub-tag rename, so a partway-through `UNIQUE` violation can't happen.
+
+**Pre-flight conflict surface:** if any new name already exists as a tag and isn't itself being renamed away, the call returns `{error: "target_exists", conflicting: [...]}` without touching the database.
+
+**Reported stats:** the result includes per-surface counts (`renamed`, `sub_tags_renamed`, `parent_refs_updated`, `tokens_updated`, `indexed_field_declarers_updated`, `notes_rewritten`, `paths_renamed`) so REST/MCP responses describe what changed without a re-scan.
+
+**Cache invalidation:** both `_tagHierarchy` and `_schemaConfig` caches bust after the cascade, since `parent_names` and the tag-set both change.
+
+## MCP discovery surface
+
+How an AI client learns the vault's schema shape lives in [`vault-mcp-discovery.md`](./vault-mcp-discovery.md). Short version: the same projection (tags-with-schemas + indexed fields + query hints) is rendered as markdown at MCP `initialize` and returned as JSON from the `vault-info` tool — both surfaces scope-filtered when the caller is tag-scoped.
 
 ## Authoring surface
 
@@ -107,38 +174,24 @@ All three write to the same `tags` row. `update-tag` accepts `{ description, fie
 
 There is no path that authors tag state by editing a markdown note. The `_tags/<name>` and `_schemas/*` config-note conventions are retired.
 
-## Migration path
+## Migration history
 
-For a vault on the pre-existing model:
+The model arrived in three steps; this section records the arc so the migration-notes entries make sense.
 
-1. **Add new columns** to `tags`: `description`, `fields`, `relationships`, `parent_names`, `created_at`, `updated_at`. (Schema migration v13 → v14.)
-2. **Populate from sidecar table**: copy each `tag_schemas(tag_name, description, fields)` row into the new tag row's columns.
-3. **Populate parents**: for each note at `_tags/<name>`, parse `metadata.parents` and write to `tags.parent_names`.
-4. **Verify**: confirm all schemas + parents migrated; provide a one-shot diff tool.
-5. **Drop the sidecar**: `DROP TABLE tag_schemas`.
-6. **Leave `_tags/<name>` notes in place** post-migration as historical record — they're harmless once the resolver reads from the new column. Operator can delete them via the admin UI when ready.
-7. **Same for `_schemas/*` notes**: data lifts into a new `note_schemas` table (or a `tags.relationships`-style column on whatever surfaces it; out-of-scope for this doc).
+1. **2026-05-03 — `tag_schemas` + `_tags/*` retirement** (vault#245, schema v13 → v14). Added `description`, `fields`, `relationships`, `parent_names` columns on `tags`. Lifted data from the `tag_schemas` sidecar and `_tags/<name>` config notes. Dropped `tag_schemas`. Left `_tags/<name>` notes in place as historical breadcrumbs.
+2. **2026-05-03 — `_schemas/*` retirement** (vault#249, schema v14 → v15). Lifted `_schemas/<name>` notes and the `_schema_defaults` mapping note into a new `note_schemas` + `schema_mappings` two-table subsystem. MCP tool count went 10 → 16 with `update-note-schema`, `delete-note-schema`, `list-note-schemas`, `set-schema-mapping`, `delete-schema-mapping`, `synthesize-notes`.
+3. **2026-05-09 — `note_schemas` + `schema_mappings` ripped** (vault#269, schema v16 → v17). Audit found zero operator use of the path-prefix mapping kind, and tag-mapped schemas were redundant with `tags.fields`. Subsystem removed entirely; the six new MCP tools deleted; tool count went 16 → 9. Note-validation now lives where tag-validation lives: on `tags.fields`, with `_default` as the universal-fallback (vault#272, same-day).
 
-The migration is one-way — Phase 1 doesn't preserve the option to revert to config-as-note. Aaron approved this 2026-05-03; the cleaner break is worth the irreversibility.
-
-## Why retire config-as-note for these concerns
-
-Three reasons:
-
-1. **Conflates note vs configuration.** Operators look at the file tree and see `_tags/health` as a "note" — but it's not user content; it's system config. The leading underscore is a cargo-culted convention from filesystem-shaped systems (Obsidian, where a leading underscore is just a sort-prefix). In a SQLite-backed system, the convention earns its complexity poorly.
-
-2. **The "edit your config in your note editor" affordance assumes a markdown-file-on-disk model.** Vault is SQLite. Operators interact with the vault via the admin SPA + MCP, not by opening a folder of files. The config-as-note pattern was solving a problem that doesn't exist in this architecture.
-
-3. **The "vault export carries the config" argument** (cited in current `core/src/tag-hierarchy.ts` comments) collapses with this same realization. Export is its own surface (markdown export, JSON export). The export logic can serialize tag state from `tags` table → markdown frontmatter for Obsidian-shaped consumers, OR a dedicated `tags.json` for tooling consumers. Either way: the SOURCE of truth is the SQL row; the export is derived.
+The arc is one-way. Aaron approved the irreversible migrations 2026-05-03 (steps 1+2) and 2026-05-09 (step 3); the cleaner break beats keeping the subsystem alongside.
 
 ## Adoption
 
 | Module | Action |
 | --- | --- |
-| **vault** | Phase 1 implementation: schema migration v14, `update-tag` API gains `relationships` + `parent_names`, `getTagDescendants` resolver swap, retire `tag_schemas` sidecar, leave `_tags/<name>` notes in place post-migration as harmless historical record. Same for `_schemas/*` retirement. Single PR on `ag-unforced-dev`. |
+| **vault** | Shipped: schema v17, single-table tag model, multi-inheritance with `_default` magic, transactional rename cascade. See `core/src/schema-defaults.ts`, `core/src/notes.ts`, `core/src/vault-projection.ts`. |
 | **parachute-agent** | No change — parachute-agent doesn't touch tag schema state |
 | **hub** | No change |
-| **notes** | The Notes UI may surface tag schemas (declared fields + relationships) in note-edit views; tracked separately |
+| **notes** | The Notes UI surfaces tag schemas (declared fields + relationships) in note-edit views; tracked in the notes repo |
 
 ## Future evolution
 
@@ -146,13 +199,15 @@ Three reasons:
 | --- | --- | --- |
 | **Relationship enforcement** | Validate at write time that a `#book` note has an `author` link with cardinality `one`. Returns 400 on missing required relationship. | When operator pain emerges from notes lacking expected relationships |
 | **Reverse-relationship inference** | `#book` declares `author → person`. Vault auto-infers `person → book` reverse with relationship `wrote`. | Phase 2 if helpful for query semantics |
-| **Schema-defaults for note validation** (current `_schemas/*` pattern) | Move to a `note_schemas` table mirroring this design | Same arc; same sprint |
+| **`required` field markers** | Re-introduce required/optional on field specs (the prior `note_schemas` table carried this). | When a real "missing field" pain point emerges; advisory-only by default |
 | **Schema versioning** | Optional `schema_version` field on tag rows; track migrations across schema changes | When a real schema-evolution incident happens |
 | **Relationship typing per-link** (multiple authors with different roles) | Extend `links.metadata` JSON with `{ role: "primary-author" }` shape | When use-case appears |
 
 ## Adoption notes
 
-- Aaron approved this design 2026-05-03 in the architecture-review thread.
+- Aaron approved the original design 2026-05-03 in the architecture-review thread; the multi-inheritance + `_default` extension and the rename cascade landed 2026-05-09.
 - The retirement of config-as-note for tag concerns is a real simplification, not just refactor — the conceptual layer "what is a note" gets clearer.
-- This unlocks `vault#240` (tag-rename cascade) — the cascade now touches one row + the body-text-rewrite, not three places + a config-note pipeline.
-- Companion docs: `research/parachute-data-model-shape.md` (architectural reflection), `research/tana-deep-dive.md` (typed-graph context), `patterns/tag-scoped-tokens.md` (token-scope concerns layered on this model).
+- Tag rename is now operator-friendly across all surfaces (vault#275 — superseded the earlier fail-closed 409 on token-referenced tags).
+- Companion docs: `patterns/vault-mcp-discovery.md` (how clients see the schema), `research/parachute-data-model-shape.md` (architectural reflection), `research/tana-deep-dive.md` (typed-graph context), `patterns/tag-scoped-tokens.md` (token-scope concerns layered on this model).
+
+_Last updated: 2026-05-09 — current with vault 0.4.1-rc.4._
