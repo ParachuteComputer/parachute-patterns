@@ -1,5 +1,7 @@
 # Parachute data model — paths, tags, schemas, links, scope
 
+> **Note (2026-05-09):** this doc predates vault v14 (2026-05-03) and the v17 consolidation (2026-05-09). The current tag/schema model is in [`patterns/tag-data-model.md`](../patterns/tag-data-model.md); the MCP discovery shape is in [`patterns/vault-mcp-discovery.md`](../patterns/vault-mcp-discovery.md). References to `tag_schemas`, `_tags/<name>` config notes, and "schema-as-derived-from-note-body" describe the pre-v14 architecture this doc helped motivate the move *away from*. Preserved as research history — read for the reasoning, not for current architecture.
+
 > Architectural reflection. Not a pattern to adopt yet — a reading of the current state, a clarification of conceptual layers Aaron and team-lead have been conflating, and a survey of paths forward. Written 2026-05-03 in response to Aaron's request to "make sure I'm understanding what we're doing even here."
 >
 > Living companion to: `research/tag-scoped-tokens-survey.md`, `research/knowledge-tool-data-models.md` (in flight).
