@@ -3,7 +3,9 @@
 **Status:** research input for the auth-architecture rethink Aaron asked for on 2026-05-09
 **Date:** 2026-05-09
 **Companion to:** `patterns/hub-as-issuer.md`, `patterns/oauth-scopes.md`, `patterns/token-auth.md`, `patterns/oauth-dcr-approval.md`, `patterns/service-to-service-auth.md`
-**Brief:** Aaron flagged that the auth surface has accumulated complexity faster than mental coherence. Specific concerns: "if there's no operator we can just use tokens right?", "you have to login via OAuth with notes and other things, and sometimes just adding the token is the right call", "vault and hub have two different token setups… whole thing feels a little messy", "real risks in long-lived bearer tokens." This doc maps the current state, surveys how mature systems handle the equivalent problem, and lays out three candidate architectures with trade-offs. **It does not decide.** Aaron picks.
+**Brief:** Aaron flagged that the auth surface has accumulated complexity faster than mental coherence. Specific concerns: "if there's no operator we can just use tokens right?", "you have to login via OAuth with notes and other things, and sometimes just adding the token is the right call", "vault and hub have two different token setups… whole thing feels a little messy", "real risks in long-lived bearer tokens." This doc maps the current state, surveys how mature systems handle the equivalent problem, and lays out three candidate architectures with trade-offs.
+
+**Status update (2026-05-09 evening):** Aaron and team-lead converged on a direction. **Hub becomes the sole authorization server; vault, agent, scribe become resource servers.** See §11 for the decision shape. Migration tracker: [parachute-hub#212](https://github.com/ParachuteComputer/parachute-hub/issues/212). The decision adopts Option B's operator-surface-unification premise and extends it with a structural separation Aaron requested. §§1–10 below preserve the pre-decision research as it stood.
 
 Sources are cited inline by URL or `repo/path:line`. Where docs are silent or contradictory, that's called out.
 
@@ -529,6 +531,8 @@ For (C):
 
 ## 9. Open questions — Aaron's calls
 
+> **Update 2026-05-09:** Q4 (operator.token rework) and the standalone-vault / revocation-latency questions implicit elsewhere now have answers — see §11. Q4 ships independently as [hub#213](https://github.com/ParachuteComputer/parachute-hub/issues/213); standalone vault is preserved via library factoring (§11.7); revocation goes via a hub-published revocation list with sub-minute latency (§11.6). Q1, Q2, Q3, Q5, Q6 remain live or are subsumed by the §11 direction.
+
 1. **Brand positioning: "your data on your machine" vs "your data on a managed service."** Auth implications differ:
    - "On your machine" — single-user, paste-bearer or pairing-code is the natural shape; OAuth ceremony is *uncharacteristic friction*.
    - "On a managed service" — multi-user, OAuth + consent screens is *expected ceremony*.
@@ -564,6 +568,138 @@ If Aaron asked me what to ship next, ordered by ROI:
 5. **Cross-token admin SPA view.** "Show me everything authenticating against this hub." Operator awareness compounds every other security feature.
 
 These five are independent, additive, and don't require a top-level architectural choice. If Aaron wants to take a bigger swing, **option B** is what I'd lean toward — but it's built on top of these five, not instead of them.
+
+---
+
+## 11. The decision (2026-05-09)
+
+Aaron and team-lead converged on the architectural direction this evening. The decision adopts Option B's premise (consolidate the operator surface; lean into industry consensus on N-tier credential pluralism) and extends it with a structural separation that none of A/B/C captured directly: **the auth-server / resource-server split is made formal across the ecosystem.**
+
+Migration tracker: [parachute-hub#212](https://github.com/ParachuteComputer/parachute-hub/issues/212).
+
+### 11.1 The shape
+
+**Hub becomes the sole authorization server. Vault, agent, scribe become resource servers.**
+
+- Every token in the ecosystem is minted by hub. Every resource server validates against hub's JWKS + revocation list.
+- Vault's local `pvt_*` path is deprecated and removed. The only minted-credential surface is hub.
+- Standalone vault (the no-hub deployment) is preserved as a future option via library factoring — see §11.7.
+- The operator's mental model collapses to one: "tokens come from hub."
+
+This formalizes what was already structurally true — hub already issues OAuth JWTs that vault validates ([`patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md)). The change is making it the *only* path and retiring `pvt_*`.
+
+### 11.2 Scope vocabulary
+
+Two shapes, depending on whether the resource has multiple instances:
+
+- **Multi-instance:** `<module>:<instance>:<verb>` — `vault:default:read`, `vault:default:write`, `agent:wovenboulder:invoke`. Mirrors today's `vault:<name>:<verb>` shape ([`parachute-vault/src/scopes.ts:122-135`]) and extends it ecosystem-wide.
+- **Singleton:** `<module>:<verb>` — `parachute:host:admin`, `hub:user:profile`. For surfaces where the instance dimension doesn't apply.
+
+The verb stays close to today's vocabulary (`read` / `write` / `admin` / `invoke`). Agent and scribe inherit the pattern as they migrate; their existing scope shapes become aliases or get rewritten in lockstep with the registry rollout.
+
+### 11.3 Rich constraints live in a custom JWT claim, not in scope strings
+
+The `scope` claim stays standard OAuth (space-separated coarse capabilities). Fine-grained shape — tag-allowlist, field-scope, future per-record constraints — moves into a custom `permissions` claim:
+
+```json
+{
+  "iss": "https://hub.parachute.computer",
+  "sub": "operator",
+  "aud": "vault.default",
+  "scope": "vault:default:write agent:wovenboulder:invoke",
+  "permissions": {
+    "vault": {
+      "default": {
+        "write_tags": ["health", "food"]
+      }
+    }
+  },
+  "jti": "...",
+  "exp": ...
+}
+```
+
+**Why this shape:** GitHub fine-grained PATs use the same model — coarse capability in standard scope, fine-grained constraint in a parallel structured field. Standard OAuth tooling (resource servers, JWT validators, audit log readers) keeps working against the `scope` claim. Resource servers that *care* about fine-grained constraints read `permissions` after they pass the scope check.
+
+This subsumes today's vault `scoped_tags` mechanism ([`patterns/tag-scoped-tokens.md`](../patterns/tag-scoped-tokens.md)) — `scoped_tags` becomes `permissions.vault.<instance>.write_tags` in the JWT. The auth-check semantics ([`patterns/tag-scoped-tokens.md` §Storage details]) are unchanged; the storage is "in the JWT claim that hub minted" instead of "in the vault token row hub never sees."
+
+### 11.4 Hub gains a token registry table
+
+Hub already has a `clients` table for OAuth registrations. This adds a sibling: `tokens`.
+
+| Column | Purpose |
+|---|---|
+| `jti` | Primary key. Set on mint, embedded in JWT, used for revocation lookup. |
+| `subject` | The operator / agent / service the token represents. |
+| `scope` | Standard OAuth scope claim, persisted for admin display. |
+| `permissions` | JSON, persisted for admin display. |
+| `issued_at` | Mint timestamp. |
+| `expires_at` | Hard expiry from JWT `exp`. |
+| `revoked_at` | Nullable; set when revoked. Drives the revocation list (§11.6). |
+
+Backs both the admin UI (§11.5) and the revocation list (§11.6).
+
+### 11.5 Hub admin UI for token management
+
+**`/admin/tokens` route.** Lists every issued token with human-readable scope rendering (uses [`parachute-hub/src/scope-explanations.ts`](https://github.com/ParachuteComputer/parachute-hub) — same surface that powers the OAuth consent screen). Per-row actions: revoke (sets `revoked_at`, propagates to the revocation list), inspect (shows full claim shape).
+
+This is the operational substrate that makes hub-as-sole-AS workable. Without it, "all tokens come from hub" creates a single-pane-of-glass *requirement* without delivering one.
+
+### 11.6 Revocation list
+
+**Hub publishes the set of revoked `jti`s.** Resource servers fetch on a ~60s TTL and check on every token validation. Sub-minute revocation latency.
+
+- Endpoint shape: simple `GET /revoked.json` returning `{ jtis: [...], generated_at: "..." }`. Cacheable, signed-or-trusted-via-TLS (the revocation list itself doesn't need OAuth gating; published-once-public is fine).
+- Resource servers (vault, agent, scribe) cache for 60s, refetch on miss, fail-open if hub is unreachable (preserve availability) or fail-closed (trade availability for security) — that's a per-RS knob.
+
+Aaron explicitly chose **"fast revocation matters"** over "expiry-based is fine." The §4.12 `operator.token` "un-revocable at issuer" leak-risk pattern goes away across the ecosystem — every minted token can be killed in <60s.
+
+### 11.7 Standalone vault preserved via library factoring
+
+The auth-server logic (mint, registry, revocation, scope-explanation) extracts into a library — `auth-server` — modeled on how [`scope-guard`](https://github.com/ParachuteComputer) was extracted from per-module reimplementation into a shared dep.
+
+- Hub embeds `auth-server` as its production deployment surface.
+- A standalone vault deployment (no hub in the picture) embeds `auth-server` directly. The vault becomes its own AS+RS.
+- The library factoring is the contract: the operator's mental model "tokens come from one auth server" stays consistent — that AS is hub in the standard deployment, and vault-itself in the standalone deployment.
+
+Not for now. Documented as the path that keeps the option open. Recorded here so future-us doesn't re-decide.
+
+### 11.8 CLI relocates
+
+```
+parachute vault tokens create  →  parachute auth mint-token --scope=vault:default:read,...
+```
+
+Hub becomes the auth surface in operator vocabulary. The `parachute auth` namespace (already partially present per §2.1) becomes the canonical home for every minted-credential operation: mint, list, revoke, inspect.
+
+A migration helper ships in the same CLI release: `parachute auth migrate-pvt-tokens` walks each vault's local `pvt_*` rows, prompts the operator to remint as hub-issued JWTs with equivalent scope + permissions claims, then drops the `pvt_*` row. Idempotent; safe to re-run.
+
+### 11.9 Migration phases
+
+Sketched in [hub#212](https://github.com/ParachuteComputer/parachute-hub/issues/212):
+
+1. **Hub gains token registry + mint API.** Both `pvt_*` and JWT validation paths stay live. New tokens land as JWT-by-default; `pvt_*` becomes the legacy path.
+2. **Hub gains admin UI** (`/admin/tokens` route, list + revoke).
+3. **Hub gains revocation list** (`GET /revoked.json` endpoint, populated from `tokens.revoked_at`).
+4. **Vault, agent, scribe gain revocation-list consultation** (poll on 60s TTL, check on every token validation).
+5. **CLI relocation + migration helper** (`parachute auth mint-token` becomes canonical; `parachute auth migrate-pvt-tokens` lifts existing `pvt_*` rows into hub-issued JWTs).
+6. **Vault `pvt_*` deprecated then removed.** The `pvt_*` column + validation path goes away once the migration helper has run across the operator base.
+
+Phases 1–4 are additive; the system stays operational throughout. Phase 5 is the operator-facing flip. Phase 6 is the cleanup.
+
+### 11.10 `operator.token` quick-fix is independent
+
+The 365-day, broad-scope, un-revocable `operator.token` shape is the worst-case bearer per [draft-ietf-oauth-security-topics-29](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics-29) and worth shipping a hardening fix on its own — independent of the larger AS/RS migration.
+
+Tracked at [hub#213](https://github.com/ParachuteComputer/parachute-hub/issues/213). Roughly: shorten to 90-day default (max 365), split scope sets (`install` narrow vs `full` blanket), add JTI revocation. None of this blocks or is blocked by hub#212; ship in parallel.
+
+### 11.11 Why this over the original A/B/C
+
+- **Option A (keep current shape, fix operator surface)** doesn't address the structural duplication — vault and hub continue to mint independently. The "two token systems" complaint Aaron flagged stays.
+- **Option B (paste-bearer first-class for first-party)** addresses the operator-UI complaint but leaves the AS/RS axis tangled — vault still mints `pvt_*`, hub still mints JWT, the "where do tokens come from" answer stays "depends." The convergence keeps Option B's first-party-paste premise (paste a hub-minted JWT; UI affords this) while making the AS/RS split formal.
+- **Option C (pairing-code)** stays available as a future first-party flow on top of hub-as-sole-AS. Pairing-code becomes one of several mint surfaces hub exposes, not a replacement for the AS/RS shape.
+- **Cross-module token composition** is structurally impossible without a single AS. A token that grants `vault:default:read` AND `agent:wovenboulder:invoke` requires one issuer that knows both; that's hub.
+- **Standalone vault** stays viable via §11.7's library factoring, so the "no-hub deployment" use case isn't sacrificed.
 
 ---
 
