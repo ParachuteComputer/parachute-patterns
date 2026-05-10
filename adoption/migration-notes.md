@@ -5,6 +5,69 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-10 — `module.json` gains `uiUrl` for dynamic discovery rendering
+
+**Change:** new pattern doc
+[`module-ui-declaration.md`](../patterns/module-ui-declaration.md). One
+optional top-level `module.json` field — `uiUrl?: string` — declares
+where a module's user-facing UI lives. Hub's discovery page reads it
+(via `/.well-known/parachute.json`) and renders one tile per declaring
+service, picking up `displayName` + `tagline` for the copy. Modules
+without `uiUrl` are still registered and routable; they just don't
+render a clickable card.
+
+Resolution: path form (`"/notes"`) is a path on **hub's origin** and
+hub renders the link as `<hub-origin>${uiUrl}` regardless of where the
+module itself is hosted — distinct from `managementUrl`'s relative
+form, which resolves against the module's own well-known origin.
+Absolute URL is used verbatim; omitted = no tile rendered.
+
+Today the hub's discovery page hardcodes `SERVICE_LABELS` + `SERVICE_ORDER`
++ a vault-name filter at the top of
+[`parachute-hub/src/hub.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub.ts);
+which-services-have-UIs and what-they're-called are baked in, and only
+the mount path comes from `services.json`. With `uiUrl` in `module.json`,
+that hardcoding retires.
+
+`uiUrl` is the discovery-side peer of `managementUrl` (added 2026-05-02
+for hub admin pages' "Manage `<name>`" link rendering). They serve
+different surfaces — discovery vs. hub admin pages — and a service may
+declare both, one, or neither.
+
+The first cut at the discovery section split tiles into "Use" vs
+"Admin"; that broke down because real service UIs combine use, config,
+and admin in one surface. Aaron's call: services declare what their UI
+*is*; hub renders one link per service.
+
+**Affected:**
+
+- `parachute-patterns` — pattern doc landed (this PR). No code change.
+- `parachute-notes` — declare `uiUrl: "/notes"` in
+  `.parachute/module.json`. One PR.
+- `parachute-agent` — declare `uiUrl: "/agent"` in
+  `.parachute/module.json`. One PR.
+- `parachute-vault`, `parachute-scribe` — no immediate change. Vault
+  intentionally omits `uiUrl` (vault content is browsed via Notes;
+  vault keeps its per-instance `managementUrl: "/admin"` for the
+  hub's vault-list page). Scribe omits today (CLI/API only) and adds
+  the field whenever a UI ships.
+- `parachute-hub` — read `uiUrl` from each module's well-known entry
+  and render the discovery section dynamically. Retire the hardcoded
+  `SERVICE_LABELS` map + `SERVICE_ORDER` array + `isVaultName` filter
+  in `src/hub.ts`. Retire the `module-manifest.ts` parser's
+  silent-ignore of unknown top-level fields for `uiUrl` (read it
+  through `composeServiceSpec` so it lands in `services.json` and
+  flows to `/.well-known/parachute.json`). One PR.
+
+Backwards-compatible with both directions: hub before its consumer
+update silently ignores the new field; modules before their `module.json`
+updates simply don't render tiles (same as today's hardcoded omission).
+The two sides can land in either order.
+
+**Status:** pattern doc landed (this PR). Module + hub PRs pending.
+
+---
+
 ## 2026-05-09 — Tag schema inheritance, `_default`, rename cascade, MCP discovery (vault)
 
 **Change:** [`tag-data-model.md`](../patterns/tag-data-model.md) refreshed
