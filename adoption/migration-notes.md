@@ -16,9 +16,11 @@ service, picking up `displayName` + `tagline` for the copy. Modules
 without `uiUrl` are still registered and routable; they just don't
 render a clickable card.
 
-Resolution rules mirror `managementUrl`: relative path (`"/notes"`)
-resolves against the hub origin; absolute URL is used verbatim;
-omitted = no tile rendered.
+Resolution: path form (`"/notes"`) is a path on **hub's origin** and
+hub renders the link as `<hub-origin>${uiUrl}` regardless of where the
+module itself is hosted — distinct from `managementUrl`'s relative
+form, which resolves against the module's own well-known origin.
+Absolute URL is used verbatim; omitted = no tile rendered.
 
 Today the hub's discovery page hardcodes `SERVICE_LABELS` + `SERVICE_ORDER`
 + a vault-name filter at the top of

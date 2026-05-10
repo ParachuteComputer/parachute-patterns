@@ -242,6 +242,14 @@ via the module's well-known doc) to shape its directory page. Optional;
 absent means "the hub renders nothing for this concern" — existing
 manifests stay valid unchanged.
 
+For the discovery-side peer field `uiUrl` — a path on **hub's** origin
+declaring where a module's user-facing UI lives, rendered as a tile on
+hub's discovery page — see
+[`module-ui-declaration.md`](./module-ui-declaration.md). Note the
+resolution-base difference: `managementUrl`'s relative form resolves
+against the module's own origin; `uiUrl`'s relative form resolves
+against hub's origin.
+
 ### `managementUrl: string`
 
 ```ts

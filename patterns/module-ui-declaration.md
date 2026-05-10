@@ -1,5 +1,8 @@
 # Module UI declaration
 
+Services declare their user-facing UI URL in `module.json`; hub renders
+one discovery tile per declaring service.
+
 > **Status: target convention, not yet implemented.** Hub's discovery
 > page today hardcodes which services have UIs in a JS
 > `SERVICE_LABELS` map at the top of
@@ -39,10 +42,18 @@ uiUrl?: string;  // path under the hub origin, leading "/"
 
 Resolution rules:
 
-- **Path on the hub origin** — `uiUrl: "/notes"`. Hub renders the link
-  as `<hub-origin>${uiUrl}` at click time. Leading `/` required; no
-  trailing slash. Same shape as `managementUrl`'s relative form (see
-  [`module-json-extensibility.md`](./module-json-extensibility.md#hub-ui-fields)).
+- **Path form** — `uiUrl: "/notes"`. `uiUrl` is a path on **hub's
+  origin** (not the module's). Hub renders the link as
+  `<hub-origin>${uiUrl}` regardless of where the module itself is
+  hosted. Leading `/` required; no trailing slash. Hub is the renderer
+  of the discovery page; clicks happen from hub, so the relative path
+  resolves there. This is **distinct from `managementUrl`'s relative
+  form**, which resolves against the *module's own well-known origin*
+  — see
+  [`module-json-extensibility.md`](./module-json-extensibility.md#managementurl-string).
+  The two collapse to the same URL for first-party modules colocated
+  on hub's origin, but a third-party module hosted elsewhere would see
+  the two diverge.
 - **Absolute URL** — `uiUrl: "https://notes.example.com"`. Hub uses
   verbatim. Escape hatch for modules whose UI is hosted somewhere
   other than the hub origin.
