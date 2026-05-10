@@ -1,5 +1,7 @@
 # Tag-scoped tokens — industry survey
 
+> **Note (2026-05-09):** this doc predates vault v14 (2026-05-03). References to `_tags/<name>` config notes as the source of hierarchy + cache invalidation describe the pre-v14 architecture. The current source is `tags.parent_names`; see [`patterns/tag-data-model.md`](../patterns/tag-data-model.md). The auth-design reasoning here (subset minting, hierarchical inheritance, allow-list-only) survives unchanged — only the *storage* of the hierarchy moved. Preserved as research history.
+
 > Comparative survey of how mainstream auth systems handle token-scoped-by-data-slice authorization, written to validate or challenge the design in [`patterns/tag-scoped-tokens.md`](../patterns/tag-scoped-tokens.md) (patterns#24, merged 2026-05-02).
 
 **Author:** patterns tentacle. **Date:** 2026-05-02. **Status:** advisory; recommendations should be triaged into either the patterns doc or follow-up issues.
