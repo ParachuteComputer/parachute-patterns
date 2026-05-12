@@ -33,6 +33,8 @@ modularity/   the standalone-first principle, with worked examples
 brand/        palette, typography, motifs, canonical tokens.css
 schemas/      agent markdown, vault note metadata, lint rules
 patterns/     loadX sources, report contract, token auth, MCP transport, dev-auto-user
+guides/       long-form how-to references that explain how patterns combine
+research/     in-flight design notes for not-yet-committed direction
 adoption/     checklist for new modules, migration notes log
 ```
 
