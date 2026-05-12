@@ -5,6 +5,45 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-12 — `guides/multi-writer-workspace.md` lands
+
+**Change:** new `guides/` directory + first guide
+[`multi-writer-workspace.md`](../guides/multi-writer-workspace.md). The
+canonical "how do we build a team knowledge graph on parachute-vault?"
+reference. Covers the mental model (workspace atop journal; parachute's
+grain), the multi-writer foundation (hub-as-AS, per-vault scopes,
+`scoped_tags`, optimistic concurrency, atomic append/prepend), tag-schema
+declaration via `update-tag`, writing patterns (`create-note`,
+`update-note` with path-as-id, batch, the sync-from-external-source
+options), querying + traversal, bidirectional Obsidian sync, voice +
+attachments via scribe, agent-as-writer patterns, the trigger framework,
+the template convention, public projection (single-note today; surface
+direction for richer), what's coming, and an end-to-end worked example
+of a 3-human + 1-agent content team setup.
+
+Establishes `guides/` as a new directory for long-form reference docs
+that explain *how to use* the patterns together — distinct from
+`patterns/` (single-concept conventions) and `research/` (in-flight
+design notes).
+
+**Affected:**
+
+- `parachute-patterns` — guide landed (this PR). New `guides/` directory.
+  README mentions the new directory.
+- `parachute.computer` — link to the guide from any "for developers"
+  / "how do I build on parachute" page once it exists. No immediate
+  change required.
+- `parachute-vault`, `parachute-hub`, `parachute-scribe`,
+  `parachute-agent` — README links to the guide where the repo's own
+  docs reference multi-writer concerns. Low priority; nice-to-have, not
+  a required follow-up.
+
+**Status:** doc-only; no pattern conformance changes required of
+downstream repos. The guide is the canonical reference when its content
+conflicts with older partial answers in individual pattern docs.
+
+---
+
 ## 2026-05-10 — `module.json` gains `uiUrl` for dynamic discovery rendering
 
 **Change:** new pattern doc
