@@ -134,7 +134,7 @@ If third-party clients ever need to request tag-scoped tokens via the hub OAuth 
 4. Tokens whose `scoped_tags` JSON array contains `<old_name>` (root-form) are auto-updated to contain `<new_name>` instead. Allowlist content changes; token id, label, and scope are preserved. Sub-tag renames (e.g., `health/food` → `health/snack`) are a no-op for token allowlists, since only root-form entries are stored there.
 5. Note bodies referencing `#<old_name>` or `#<old_name>/...` are auto-updated.
 
-The cascade is transactional — single `BEGIN IMMEDIATE`, ROLLBACK on any throw. Pre-flight collision check returns `{error: "target_exists", conflicting: [...]}` without touching the DB. **Shipped in [`vault#275`](https://github.com/ParachuteComputer/parachute-vault/pull/275)** (2026-05-04), replacing an earlier fail-closed-on-token-reference design that was carried in `vault#240`. The string-form fallback (§Storage details mechanism 2) backs the auth check so a partial cascade or pending rebuild never silently hides notes. Note: tags use `name TEXT PRIMARY KEY` — no separate stable-id column; rename is a multi-table data migration, not a single-column update.
+The cascade is transactional — single `BEGIN IMMEDIATE`, ROLLBACK on any throw. Pre-flight collision check returns `{error: "target_exists", conflicting: [...]}` without touching the DB. **Shipped in [`vault#275`](https://github.com/ParachuteComputer/parachute-vault/pull/275)** (merged 2026-05-09 as part of a bundled vault sprint), replacing an earlier fail-closed-on-token-reference design that was carried in `vault#240`. The string-form fallback (§Storage details mechanism 2) backs the auth check so a partial cascade or pending rebuild never silently hides notes. Note: tags use `name TEXT PRIMARY KEY` — no separate stable-id column; rename is a multi-table data migration, not a single-column update.
 
 **Tag delete fails closed if tokens reference it.** When operator runs `DELETE /api/tags/<name>` and any token has `<name>` (root-form) in its `scoped_tags` allowlist, the delete returns `409 Conflict` with `error_type: "tag_in_use_by_tokens"` and the list of referencing tokens. Operator must revoke or re-mint those tokens (with the tag removed from allowlist) before retrying the delete. **Tag merge is the same shape** — `POST /api/tags/merge` runs the same dependency check and 409s on the same envelope. This is loud-fail by design: tag deletion (and merge-with-consumption) is destructive, and the operator should notice the dependency rather than have allowlists silently orphaned. Reference: [`src/routes.ts:1338-1361`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routes.ts) (delete), `routes.ts:1180-1200` (merge). The rename path *cascades* (above) rather than fail-closing, because rename preserves the tag's identity-as-meaning — only the string changes.
 
@@ -176,24 +176,26 @@ The following extensions are explicitly deferred. Each is sound; none block Phas
 | **Multi-vault tokens** | Token allowlist becomes `{ "default": ["health"], "boulder": ["health"] }`. Cross-vault scoping via single token. | When operators want a single agent identity working across multiple vaults. |
 | **Scope by metadata** | Token carries metadata-conditions (e.g., `source: "prism"`). Composes with tag-scope. Filed as `parachute-patterns#25`. | Phase 2+ of the agents-as-channels arc. |
 | **Time-bounded per-tag scope** | `scoped_tags: [{tag: "health", until: "2026-12-31"}]` — different tags have different lifetimes. | When token-level expiry isn't enough granularity. |
+| **Path / folder / name split** | Disentangle the three roles `path` currently plays (storage location, wikilink target, hierarchy hint). Filed as [`vault#238`](https://github.com/ParachuteComputer/parachute-vault/issues/238). | Design exploration — touches more than tag-scope; will resurface when surface-direction or richer ACLs need it. |
+| **Wikilinks + tag-scope interaction** | When a scoped token traverses a wikilink to an out-of-scope target, today's behavior is silent filtering (the link appears unresolved). Filed as [`vault#239`](https://github.com/ParachuteComputer/parachute-vault/issues/239). | When a real workflow surfaces friction with partial-graph reads. |
 
 ## Adoption
 
 | Module | Status |
 | --- | --- |
 | **vault** | **Shipped.** Schema migration v13 (`scoped_tags TEXT` column on `tokens`), auth-check via [`src/tag-scope.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/tag-scope.ts), query-notes filtering, mint UI in admin SPA, regression tests. Landed in [`vault#241`](https://github.com/ParachuteComputer/parachute-vault/pull/241) at rc.30 (2026-05-03). |
-| **vault** | **Shipped.** Tag-rename cascade across `tokens.scoped_tags` (and every other surface) — transactional `BEGIN IMMEDIATE` + ROLLBACK on throw. Landed in [`vault#275`](https://github.com/ParachuteComputer/parachute-vault/pull/275) (2026-05-04, replacing the prior fail-closed 409 design). |
-| **vault** | Path/folder/name split design: [`vault#238`](https://github.com/ParachuteComputer/parachute-vault/issues/238) (deferred design exploration). |
-| **vault** | Wikilinks + tag-scope handling: [`vault#239`](https://github.com/ParachuteComputer/parachute-vault/issues/239) (deferred design exploration). |
+| **vault** | **Shipped.** Tag-rename cascade across `tokens.scoped_tags` (and every other surface) — transactional `BEGIN IMMEDIATE` + ROLLBACK on throw. Landed in [`vault#275`](https://github.com/ParachuteComputer/parachute-vault/pull/275) (merged 2026-05-09, replacing the prior fail-closed 409 design). |
 | **parachute-agent** | Update `attach-vault` flow to optionally accept a tag-list; surface in agent-group settings UI; pass through to spawned-container env. **Not yet filed.** |
 | **hub** | No change at the OAuth layer — `vault:<name>:<verb>` claim shape unchanged. Tag-allowlist is a vault-internal token attribute, not exposed in OAuth consent for Phase 1. |
 | **notes** | No change — Notes app uses operator-scope tokens (full access) by default. Out-of-scope cells from any scoped token materialize as 404 from vault. |
 | **patterns (this repo)** | Documented here + cross-linked from [`guides/multi-writer-workspace.md`](../guides/multi-writer-workspace.md). |
 
+Two vault-side deferred design explorations moved to §Future evolution (path/folder/name split; wikilinks + tag-scope handling) so the Adoption table holds *current commitments* and §Future holds *what's logged for later*.
+
 ## Adoption notes
 
 - Aaron approved this design 2026-05-02 (PR #24).
 - Vault Phase 1 shipped 2026-05-03 ([`vault#241`](https://github.com/ParachuteComputer/parachute-vault/pull/241), rc.30); the mint flow's tag-picker validates against existing root-tags via list-tags.
-- Tag-rename cascade shipped 2026-05-04 ([`vault#275`](https://github.com/ParachuteComputer/parachute-vault/pull/275)) — `scoped_tags` rewriting on rename replaced the fail-closed 409 originally specced in §Lifecycle.
-- Migration-notes entries: [`adoption/migration-notes.md`](../adoption/migration-notes.md) — "2026-05-03 — Tag-scoped tokens Phase 1" and "2026-05-04 — Tag-scoped tokens — rename cascade replaces fail-closed 409."
+- Tag-rename cascade ([`vault#275`](https://github.com/ParachuteComputer/parachute-vault/pull/275)) merged 2026-05-09 as part of the bundled "Tag schema inheritance, `_default`, rename cascade, MCP discovery" sprint — `scoped_tags` rewriting on rename replaced the fail-closed 409 originally specced in §Lifecycle.
+- Migration-notes references: [`adoption/migration-notes.md`](../adoption/migration-notes.md) — the "2026-05-03 — Tag-scoped tokens Phase 1 (vault)" entry covers Phase 1; the rename-cascade work is documented inside the "2026-05-09 — Tag schema inheritance, `_default`, rename cascade, MCP discovery (vault)" entry as item 4 of that bundle.
 - Outstanding follow-up: parachute-agent `attach-vault` integration (no issue filed yet).

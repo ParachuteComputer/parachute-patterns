@@ -25,10 +25,12 @@ Concrete edits:
   refs (`expandTokenTagScope` → `Store.expandTagsWithDescendants` →
   `getTagDescendants`).
 - §Lifecycle updated: tag-rename cascade is the shipped reality (`vault#275`,
-  2026-05-04), replacing the originally-specced fail-closed 409 design that
-  was carried in `vault#240`. Tag-delete still fails closed; the doc now
-  distinguishes rename (cascade — identity-as-meaning preserved) from
-  delete/merge (fail-closed — destructive op, dependency must be acknowledged).
+  merged 2026-05-09 inside the bundled vault sprint — documented in this
+  file's 2026-05-09 entry, item 4), replacing the originally-specced
+  fail-closed 409 design that was carried in `vault#240`. Tag-delete still
+  fails closed; the doc now distinguishes rename (cascade — identity-as-meaning
+  preserved) from delete/merge (fail-closed — destructive op, dependency
+  must be acknowledged).
 - §"How it composes" dropped reference to retired tools
   (`update-note-schema`, `set-schema-mapping` — retired in vault#269).
 - §Adoption table converted from "Phase 1" framing to status-of-each-module,
