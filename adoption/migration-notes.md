@@ -5,6 +5,52 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-12 — `tag-scoped-tokens.md` refresh (patterns#17)
+
+**Change:** [`tag-scoped-tokens.md`](../patterns/tag-scoped-tokens.md)
+reframed from proposal-flavored prose to shipped-reality documentation.
+Concrete edits:
+
+- Top-line "Status: shipped" banner with the canonical vault implementation
+  link ([`src/tag-scope.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/tag-scope.ts))
+  and the vault#241 / rc.30 (2026-05-03) landing reference.
+- Convention section reframed: the two axes (OAuth `vault:<name>:<verb>`
+  scope claim + `scoped_tags` per-token attribute) are separate by design.
+  The colon-syntax shape proposed in patterns#17's title was rejected;
+  rationale in §"Why not extend the OAuth scope string."
+- Auth-check pseudocode aligned to the real `scoped_tags` field name
+  (was `tagAllowlist`) and routed through the actual function names
+  (`expandTokenTagScope`, `noteWithinTagScope`).
+- §"Hierarchy match semantics" cites the full resolver chain with file:line
+  refs (`expandTokenTagScope` → `Store.expandTagsWithDescendants` →
+  `getTagDescendants`).
+- §Lifecycle updated: tag-rename cascade is the shipped reality (`vault#275`,
+  2026-05-04), replacing the originally-specced fail-closed 409 design that
+  was carried in `vault#240`. Tag-delete still fails closed; the doc now
+  distinguishes rename (cascade — identity-as-meaning preserved) from
+  delete/merge (fail-closed — destructive op, dependency must be acknowledged).
+- §"How it composes" dropped reference to retired tools
+  (`update-note-schema`, `set-schema-mapping` — retired in vault#269).
+- §Adoption table converted from "Phase 1" framing to status-of-each-module,
+  with the rename-cascade row added.
+- New cross-link to [`guides/multi-writer-workspace.md`](../guides/multi-writer-workspace.md)
+  §2 (operator-facing worked example).
+- Removed the standalone two-line "Storage" stub that duplicated
+  §"Storage details" further down.
+
+**Affected:**
+
+- `parachute-patterns` — doc refreshed (this PR). No code-side changes.
+- `parachute-vault`, `parachute-hub`, `parachute-notes`, `parachute-agent`
+  — no follow-up required. Doc tracks reality; reality is already shipped.
+- Tracking issue [`patterns#17`](https://github.com/ParachuteComputer/parachute-patterns/issues/17)
+  can close on merge — the doc now answers the issue.
+
+**Status:** doc-only refresh. No `tag-scoped-tokens` behavior changed; the
+edits track the as-shipped surface vault has carried since 2026-05-03.
+
+---
+
 ## 2026-05-12 — `guides/multi-writer-workspace.md` lands
 
 **Change:** new `guides/` directory + first guide
