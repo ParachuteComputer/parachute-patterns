@@ -114,7 +114,7 @@ The allowlist is immutable for the life of the token; widening it means minting 
 
 ### Optimistic concurrency
 
-Already named above. The shape (from [`patterns/optimistic-concurrency.md`](../patterns/optimistic-concurrency.md)):
+Already named above. The shape (from [`patterns/optimistic-concurrency.md`](../patterns/optimistic-concurrency.md); the HTTP/MCP response body, as mapped by [`src/routes.ts:1032-1048`](../../parachute-vault/src/routes.ts) from core's `ConflictError`):
 
 ```jsonc
 // Request
@@ -126,18 +126,20 @@ Already named above. The shape (from [`patterns/optimistic-concurrency.md`](../p
 
 // 409 Conflict response
 {
-  "error_type": "conflict",
+  "error_type":         "conflict",
   "current_updated_at": "2026-04-21T17:35:11.207Z",
   "your_updated_at":    "2026-04-21T17:33:08.412Z",
-  "note_id": "01J9Z2K3...",
-  "path":    "donors/acme.md"
+  "note_id":            "01J9Z2K3...",
+  "path":               "donors/acme.md",
+  "message":            "conflict: note \"01J9Z2K3...\" has been modified ..."
 }
 
 // 428 Precondition Required (caller sent neither `if_updated_at` nor `force: true`)
 {
   "error_type": "precondition_required",
-  "note_id": "01J9Z2K3...",
-  "message":  "update requires `if_updated_at` ... or `force: true`."
+  "note_id":    "01J9Z2K3...",
+  "path":       "donors/acme.md",
+  "message":    "update requires `if_updated_at` ... or `force: true`."
 }
 ```
 
@@ -160,6 +162,8 @@ Frontmatter-aware: if the note opens with YAML frontmatter, `prepend` lands *aft
 ### A concrete three-writer setup
 
 Worked example. Three humans on a content team — Alice (founder, captures ideas), Bob (campaign ops, logs publishes), Carol (narrative director, authors storyboards) — plus one nightly agent.
+
+> **Flags shown are illustrative — run `hub tokens mint --help` for the real surface.** The concepts (per-identity tokens, per-vault scopes, per-tag allowlists) are stable; the command shape is still evolving.
 
 ```bash
 # As the vault admin, mint tokens via hub. Each writer authenticates once;
@@ -205,8 +209,10 @@ A tag declares zero or more metadata fields. Each field has a `type`, optional `
 
 ```ts
 // MCP call: declare the `concept-seed` tag schema.
+// Note: `tag` is the parameter name (singular). Indexed field types
+// are limited to string | integer | boolean.
 await mcp.callTool("update-tag", {
-  name: "concept-seed",
+  tag: "concept-seed",
   description: "A frame × source-moment pairing that could become a publishable piece.",
   fields: {
     state: {
@@ -220,13 +226,15 @@ await mcp.callTool("update-tag", {
       enum: ["tweet", "video", "post", "podcast", "clip"],
       indexed: true
     },
-    priority: { type: "number" },
-    owner: { type: "string", indexed: true }
+    priority: { type: "integer", indexed: true },
+    owner:    { type: "string",  indexed: true }
   },
-  relationships: [
-    { target_tag: "frame", cardinality: "many-required" },
-    { target_tag: "source-moment", cardinality: "many" }
-  ]
+  // `relationships` is an object keyed by the verb on the edge; each
+  // value declares { target_tag, cardinality, description? }.
+  relationships: {
+    uses_frame:  { target_tag: "frame",         cardinality: "many-required" },
+    uses_source: { target_tag: "source-moment", cardinality: "many" }
+  }
 });
 ```
 
@@ -234,7 +242,7 @@ After this declaration:
 
 - Any note tagged `#concept-seed` is expected to carry the declared metadata fields.
 - Writes that violate the enum (e.g. `state: "wip"`) succeed but ship a `validation_status: { errors: [...] }` warning in the response — the advisory model.
-- `query-notes` can filter directly: `?meta[state][eq]=drafted&meta[format][eq]=video`.
+- `query-notes` can filter directly via `metadata: { state: { eq: "drafted" }, format: { eq: "video" } }`.
 - `list-tags` surfaces the schema so an AI agent reading it picks valid values.
 
 ### Advisory now, opt-in strict later
@@ -252,7 +260,7 @@ Tags can nest via `parent_names`. A note tagged `#health/food/breakfast` inherit
 ```ts
 // Declare a shared "derived" parent that any sync-derived tag inherits from.
 await mcp.callTool("update-tag", {
-  name: "derived",
+  tag: "derived",
   description: "Notes projected from an external source.",
   fields: {
     source:      { type: "string", indexed: true },
@@ -263,7 +271,7 @@ await mcp.callTool("update-tag", {
 
 // Then a concrete tag inherits from it.
 await mcp.callTool("update-tag", {
-  name: "source-moment",
+  tag: "source-moment",
   parent_names: ["derived"],
   fields: {
     freshness: { type: "string", enum: ["hot", "warming", "cold"], indexed: true }
@@ -293,11 +301,13 @@ await mcp.callTool("create-note", {
     owner: "alice"
   },
   links: [
-    { target_path: "frames/rebuild-humans.md", relationship: "uses-frame" },
-    { target_path: "source-moments/coinbase-memo-2026-05-05.md", relationship: "uses-source" }
+    { target: "frames/rebuild-humans.md", relationship: "uses-frame" },
+    { target: "source-moments/coinbase-memo-2026-05-05.md", relationship: "uses-source" }
   ]
 });
 ```
+
+`target` on a link accepts either a note ID or a path ([`core/src/mcp.ts:349`](../../parachute-vault/core/src/mcp.ts)) — the same resolution rule as `update-note`'s `id` argument.
 
 Batch shape: pass `notes: [...]` instead of single-item fields. The whole batch runs in one SQLite transaction — `BEGIN`/`COMMIT`/`ROLLBACK` wraps the loop. Mid-batch error rolls every prior insert back. Per-call cap is **`MAX_BATCH_SIZE = 500`** ([`core/src/notes.ts:150-157`](../../parachute-vault/core/src/notes.ts)).
 
@@ -337,21 +347,22 @@ Identity preserved (the note keeps its ID); incoming wikilinks preserved (path i
 
 ### The sync-from-external-source pattern
 
-When you sync from a journal (mirrormirror-style git corpus, Slack export, Notion dump), you usually don't know prior state — the source has rewritten the markdown for that path, and you want vault to mirror it.
+When you sync from a journal (git corpus, Slack export, Notion dump), you usually don't know prior state — the source has rewritten the markdown for that path, and you want vault to mirror it.
 
-Two patterns, both work today:
-
-**Option A — query first, then create-or-update.** Two round trips per item in the missing case.
+**The canonical shape: query first, then create-or-update.** Two round trips per item in the missing case.
 
 ```ts
 async function syncOne(path: string, content: string, metadata: object) {
+  // `query-notes` with `id` accepts a path. Returns the note directly,
+  // or `{ error: "Note not found", id }` on miss.
   const existing = await mcp.callTool("query-notes", { id: path });
-  if (existing?.note) {
+
+  if (existing && !existing.error) {
     await mcp.callTool("update-note", {
       id: path,
       content,
-      metadata,
-      if_updated_at: existing.note.updated_at
+      metadata,                          // merged into existing metadata
+      if_updated_at: existing.updated_at
     });
   } else {
     await mcp.callTool("create-note", { content, path, metadata, tags: ["derived"] });
@@ -359,23 +370,9 @@ async function syncOne(path: string, content: string, metadata: object) {
 }
 ```
 
-**Option B — update with `force: true`, fall through to create on missing.** Two round trips in the missing case only.
+This is the parachute-grain shape — explicit about intent (the sync writer asserts "I know what was there"), keeps concurrency safety intact, and costs one extra query per item only in the missing case.
 
-```ts
-async function syncOne(path: string, content: string, metadata: object) {
-  try {
-    await mcp.callTool("update-note", { id: path, content, metadata, force: true });
-  } catch (err) {
-    if (err.code === "NOT_FOUND") {
-      await mcp.callTool("create-note", { content, path, metadata, tags: ["derived"] });
-    } else {
-      throw err;
-    }
-  }
-}
-```
-
-Option A is more parachute-grain — explicit about intent (sync writer asserts "I know what was there"). Option B is one round trip cheaper in steady-state but uses `force: true` which suppresses concurrency safety. Pick A unless the round-trip cost matters.
+Avoid the apparent shortcut of `update-note` with `force: true` plus a try/catch fallback to `create-note`. It suppresses concurrency safety on every call, and vault throws `Error("Note not found: ...")` with no machine-readable `code` field ([`core/src/notes.ts:385-392`](../../parachute-vault/core/src/notes.ts)) — catching it reliably means string-matching the message, which is brittle. The query-first shape is correct *and* shorter.
 
 A future `update-note` flag — `if_missing: "create"` — would collapse this to one round trip. It's logged but not committed to a date; orgs hitting real round-trip ceilings should write up a use case to push it up the priority list.
 
@@ -408,28 +405,29 @@ Path-as-id resolution gets you 90% of the upsert ergonomics with one extra round
 One tool, many modes:
 
 - **Single by ID or path** — `{ id: "01J9..." }` or `{ id: "people/alice.md" }`.
-- **Filter** — `{ tags: ["concept-seed"], meta: { state: { eq: "drafted" } } }`.
+- **Filter** — `{ tag: "concept-seed", metadata: { state: { eq: "drafted" } } }`. Multiple tags: `{ tag: ["concept-seed", "draft"], tag_match: "any" }`.
 - **Search** — `{ search: "rebuild humans" }` for content full-text.
-- **Graph neighborhood** — `{ id: "...", neighborhood: { depth: 2 } }` returns the note plus reachable neighbors via wikilinks + typed links.
+- **Graph neighborhood** — `{ near: { note_id: "...", depth: 2 } }` scopes results to notes within N hops of an anchor (follows wikilinks + typed links).
+- **Date range** — `date_from` / `date_to` filter on `created_at` (ingestion time). For `updated_at` ("what changed since X") or any indexed metadata date field, use the generalized `date_filter: { field, from, to }` shape.
 
-The filter grammar lives in [`core/src/mcp.ts` `query-notes` tool definition](../../parachute-vault/core/src/mcp.ts) (`name: "query-notes"`, starting line ~84). Operator vocabulary: `eq`, `ne`, `in`, `lt`, `gt`, `lte`, `gte` for indexed fields.
+The filter grammar lives in [`core/src/mcp.ts` `query-notes` tool definition](../../parachute-vault/core/src/mcp.ts) (`name: "query-notes"`, starting line ~84). Operator vocabulary on indexed metadata fields: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `exists`.
 
 ```ts
 // Find drafted video concept-seeds owned by Alice, sorted by priority desc.
 await mcp.callTool("query-notes", {
-  tags: ["concept-seed"],
-  meta: {
+  tag: "concept-seed",
+  metadata: {
     state:  { eq: "drafted" },
     format: { eq: "video" },
     owner:  { eq: "alice" }
   },
-  order_by: "metadata.priority",
+  order_by: "priority",
   sort: "desc",
   limit: 20
 });
 ```
 
-`order_by` requires the field to be declared `indexed: true` on at least one tag carried by the queried notes ([`core/src/mcp.ts:141`](../../parachute-vault/core/src/mcp.ts)). Vault refuses non-indexed sorts to prevent table-scan footguns.
+`order_by` requires the field to be declared `indexed: true` on at least one tag carried by the queried notes ([`core/src/mcp.ts:141`](../../parachute-vault/core/src/mcp.ts)). Vault refuses non-indexed sorts to prevent table-scan footguns. Pass the bare field name (`"priority"`), not a dotted path.
 
 ### Preview-only reads
 
@@ -445,11 +443,12 @@ Shortest-path between two notes via the links graph. Useful for "is this concept
 
 ```ts
 await mcp.callTool("find-path", {
-  from_id: "pieces/2026-05-08-tweet.md",
-  to_id: "source-moments/coinbase-memo-2026-05-05.md",
+  source: "pieces/2026-05-08-tweet.md",
+  target: "source-moments/coinbase-memo-2026-05-05.md",
   max_depth: 5
 });
-// Returns the shortest chain of note IDs, or null if unreachable within max_depth.
+// Returns the shortest chain of note IDs and relationships, or null if
+// unreachable within max_depth. `source` and `target` accept ID or path.
 ```
 
 A full graph query language (Cypher-ish, GraphQL-ish) isn't on the near-term roadmap. `find-path` + neighborhood expansion + filter chaining covers most workflows; full traversal is XL build.
@@ -563,32 +562,37 @@ Today the `sub` claim from the JWT arrives at vault but isn't persisted on the n
 
 Vault has a generic trigger system ([`src/triggers.ts`](../../parachute-vault/src/triggers.ts)). A trigger declares a **predicate** (tags + metadata-presence) and an **action** (webhook URL + send/response mode). When a note mutation matches, the trigger fires a webhook and applies the response back to the note.
 
-Example trigger config (vault config.yaml):
+Example trigger config (vault config.yaml — shape from [`src/config.ts:210-234`](../../parachute-vault/src/config.ts)):
 
 ```yaml
 triggers:
   - name: notify-publish
+    events: [updated]            # default: [created, updated]
     when:
-      tags: ["piece"]
-      has_metadata: ["published_at"]
-    send: json
-    url: https://hooks.team.org/published
+      tags: [piece]
+      has_metadata: [published_at]
+    action:
+      webhook: https://hooks.team.org/published
+      send: json                 # default: json
 
   - name: kick-off-perf-tracking
+    events: [created]
     when:
-      tags: ["piece"]
-      created: true
-    send: json
-    url: https://perf-tracker.team.org/new-piece
+      tags: [piece]
+    action:
+      webhook: https://perf-tracker.team.org/new-piece
 ```
 
-Predicate grammar today:
+Predicate grammar today (the `when` block — full surface in [`src/config.ts:170-181`](../../parachute-vault/src/config.ts)):
 
 - **`tags: [...]`** — note carries any of these tags (or sub-tags).
-- **`has_metadata: [...]`** — note has these metadata keys present.
-- **`created: true`** — fires on create, not update.
+- **`has_metadata: [...]`** — note has all of these metadata keys set (non-null).
+- **`missing_metadata: [...]`** — note has none of these keys set.
+- **`has_content: true|false`** — content is non-empty / empty.
 
-Not supported today:
+Restricting on the *event* (create vs update) lives on the trigger itself via `events: [...]`, not inside `when`.
+
+Not supported today inside `when`:
 
 - **Value-equality predicates.** "Fire when `state` equals `published`" — workaround: subscribe to all writes against the tag, filter in the consumer.
 - **State-transition matching.** "Fire when `state` transitions from `produced` → `published`" — deeper change; logged.
@@ -623,8 +627,9 @@ await mcp.callTool("create-note", {
 });
 
 // Authoring UI: fetch the template, substitute {{vars}}, call create-note.
+// query-notes with `id` returns the note directly (with content by default).
 const template = await mcp.callTool("query-notes", { id: "_templates/storyboard.md" });
-const body = template.note.content.replace("{{title}}", inputTitle);
+const body = template.content.replace("{{title}}", inputTitle);
 await mcp.callTool("create-note", {
   path: `storyboards/${slug}.md`,
   content: body,
@@ -728,8 +733,10 @@ A small bootstrap script the team-lead runs once. Hub's MCP discovery surfaces t
 import { vaultMcp } from "./mcp-client.ts";
 
 // Shared "derived" parent — every sync-derived tag inherits source-tracking.
+// Indexed types: string | integer | boolean. Field `type` must agree across
+// all tags that declare the same field.
 await vaultMcp.callTool("update-tag", {
-  name: "derived",
+  tag: "derived",
   description: "Notes projected from an external source.",
   fields: {
     source:     { type: "string", indexed: true },
@@ -739,22 +746,25 @@ await vaultMcp.callTool("update-tag", {
 });
 
 await vaultMcp.callTool("update-tag", {
-  name: "concept-seed",
+  tag: "concept-seed",
   description: "A frame × source pairing that could publish.",
   fields: {
     state:    { type: "string", enum: ["idea","drafted","scripted","produced","published","killed"], indexed: true },
     format:   { type: "string", enum: ["tweet","video","post","podcast"], indexed: true },
-    priority: { type: "number" },
-    owner:    { type: "string", indexed: true }
+    priority: { type: "integer", indexed: true },
+    owner:    { type: "string",  indexed: true }
   },
-  relationships: [
-    { target_tag: "frame", cardinality: "many-required" },
-    { target_tag: "source-moment", cardinality: "many" }
-  ]
+  // `relationships` is an object keyed by relationship name (the verb on the
+  // edge); each value declares { target_tag, cardinality, description? }.
+  relationships: {
+    uses_frame:  { target_tag: "frame",         cardinality: "many-required" },
+    uses_source: { target_tag: "source-moment", cardinality: "many" }
+  }
 });
 
 await vaultMcp.callTool("update-tag", {
-  name: "source-moment",
+  tag: "source-moment",
+  description: "An external event/datapoint a piece can ride.",
   parent_names: ["derived"],
   fields: {
     freshness: { type: "string", enum: ["hot","warming","cold"], indexed: true }
@@ -762,32 +772,35 @@ await vaultMcp.callTool("update-tag", {
 });
 
 await vaultMcp.callTool("update-tag", {
-  name: "piece",
+  tag: "piece",
   description: "A final published artifact.",
   fields: {
     channel:      { type: "string", indexed: true },
     published_at: { type: "string", indexed: true },
+    kpi:          { type: "integer", indexed: true },
     parent_seed:  { type: "string" }
   }
 });
 
 await vaultMcp.callTool("update-tag", {
-  name: "storyboard",
+  tag: "storyboard",
+  description: "Frame-by-frame breakdown for a video seed.",
   fields: {
-    status:       { type: "string", enum: ["draft","review","approved","produced"], indexed: true },
-    parent_seed:  { type: "string" }
+    status:      { type: "string", enum: ["draft","review","approved","produced"], indexed: true },
+    parent_seed: { type: "string" }
   }
 });
 
-await vaultMcp.callTool("update-tag", { name: "capture", description: "Inbound raw captures." });
-await vaultMcp.callTool("update-tag", { name: "frame", description: "Conceptual unit." });
+await vaultMcp.callTool("update-tag", { tag: "capture", description: "Inbound raw captures." });
+await vaultMcp.callTool("update-tag", { tag: "frame",   description: "Conceptual unit; the thing the org believes." });
 ```
 
 ### Step 4 — mint scoped tokens
 
+> **The `hub tokens mint` flag names below are illustrative.** The hub CLI surface is still evolving — run `hub tokens mint --help` for the current flags before pasting these commands. The scope and tag-allowlist *concepts* are stable; the *command shape* may differ.
+
 ```bash
-# Three humans + one agent. (Hub CLI shape is illustrative — actual flags
-# track hub's evolving surface; check `hub tokens mint --help` for current.)
+# Three humans + one agent.
 hub tokens mint --user alice@team.org --scope "vault:team:write"
 hub tokens mint --user bob@team.org   --scope "vault:team:write" --scoped-tags "piece,performance"
 hub tokens mint --user carol@team.org --scope "vault:team:write" --scoped-tags "storyboard,asset"
@@ -859,12 +872,14 @@ const items = readDerivedToday();  // ~50-200 items per night
 for (const item of items) {
   const existing = await vaultMcp.callTool("query-notes", { id: item.path });
 
-  if (existing?.note) {
+  if (existing && !existing.error) {
+    // `update-note` merges metadata keys into the existing record — no need
+    // to spread manually. Just pass the fields you want to change.
     await vaultMcp.callTool("update-note", {
       id: item.path,
       content: item.body,
-      metadata: { ...existing.note.metadata, ...item.metadata, derived_at: item.derivedAt },
-      if_updated_at: existing.note.updated_at
+      metadata: { ...item.metadata, derived_at: item.derivedAt },
+      if_updated_at: existing.updated_at
     });
   } else {
     await vaultMcp.callTool("create-note", {
@@ -893,30 +908,41 @@ A storyboard drafter agent. Triggered manually by Alice: "draft a storyboard for
 import { vaultMcp, claudeApi } from "./clients.ts";
 
 export async function draftStoryboard(seedId: string) {
-  const seed = await vaultMcp.callTool("query-notes", { id: seedId, neighborhood: { depth: 1 } });
+  // Single-id query returns the note directly (not wrapped).
+  // Pass `include_content: true` to ensure the body is in the response.
+  const seed = await vaultMcp.callTool("query-notes", {
+    id: seedId,
+    include_content: true
+  });
 
-  const voiceAnchors = await vaultMcp.callTool("query-notes", { tags: ["voice-anchor"] });
-  const brand = voiceAnchors.notes.map(n => n.content).join("\n\n");
+  // List query: returns an array. Pass `include_content: true` since the
+  // default for list queries drops content.
+  const voiceAnchors = await vaultMcp.callTool("query-notes", {
+    tag: "voice-anchor",
+    include_content: true
+  });
+  const brand = voiceAnchors.map(n => n.content).join("\n\n");
 
   const draft = await claudeApi.complete({
     system: "You are a storyboard drafter. Stay in brand voice.",
     messages: [{
       role: "user",
-      content: `Draft a storyboard for this seed:\n\n${seed.note.content}\n\nBrand:\n${brand}`
+      content: `Draft a storyboard for this seed:\n\n${seed.content}\n\nBrand:\n${brand}`
     }]
   });
 
   return vaultMcp.callTool("create-note", {
     content: draft.text,
-    path: `storyboards/${seed.note.metadata.slug}.md`,
+    path: `storyboards/${seed.metadata.slug}.md`,
     tags: ["storyboard"],
     metadata: {
       parent_seed: seedId,
       status: "draft",
       drafted_by: "agent.storyboard-drafter"
     },
+    // Link `target` accepts a note ID or a path.
     links: [
-      { target_id: seedId, relationship: "drafts" }
+      { target: seedId, relationship: "drafts" }
     ]
   });
 }
@@ -929,30 +955,45 @@ The agent's token is scoped to `#storyboard`. The new note appears in Carol's qu
 Once a few weeks of writes land, the queries get useful:
 
 ```ts
-// "What's drafted that I haven't pushed forward in 7 days?"
+// "What's drafted that I haven't touched in 7 days?"
+// date_filter on `updated_at` is the generalized shape; the top-level
+// `date_from` / `date_to` shorthand only filters on `created_at`.
 await vaultMcp.callTool("query-notes", {
-  tags: ["concept-seed"],
-  meta: { state: { eq: "drafted" } },
-  updated_before: "2026-05-05T00:00:00Z",
-  order_by: "metadata.priority",
+  tag: "concept-seed",
+  metadata: { state: { eq: "drafted" } },
+  date_filter: { field: "updated_at", to: "2026-05-05T00:00:00Z" },
+  order_by: "priority",
   sort: "desc"
 });
 
 // "Find published pieces for KPI 3 this week."
+// `kpi` and `published_at` must be declared `indexed: true` on the
+// `piece` tag schema for operator queries to route through the index.
 await vaultMcp.callTool("query-notes", {
-  tags: ["piece"],
-  meta: { kpi: { eq: 3 }, published_at: { gte: "2026-05-05" } }
+  tag: "piece",
+  metadata: {
+    kpi:          { eq: 3 },
+    published_at: { gte: "2026-05-05" }
+  }
 });
 
-// "From this piece, trace back to its seed and source."
+// "Trace the shortest path from a published piece back to a known source-moment."
+// `find-path` is point-to-point on note IDs/paths — there's no tag-based
+// destination. If you want "any source-moment reachable from here," pull
+// the neighborhood and filter:
+const neighborhood = await vaultMcp.callTool("query-notes", {
+  near: { note_id: pieceId, depth: 4 },
+  tag: "source-moment"
+});
+// Then run find-path against a specific target:
 await vaultMcp.callTool("find-path", {
-  from_id: pieceId,
-  to_tag: "source-moment",
+  source: pieceId,
+  target: neighborhood[0]?.id,
   max_depth: 4
 });
 ```
 
-None of these need pre-canned scripts. Each is a single MCP call. The structure you declared in step 3 is what makes them work.
+None of these need pre-canned scripts. Each is a single MCP call (or in the find-path-by-tag case, two — a neighborhood scope plus a point-to-point trace). The structure you declared in step 3 is what makes them work.
 
 ---
 
