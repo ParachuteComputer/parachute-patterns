@@ -21,7 +21,8 @@ Use the legacy `core/src/obsidian.ts` only if you specifically need the flat-fro
 # Full export — every note, every schema-carrying tag.
 parachute-vault export <dir>
 
-# Pick a non-default vault.
+# Pick a non-default vault. (Defaults to the vault named `default` — use
+# `--vault <name>` if your vault has a different name.)
 parachute-vault export <dir> --vault <name>
 
 # Incremental — only notes whose updated_at >= ISO timestamp.
@@ -135,7 +136,7 @@ triggers:
       send: json
 ```
 
-The receiver doesn't have to do work synchronously — it just records "vault dirty since T" in a small state file. Sub-second response so vault's two-phase trigger marker (`<name>_rendered_at`) clears promptly.
+The receiver doesn't have to do work synchronously — it just records "vault dirty since T" in a small state file. Sub-second response keeps vault's two-phase trigger marker cycling promptly: `<name>_pending_at` is written on entry and cleared once `<name>_rendered_at` is written on success.
 
 **2.** Wire the projection itself as a cron job (or a debounced consumer of the nudge endpoint, your call) that exports the vault since the last cursor and commits the diff:
 
@@ -193,14 +194,14 @@ When PR 2 ships, restore is `parachute-vault import <untarred-dir> --blow-away`.
 
 ## Worked example — Gitcoin Brain
 
-The Gitcoin Brain build (week-1 architecture, [`from_parachute_round_2.md`](https://github.com/ParachuteComputer/parachute-vault/issues/308) Ask 1) is the load-bearing use case this primitive was reframed and extended for. Their model: vault is the source of truth for live state; a git repo of the export is the projection. Audit, recovery, time-travel, browseable code-review-style diff history — every property of "the team brain in git" without paying the dual-write tax of git-as-primary.
+The Gitcoin Brain build (week-1 architecture, `from_parachute_round_2.md` Ask 1) is the load-bearing use case this primitive was reframed and extended for. Their model: vault is the source of truth for live state; a git repo of the export is the projection. Audit, recovery, time-travel, browseable code-review-style diff history — every property of "the team brain in git" without paying the dual-write tax of git-as-primary.
 
 Concretely, the Gitcoin team:
 
 1. Run vault as the primary write surface (REST + MCP + Notes + Telegram).
 2. Wire a webhook trigger on high-stakes tags (commitments, decisions, donor pipeline) that nudges a projection daemon.
-3. Run `parachute-vault export --since <cursor>` on the nudge (debounced) and a full export weekly.
-4. Commit + push to a private git repo. Diffs are reviewable; history is the audit trail; restoration is `parachute-vault import --blow-away` (once PR 2 lands).
+3. Run `parachute-vault export "$PROJECTION_DIR" --since "$CURSOR"` on the nudge (debounced) and a full export weekly.
+4. Commit + push to a private git repo. Diffs are reviewable; history is the audit trail; restoration is `parachute-vault import "$PROJECTION_DIR" --blow-away` (once PR 2 lands).
 
 When the export primitive isn't right for them — when a Gitcoin-specific format or a richer drift signal matters — they build a sidecar and contribute the pattern back. Generic patterns extracted up to parachute; specific dashboards stay in Gitcoin's app code. The Round-2 reply spells the boundary out.
 
