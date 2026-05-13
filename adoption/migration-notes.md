@@ -5,6 +5,59 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-12 — `guides/building-a-surface.md` lands (patterns#58)
+
+**Change:** new guide
+[`building-a-surface.md`](../guides/building-a-surface.md) — the
+builder-facing companion to
+[`multi-writer-workspace.md`](../guides/multi-writer-workspace.md).
+Captures parachute-notes' implementation patterns so the next surface
+builder doesn't reinvent: OAuth code-flow with PKCE + DCR + refresh
+rotation, vault discovery via `/.well-known/parachute.json`, the
+services catalog on the token, REST + MCP query operators + cost knobs,
+optimistic concurrency on writes (`if_updated_at` + 409/428), atomic
+`append` / `prepend` / `content_edit`, batch transactions, the
+surface-declares-schema pattern (cross-link [`patterns#57`](https://github.com/ParachuteComputer/parachute-patterns/issues/57)),
+and the cross-cutting concerns Notes worked out from scratch
+(reachability three-state machine, retry-with-backoff configured against
+real error classes, auth-halt as a distinct axis from reachability,
+offline-first with `force: true` on stale drains, cross-tab sync,
+specific error UX).
+
+Heavy on runnable code snippets adapted from
+`parachute-notes/src/lib/vault/` (the working prototype). Five worked
+examples: minimal read-only dashboard, write-flow with OC + autosave,
+schema-ensure on connect, offline-queued capture, the page-load
+discovery + auth + first-fetch sequence.
+
+Cross-linked bidirectionally with
+`guides/multi-writer-workspace.md` so a reader landing on either guide
+finds the other in the Cross-links section.
+
+**Affected:**
+
+- `parachute-patterns` — guide landed (this PR). No code-side changes.
+- `parachute.computer` — link to the guide from "for developers" /
+  "how do I build on parachute" pages once they exist. Nice-to-have, not
+  a required follow-up.
+- `parachute-notes` — implicit prototype reference throughout. If notes'
+  `src/lib/vault/` API shifts substantially, this guide's code snippets
+  should be re-synced. Tracked here for visibility.
+- `parachute-hub`, `parachute-vault`, `parachute-scribe`,
+  `parachute-agent` — no immediate change. Linking from per-repo
+  READMEs to the guide is welcome but optional.
+
+**Status:** doc-only. No vault / hub / surface behavior changed; the
+guide tracks shipped reality and explicitly flags what's not yet
+supported (abstract surface SDK is research; HTTP_API.md doc refresh
+pending in vault#315; `validation_status` REST/MCP parity gap at
+vault#287; cross-origin DCR auto-approve at hub#201).
+
+Tracking issue [`patterns#58`](https://github.com/ParachuteComputer/parachute-patterns/issues/58)
+can close on merge.
+
+---
+
 ## 2026-05-12 — `tag-scoped-tokens.md` refresh (patterns#17)
 
 **Change:** [`tag-scoped-tokens.md`](../patterns/tag-scoped-tokens.md)
