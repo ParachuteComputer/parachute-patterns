@@ -7,7 +7,7 @@ This entry is a cookbook recipe — concrete patterns for using the export primi
 ## When to reach for it
 
 - **Git-as-projection.** Vault is the source of truth; a git repo of the export is a deterministic projection (audit, time-travel, browseable, code-review-able). Mutation in vault → re-run export → commit. Mutation in git is a one-way fork.
-- **Disaster-recovery snapshot.** Periodic full export to a separate disk (or off-host) gives a tool-independent restore path. Pair with PR 2's `--blow-away` import to replay back to byte-equivalent state.
+- **Disaster-recovery snapshot.** Periodic full export to a separate disk (or off-host) gives a tool-independent restore path. Pair with `parachute-vault import <dir> --blow-away --yes` to replay back to byte-equivalent state.
 - **Vault migration.** Moving from one parachute-vault host to another (local → VPS, or vice versa). Export from source, blow-away-import on the destination.
 - **Offline editing.** Drop the export into Obsidian/Logseq/Quartz/Dendron, edit, re-import. Round-trip preserves IDs and typed links — the consumer doesn't need to know about either.
 - **Sharing a knowledge graph as static files.** Hand someone a directory. They can read it with `less` or open it in any markdown tool. No vault required.
@@ -37,21 +37,22 @@ Output (per [`exportVaultToDir`](https://github.com/ParachuteComputer/parachute-
   .parachute/
     vault.yaml                # vault meta + export_format_version
     schemas/<tag>.yaml        # one file per schema-carrying tag
-    attachments/<id>/...      # binary files (PR 2; vault#308)
+    attachments/<id>/...      # binary files, keyed by export-time att.id
   <note.path>.md              # one file per pathed note
   _unpathed/<note-id>.md      # one file per pathless note
 ```
 
 The sidecar directory is named `.parachute` so that walkers which skip dot-prefixed directories (including vault's own `walkMarkdownFiles`, Obsidian, Logseq, most SSGs) won't accidentally treat schemas or vault-meta as notes.
 
-**Import is still in flight.** PR 1 (rc.10, on `main`) is export-only. PR 2 lands:
+**Both export and import shipped.** rc.10 added export; rc.11 closed the round-trip with lossless import:
 
 ```bash
-parachute-vault import <dir>               # upsert notes/tags/schemas by ID
-parachute-vault import <dir> --blow-away   # drop + replay → byte-equivalent state (disaster recovery)
+parachute-vault import <dir>                     # upsert notes/tags/schemas by ID
+parachute-vault import <dir> --blow-away         # drop + replay → byte-equivalent state
+parachute-vault import <dir> --blow-away --yes   # same; skip the confirm prompt (CI / cron)
 ```
 
-When PR 2 ships, this entry's CLI block gets the imports promoted out of *coming soon*.
+`--blow-away` confirms by default — interactive ops get a "type the vault name to confirm" prompt before any deletion. Pass `--yes` for unattended runs. Wipe goes through the public Store API (`deleteNote`, `deleteTag`) so hooks fire and orphan-attachment cleanup runs the same way as a manual delete.
 
 ## Per-note frontmatter
 
@@ -70,7 +71,7 @@ metadata:                          # nested alpha-sorted
 links:                             # typed (non-wikilink) relationships
   - relationship: derived-from
     target: 01HGZA...
-attachments:                       # PR 2 wires the file copy; PR 1 emits refs
+attachments:                       # ref by basename; binary copied to .parachute/attachments/<id>/
   - id: att_01HGZB...
     mime_type: audio/mp4
     path: 2026-05-12/audio.m4a
@@ -108,7 +109,7 @@ Just-a-name tags (no schema content) don't get a file. Tag names containing `/` 
 
 ## What round-trips losslessly
 
-Once PR 2 lands the import side, exporting a vault, blowing it away, and re-importing the export will reproduce byte-equivalent vault state across:
+Exporting a vault, blowing it away, and re-importing the export reproduces byte-equivalent vault state across:
 
 - **IDs.** ULIDs survive. Wikilinks resolve by path or ID; typed `links` resolve by ID. Renaming a note's path doesn't break inbound links.
 - **Typed links.** Non-wikilink relationships (`derived-from`, `cites`, anything custom) serialized in the `links:` block. Sorted by `(relationship, target)` for stable output.
@@ -116,7 +117,7 @@ Once PR 2 lands the import side, exporting a vault, blowing it away, and re-impo
 - **Indexed metadata.** Whatever your tag schemas index, the values come back in the same shape (booleans as `true`/`false`, numbers bare, strings quoted only when ambiguous).
 - **Multi-line strings.** Metadata values that contain newlines/tabs/control characters are double-quoted with YAML escape sequences (`\n`, `\xNN`) so the whole value stays on one physical YAML line. Single-quoted multi-line splits the parser — caught and pinned in vault#317 F1.
 - **Wikilinks in content.** Preserved verbatim. They're the content's job; the parser does not strip or rewrite them.
-- **Attachments.** Frontmatter refs ship today (PR 1); binary file copy under `.parachute/attachments/<att-id>/<filename>` ships in PR 2.
+- **Attachments.** Frontmatter `attachments[].path` carries the original vault-internal path (relative to `assetsDir`); the binary is copied under `.parachute/attachments/<att-id>/<basename>`. Import restores the binary to the original path. *Caveat:* attachment IDs re-mint on import (no `restoreAttachment(id, ...)` Store surface yet), so round-trip with attachments produces byte-different `attachments[].id` values between original and re-export. Refs still resolve by `(note_id, path)`; operators expecting strict byte-equivalence including att-IDs should know.
 - **Idempotency.** Re-export an unchanged vault → byte-identical bytes (modulo `exported_at` in `vault.yaml`, which callers wanting strict byte-equivalence can pin via the `exportedAt` API option). Clean git diffs.
 
 ## Recipe: nightly git projection
@@ -180,15 +181,15 @@ tar --zstd -cf "$SNAPSHOT" -C "$TMP" .
 rm -rf "$TMP"
 ```
 
-When PR 2 ships, restore is `parachute-vault import <untarred-dir> --blow-away`. Until then, the snapshot is read-only — the format is still human-recoverable (every note is a markdown file with YAML frontmatter), it just can't replay automatically.
+Restore: untar somewhere, then `parachute-vault import <untarred-dir> --blow-away --yes`. The format is also human-recoverable without vault — every note is a markdown file with YAML frontmatter, so even a worst-case "we lost the vault binary too" recovers manually.
 
 ## Edge cases / gotchas
 
 - **Path traversal is refused, not aborted.** A note with `path: "../../escape"` would otherwise write outside the export directory. `exportVaultToDir` resolves the candidate path against the export root and refuses the write with a `console.warn`, then keeps going. Partial export beats no export. Self-inflicted at the vault level (operator owns the data), but real for programmatic callers ingesting from external systems. See [`isWithinDir`](https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts) and the F3 fix in vault#317.
 - **Pathless notes land in `_unpathed/`.** Notes without a `path:` go to `_unpathed/<note-id>.md` so they don't collide with each other and so a user importing into Obsidian sees them in one folder rather than scattered at the root.
 - **`exported_at` is the one timestamp that won't be byte-identical across runs.** It lives in `.parachute/vault.yaml`. Callers wanting strict byte-equivalence (tests, fixture diffing) pass `exportedAt` to the `exportVaultToDir` API; the CLI always stamps live. If you're git-projecting and want minimal diff noise, the `vault.yaml` file changing every run is the cost.
-- **Schema drift on import (PR 2).** `import` without `--blow-away` warns on schema conflicts (export claims `fields.amount.type: number`, vault already has `fields.amount.type: string`). `--blow-away` replays the export's schemas exactly. Choose the verb that matches your intent.
-- **Attachments are refs in PR 1, files in PR 2.** Today's export emits `attachments:` frontmatter entries pointing at `.parachute/attachments/<id>/<filename>`, but doesn't copy the binary yet. If your projection depends on the file contents, hold for PR 2.
+- **Schema drift on import.** `import` without `--blow-away` warns on schema conflicts (export claims `fields.amount.type: number`, vault already has `fields.amount.type: string`). `--blow-away` replays the export's schemas exactly. Choose the verb that matches your intent.
+- **`--since` regenerates schemas every run, even if no tag schema changed.** The filter only narrows the *notes* set; schema sidecars are always written fully. For a git-projection cadence that produces tight diffs, expect schema files to surface in incremental commits even when the underlying schemas are unchanged.
 - **The hand-rolled YAML parser is intentionally narrow.** It handles the subset of YAML the emitter produces plus the legacy Obsidian shapes the importer needs. It does *not* handle anchors, references, multi-document streams, or YAML 1.2 `\u<4hex>`/`\U<8hex>` escapes — none of which the emitter produces. If you hand-edit sidecar `.yaml` files, stay inside that subset.
 - **The 1M-note bulk-load ceiling.** `exportVaultToDir` materializes the full vault in memory before iterating. Defensive — the cap is a follow-up at vault#317 F5 if a real >>100k-note workload surfaces.
 
@@ -201,7 +202,7 @@ Concretely, the Gitcoin team:
 1. Run vault as the primary write surface (REST + MCP + Notes + Telegram).
 2. Wire a webhook trigger on high-stakes tags (commitments, decisions, donor pipeline) that nudges a projection daemon.
 3. Run `parachute-vault export "$PROJECTION_DIR" --since "$CURSOR"` on the nudge (debounced) and a full export weekly.
-4. Commit + push to a private git repo. Diffs are reviewable; history is the audit trail; restoration is `parachute-vault import "$PROJECTION_DIR" --blow-away` (once PR 2 lands).
+4. Commit + push to a private git repo. Diffs are reviewable; history is the audit trail; restoration is `parachute-vault import "$PROJECTION_DIR" --blow-away --yes`.
 
 When the export primitive isn't right for them — when a Gitcoin-specific format or a richer drift signal matters — they build a sidecar and contribute the pattern back. Generic patterns extracted up to parachute; specific dashboards stay in Gitcoin's app code. The Round-2 reply spells the boundary out.
 
@@ -209,10 +210,10 @@ When the export primitive isn't right for them — when a Gitcoin-specific forma
 
 - **Format spec** — [`core/src/portable-md.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts) (emitter + parser), [`core/src/portable-md.test.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.test.ts) for behavior examples.
 - **CLI** — `parachute-vault export <dir>` in [`src/cli.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/cli.ts).
-- **Vault changelog** — `0.4.4-rc.9` and `0.4.4-rc.10` in [`CHANGELOG.md`](https://github.com/ParachuteComputer/parachute-vault/blob/main/CHANGELOG.md) cover PR 1 + the reviewer fold.
+- **Vault changelog** — `0.4.4-rc.9` through `0.4.4-rc.11` in [`CHANGELOG.md`](https://github.com/ParachuteComputer/parachute-vault/blob/main/CHANGELOG.md) cover PR 1, the reviewer fold, and PR 2 (lossless import + `--blow-away`).
 - **Webhook triggers** — [vault README §Webhook triggers](https://github.com/ParachuteComputer/parachute-vault/blob/main/README.md#webhook-triggers).
 - **Tag data model** — [`patterns/tag-data-model.md`](../patterns/tag-data-model.md). What gets serialized into `.parachute/schemas/<tag>.yaml`.
 - **Multi-writer workspace guide** — [`guides/multi-writer-workspace.md`](../guides/multi-writer-workspace.md). The operator's-side view of how a team-shape vault accumulates the content the export then projects.
-- **Tracking issue** — [vault#308](https://github.com/ParachuteComputer/parachute-vault/issues/308) (umbrella), vault#317 (PR 1 reviewer fold).
+- **Tracking issue** — [vault#308](https://github.com/ParachuteComputer/parachute-vault/issues/308) (umbrella; PR 1 = vault#317, PR 2 = vault#319).
 
-_Last updated: 2026-05-12 — current with vault 0.4.4-rc.10 (PR 1 of vault#308 on `main`, PR 2 in flight)._
+_Last updated: 2026-05-13 — current with vault 0.4.4-rc.11 (vault#308 fully shipped; export + lossless import on `main`)._
