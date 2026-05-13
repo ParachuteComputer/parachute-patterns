@@ -34,6 +34,7 @@ brand/        palette, typography, motifs, canonical tokens.css
 schemas/      agent markdown, vault note metadata, lint rules
 patterns/     loadX sources, report contract, token auth, MCP transport, dev-auto-user
 guides/       long-form how-to references that explain how patterns combine
+cookbook/     short recipes — one outcome, one page, links out for depth
 research/     in-flight design notes for not-yet-committed direction
 adoption/     checklist for new modules, migration notes log
 ```
