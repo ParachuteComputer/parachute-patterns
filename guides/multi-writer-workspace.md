@@ -999,6 +999,7 @@ None of these need pre-canned scripts. Each is a single MCP call (or in the find
 
 ## Cross-links
 
+- [`guides/building-a-surface.md`](./building-a-surface.md) — companion guide for *building a surface over parachute-vault* (the builder's-side counterpart to this doc — auth, discovery, OC writes, schema-ensure, reachability).
 - [`patterns/governance.md`](../patterns/governance.md) — review discipline, RC versioning, patterns check.
 - [`patterns/optimistic-concurrency.md`](../patterns/optimistic-concurrency.md) — the precondition contract.
 - [`patterns/tag-data-model.md`](../patterns/tag-data-model.md) — full surface for tag schemas + hierarchy + typed relationships.
