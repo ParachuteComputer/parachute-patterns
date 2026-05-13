@@ -110,10 +110,11 @@ Discipline inside a bundle:
   the PR for reviewers but collapses on `main`.
 
 **Why this is its own rule.** Earlier shipping practice drifted toward
-one-PR-per-issue because the [`feedback_serial_pr_flow`](https://github.com/ParachuteComputer/parachute-patterns/blob/main/adoption/migration-notes.md)
-memory says "one PR at a time — serialize, don't batch." That memory is
-about *parallelism* (don't run N PRs against the same shared file
-concurrently), not about *granularity*. The two are independent axes:
+one-PR-per-issue because of a team-lead-private memory called
+`feedback_serial_pr_flow` that says "one PR at a time — serialize,
+don't batch." That memory is about *parallelism* (don't run N PRs
+against the same shared file concurrently), not about *granularity*.
+The two are independent axes:
 
 - **Serialize, don't parallelize.** Finish a PR through merge before
   opening the next, especially when they touch overlapping surfaces.
@@ -126,6 +127,8 @@ concurrently), not about *granularity*. The two are independent axes:
 Most session-shaped work satisfies both: one bundle PR (granularity),
 landed before the next session begins (serial).
 
+## Why these rules
+
 The first two months of post-launch shipping (April 2026 → ?) are the period
 of most rapid change. In that window:
 
@@ -134,10 +137,13 @@ of most rapid change. In that window:
 - Every untagged `@latest` publish is a chance for new users to install a
   half-validated artifact.
 - Every undocumented pattern becomes harder to retrofit later.
+- Every fragmented PR set is a click-cost that scales with the wrong axis
+  (issues touched), not the right one (sessions of work).
 
 The cost of these rules is small (one extra click for merge, one extra
-command for promotion, one extra paragraph in review). The benefit is
-durable alignment across modules and humans.
+command for promotion, one extra paragraph in review, one extra
+discipline on bundling). The benefit is durable alignment across modules
+and humans.
 
 ## Open questions
 
