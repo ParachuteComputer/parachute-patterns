@@ -5,7 +5,7 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
-## 2026-05-13 — `guides/building-a-surface.md` lands (patterns#58)
+## 2026-05-12 — `guides/building-a-surface.md` lands (patterns#58)
 
 **Change:** new guide
 [`building-a-surface.md`](../guides/building-a-surface.md) — the

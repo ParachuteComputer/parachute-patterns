@@ -691,7 +691,37 @@ The patterns here aren't vault-specific (any offline-first app has this shape), 
 
 ### Cross-tab sync
 
-If your surface runs in multiple tabs at once (Notes' PWA does), use `BroadcastChannel` to invalidate caches when one tab writes. Notes broadcasts on every successful mutation; other tabs re-fetch the affected queries. See [`cross-tab-sync.ts`](https://github.com/ParachuteComputer/parachute-notes/blob/main/src/lib/vault/cross-tab-sync.ts) for the implementation.
+If your surface runs in multiple tabs at once (Notes' PWA does), use the `storage` event on `window` to sync per-vault state that lives in `localStorage`. The `storage` event fires across same-origin tabs but *not* in the tab that wrote the change — so a listener can call `setState` directly without looping. Notes mirrors three keys this way ([`cross-tab-sync.ts:20-50`](https://github.com/ParachuteComputer/parachute-notes/blob/main/src/lib/vault/cross-tab-sync.ts)):
+
+- The full vault list.
+- The active vault id (vault-switch-aware components re-render via existing hooks).
+- Per-vault auth-halt flags (so a halt set in tab A shows the reconnect banner in tab B).
+
+The implementation pattern:
+
+```ts
+// surface/cross-tab-sync.ts — adapted from cross-tab-sync.ts
+export function useCrossTabSync() {
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      // `e.key === null` means localStorage.clear() — refresh everything we mirror.
+      if (e.key === null) { reloadAllStateFromStorage(); return; }
+      if (e.key === ACTIVE_VAULT_KEY) { reloadActiveVault(); return; }
+      if (e.key === VAULTS_KEY)       { reloadVaultList();   return; }
+      if (e.key.startsWith(AUTH_HALT_PREFIX)) { reloadAuthHalts(); return; }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+}
+```
+
+Two things to notice:
+
+- **Mirror state, never re-run actions.** The setters (`setActive`, `markHalt`, etc.) write to `localStorage` themselves — calling them in the storage handler would write again and cause a redundant save. Just refresh the in-memory state.
+- **No broadcast is needed.** A localStorage write in tab A *implicitly* fires `storage` in every other same-origin tab. You're not publishing; you're listening to the storage layer itself.
+
+For state that doesn't live in `localStorage` (in-memory React Query caches, transient UI state), you'd reach for `BroadcastChannel` instead — but Notes hasn't needed that yet because the load-bearing cross-tab axes (active vault, vault list, auth halts) all flow through localStorage already. Pick the simpler tool first.
 
 ### Error UX — be specific
 
@@ -807,6 +837,11 @@ async function drainQueue() {
 }
 
 // Drain on reachability healthy transition.
+// NOTE: this skeleton assumes one queue + one client (single-vault). A
+// multi-vault surface should key the queue by vaultId and drain per-vault
+// — draining everything when *any* vault flips healthy can hand a write
+// to the wrong client. Keep the queue, drain function, and reachability
+// subscription scoped per vault.
 useVaultReachabilityStore.subscribe((s) => {
   if (Object.keys(s.byVault).length === 0) void drainQueue();
 });
@@ -818,7 +853,7 @@ useVaultReachabilityStore.subscribe((s) => {
 
 When this guide leaves a question open, these are the authorities:
 
-- **[`parachute-vault/docs/HTTP_API.md`](https://github.com/ParachuteComputer/parachute-vault/blob/main/docs/HTTP_API.md)** — the REST surface, endpoint by endpoint. Note: as of 2026-05-13 this doc has stale sections; vault is tracking a refresh at vault#315. When in doubt, [`parachute-vault/src/routes.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routes.ts) is the spec.
+- **[`parachute-vault/docs/HTTP_API.md`](https://github.com/ParachuteComputer/parachute-vault/blob/main/docs/HTTP_API.md)** — the REST surface, endpoint by endpoint. Note: as of 2026-05-12 this doc has stale sections; vault is tracking a refresh at vault#315. When in doubt, [`parachute-vault/src/routes.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routes.ts) is the spec.
 - **[`parachute-vault/core/src/mcp.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/mcp.ts)** — the MCP tool schemas. Same data model, MCP shape.
 - **[`guides/multi-writer-workspace.md`](./multi-writer-workspace.md)** — operator's-side companion guide. Covers tag schemas, scoped tokens, multi-writer auth, the worked workspace setup.
 - **[`patterns/tag-scoped-tokens.md`](../patterns/tag-scoped-tokens.md)** — the per-tag-scope contract. How vault evaluates allowlists, what 403/404 means.
