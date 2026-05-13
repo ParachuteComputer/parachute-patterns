@@ -52,7 +52,7 @@ parachute-vault import <dir> --blow-away         # drop + replay → byte-equiva
 parachute-vault import <dir> --blow-away --yes   # same; skip the confirm prompt (CI / cron)
 ```
 
-`--blow-away` confirms by default — interactive ops get a "type the vault name to confirm" prompt before any deletion. Pass `--yes` for unattended runs. Wipe goes through the public Store API (`deleteNote`, `deleteTag`) so hooks fire and orphan-attachment cleanup runs the same way as a manual delete.
+`--blow-away` confirms by default — a yes/no prompt that defaults NO, so an accidental Enter cancels rather than proceeds. Pass `--yes` for unattended runs. The wipe deletes through the public Store API (`deleteNote`, `deleteTag`) so attachment-deleted and tag-deleted hooks fire and orphan-attachment cleanup runs the same way as a manual delete.
 
 ## Per-note frontmatter
 
