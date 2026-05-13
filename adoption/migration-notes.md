@@ -5,6 +5,47 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-13 — governance.md gains Rule 4 (PR cadence)
+
+**Change:** [`governance.md`](../patterns/governance.md) extended from
+three rules to four. New **Rule 4 — PR cadence: bundle by session/theme,
+not by issue.** The unit of review is the PR; the unit of change is the
+commit. One PR per coherent session of work; multiple commits inside it;
+reviewer reads commit-by-commit. Bundle when changes share a theme or
+touch overlapping files; split only on genuinely independent surfaces,
+urgent-ship-needed-while-sibling-in-design, or ~800-1000 LOC ceiling.
+
+**Why now.** Overnight 2026-05-13 cron loop cost Aaron 6 merge-clicks
+across 4 repos when 3-4 would have sufficed — repeated PRs in the same
+repo on the same theme that could have stacked as commits in one bundle.
+Earlier shipping practice had drifted toward one-PR-per-issue as a
+mistaken corollary of the `feedback_serial_pr_flow` memory; that memory
+is about *parallelism* (don't open N PRs against shared files
+concurrently), not about *granularity*. Rule 4 names the distinction
+explicitly so future readers don't conflate them.
+
+Header bumped from "Three rules" to "Four rules." Existing rules
+(no-auto-merge / RC versioning / patterns check) are unchanged.
+
+**Affected:**
+
+- `parachute-patterns` — rule landed (this PR).
+- All Parachute repos with shipping tentacles (`parachute-hub`,
+  `parachute-vault`, `parachute-notes`, `parachute-scribe`,
+  `parachute-agent`, `parachute.computer`) — adopt the bundle-by-session
+  default on next session of work. No code-side change required; the
+  shift is in tentacle briefing + reviewer dispatch shape (one PR per
+  session theme, commits-as-narrative inside).
+- Tentacle briefs should reflect the new default: when a session has
+  multiple related issues to address, dispatch one bundle PR with the
+  set of issues named in body + closed-by lines, rather than one PR per
+  issue.
+
+**Status:** doc-only refresh. No code-side behavior change; the shift
+is in how team-lead briefs tentacles and dispatches PRs going forward.
+
+---
+
 ## 2026-05-12 — `guides/building-a-surface.md` lands (patterns#58)
 
 **Change:** new guide

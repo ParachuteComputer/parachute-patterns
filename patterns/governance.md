@@ -1,7 +1,7 @@
 # Governance: PR review, RC versioning, patterns alignment
 
 > One short doc covering how Parachute repos ship code post-launch (v0.x,
-> April 2026 onward). Three rules, one shared shape.
+> April 2026 onward). Four rules, one shared shape.
 
 ## Rule 1 — No auto-merge
 
@@ -82,7 +82,49 @@ The patterns repo's steward (the `patterns` tentacle) is an active
 participant in this loop — flagged when a new pattern is established,
 involved in updates that affect cross-cutting conventions.
 
-## Why these rules
+## Rule 4 — PR cadence: bundle by session/theme, not by issue
+
+**The unit of review is the PR; the unit of change is the commit.** One
+PR per coherent session of work; multiple commits inside it; reviewer
+reads commit-by-commit.
+
+**Bundle** when changes share a theme (e.g. "Capture flow polish"),
+touch overlapping files, or naturally read as one shipping unit. The
+default is to bundle.
+
+**Split** only when:
+
+- changes touch genuinely independent surfaces, or
+- one needs urgent ship while a sibling is in design, or
+- the bundle would push past ~800-1000 LOC and a reviewer would lose
+  the thread.
+
+Discipline inside a bundle:
+
+- PR title names the bundle theme, not any one issue.
+- PR body lists every issue closed (`Closes #123`, `Closes #124`).
+- Each commit message stays tight — one logical change per commit, so
+  the commit-by-commit read tracks the work narrative.
+- Squash-merge on land (same as today). Squash-commit message
+  summarizes the bundle; the commit-by-commit history is preserved on
+  the PR for reviewers but collapses on `main`.
+
+**Why this is its own rule.** Earlier shipping practice drifted toward
+one-PR-per-issue because the [`feedback_serial_pr_flow`](https://github.com/ParachuteComputer/parachute-patterns/blob/main/adoption/migration-notes.md)
+memory says "one PR at a time — serialize, don't batch." That memory is
+about *parallelism* (don't run N PRs against the same shared file
+concurrently), not about *granularity*. The two are independent axes:
+
+- **Serialize, don't parallelize.** Finish a PR through merge before
+  opening the next, especially when they touch overlapping surfaces.
+  Still right.
+- **Bundle, don't fragment.** Within one PR, pull in every coherent
+  change from the session. Each repo-owner click costs the same
+  whether the PR carries one fix or four; spreading four PRs out costs
+  four clicks. The cadence catches up faster when bundled.
+
+Most session-shaped work satisfies both: one bundle PR (granularity),
+landed before the next session begins (serial).
 
 The first two months of post-launch shipping (April 2026 → ?) are the period
 of most rapid change. In that window:
