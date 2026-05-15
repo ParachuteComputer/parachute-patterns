@@ -5,7 +5,7 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
-## 2026-05-13 — governance.md gains Rule 4 (PR cadence)
+## 2026-05-15 — governance.md gains Rule 4 (PR cadence)
 
 **Change:** [`governance.md`](../patterns/governance.md) extended from
 three rules to four. New **Rule 4 — PR cadence: bundle by session/theme,
@@ -22,7 +22,8 @@ Earlier shipping practice had drifted toward one-PR-per-issue as a
 mistaken corollary of the `feedback_serial_pr_flow` memory; that memory
 is about *parallelism* (don't open N PRs against shared files
 concurrently), not about *granularity*. Rule 4 names the distinction
-explicitly so future readers don't conflate them.
+explicitly so future readers don't conflate them. Drafted 2026-05-13,
+landed 2026-05-15 — entry dated per landing.
 
 Header bumped from "Three rules" to "Four rules." Existing rules
 (no-auto-merge / RC versioning / patterns check) are unchanged.
