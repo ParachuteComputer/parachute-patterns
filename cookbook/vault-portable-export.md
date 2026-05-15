@@ -185,6 +185,7 @@ Restore: untar somewhere, then `parachute-vault import <untarred-dir> --blow-awa
 
 ## Edge cases / gotchas
 
+- **Case-insensitive filesystems silently collide notes whose paths differ only by case.** macOS APFS (default) and Windows NTFS (default) treat `Foo/Bar.md` and `Foo/bar.md` as the same file — export writes both, but the second overwrites the first on disk, silently losing one note. Affects ~1 note per case-collision pair, on those filesystems only. Linux ext4 and macOS APFS-CS (case-sensitive variant) unaffected. Tracked at [vault#327](https://github.com/ParachuteComputer/parachute-vault/issues/327) — fix lands in vault 0.4.5; until then, audit your vault for case-only-differing paths before relying on a round-trip on a case-insensitive disk.
 - **Path traversal is refused, not aborted.** A note with `path: "../../escape"` would otherwise write outside the export directory. `exportVaultToDir` resolves the candidate path against the export root and refuses the write with a `console.warn`, then keeps going. Partial export beats no export. Self-inflicted at the vault level (operator owns the data), but real for programmatic callers ingesting from external systems. See [`isWithinDir`](https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts) and the F3 fix in vault#317.
 - **Pathless notes land in `_unpathed/`.** Notes without a `path:` go to `_unpathed/<note-id>.md` so they don't collide with each other and so a user importing into Obsidian sees them in one folder rather than scattered at the root.
 - **`exported_at` is the one timestamp that won't be byte-identical across runs.** It lives in `.parachute/vault.yaml`. Callers wanting strict byte-equivalence (tests, fixture diffing) pass `exportedAt` to the `exportVaultToDir` API; the CLI always stamps live. If you're git-projecting and want minimal diff noise, the `vault.yaml` file changing every run is the cost.
@@ -216,4 +217,6 @@ When the export primitive isn't right for them — when a Gitcoin-specific forma
 - **Multi-writer workspace guide** — [`guides/multi-writer-workspace.md`](../guides/multi-writer-workspace.md). The operator's-side view of how a team-shape vault accumulates the content the export then projects.
 - **Tracking issue** — [vault#308](https://github.com/ParachuteComputer/parachute-vault/issues/308) (umbrella; PR 1 = vault#317, PR 2 = vault#319).
 
-_Last updated: 2026-05-13 — current with vault 0.4.4-rc.11 (vault#308 fully shipped; export + lossless import on `main`)._
+_Last updated: 2026-05-15 — current with vault 0.4.4 stable (vault#308 fully shipped; export + lossless import on `main`)._
+
+_0.4.5 will close [vault#327](https://github.com/ParachuteComputer/parachute-vault/issues/327) (case-collision silent note loss on case-insensitive filesystems) and add [vault#328](https://github.com/ParachuteComputer/parachute-vault/issues/328) (non-markdown file types — CSV, YAML, JSON, MDX, etc. as first-class notes with sidecar metadata)._
