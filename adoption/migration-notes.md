@@ -50,6 +50,41 @@ forward.
 
 ---
 
+## 2026-05-17 — `auth-stack.md` umbrella lands
+
+**Change:** new umbrella pattern
+[`auth-stack.md`](../patterns/auth-stack.md). Single "if you're
+trying to X, read Y" reference that signposts across the 7
+auth-cluster pattern docs (`hub-as-issuer`, `oauth-scopes`,
+`oauth-dcr-approval`, `token-auth`, `tag-scoped-tokens`,
+`service-to-service-auth`, `well-known-discovery-rfc`) and the
+deeper [`research/auth-architecture-shape.md`](../research/auth-architecture-shape.md).
+Includes a stack-diagram, the two-token-paths table (OAuth bearer
+vs `pvt_*` PAT), and a "how the cluster composes" cheatsheet for
+PR reviewers.
+
+**Why now.** The auth cluster had grown to the point where a reader
+landing on one file struggled to discover the other six. Per
+CLAUDE.md ("one pattern per file"), the cluster can't be merged;
+the umbrella solves discovery without merging.
+
+**Affected:**
+
+- `parachute-patterns` — umbrella landed (this PR). No change to
+  the seven underlying single-concept docs.
+- Downstream repos — none. Pure documentation reorg; nothing to
+  adopt.
+- Reviewers — when a PR's `## Patterns check` per
+  [`governance.md`](../patterns/governance.md) Rule 3 names an
+  auth-cluster pattern, surfacing the umbrella alongside is a
+  reasonable courtesy. Not required.
+
+**Status:** doc-only. The seven underlying docs can gain a top-of-
+file "see also: [auth-stack.md](./auth-stack.md)" link on next
+touch, but no audit was performed in this PR to bulk-add them.
+
+---
+
 ## 2026-05-15 — governance.md gains Rule 4 (PR cadence)
 
 **Change:** [`governance.md`](../patterns/governance.md) extended from
