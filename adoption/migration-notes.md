@@ -50,6 +50,40 @@ forward.
 
 ---
 
+## 2026-05-17 — `module-discovery.md` umbrella lands
+
+**Change:** new umbrella pattern
+[`module-discovery.md`](../patterns/module-discovery.md). Single
+"if you're trying to X, read Y" reference that signposts across
+the 5 module-cluster pattern docs (`module-protocol`,
+`module-json-extensibility`, `module-ui-declaration`,
+`vault-mcp-discovery`, `mcp-transport`). Includes a lifecycle
+diagram (publish → install → discovery → MCP connect), a worked
+end-to-end example (vault declaring itself via `module.json`),
+and the two seams with the auth cluster (`hasAuth: true` +
+`urlForEntry.perConsumer`).
+
+**Why now.** Same shape as the auth-stack umbrella sibling — the
+module cluster had grown enough that a reader landing on one file
+struggled to discover the rest. Pattern-per-file mandate stays;
+umbrella solves discovery without merging.
+
+**Affected:**
+
+- `parachute-patterns` — umbrella landed (this PR). No change to
+  the five underlying single-concept docs.
+- Downstream repos — none. Pure documentation reorg; nothing to
+  adopt.
+- Module authors (first- and third-party) — when authoring a new
+  `module.json`, the worked-example section is the fastest read.
+  No required change to existing modules.
+
+**Status:** doc-only. The five underlying docs can gain a top-of-
+file "see also: [module-discovery.md](./module-discovery.md)" link
+on next touch.
+
+---
+
 ## 2026-05-17 — `auth-stack.md` umbrella lands
 
 **Change:** new umbrella pattern
