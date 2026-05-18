@@ -50,6 +50,42 @@ forward.
 
 ---
 
+## 2026-05-17 — Research: format-aware notes design space
+
+**Change:** new research doc
+[`research/format-aware-notes.md`](../research/format-aware-notes.md)
+covering the format-aware-notes design space — vault#328 (extension
+column + sidecar metadata, shipped at vault 0.4.5) + notes#138
+(Phase 2 PWA rendering dispatch, deferred for v0.5) + the emerging
+pattern of surfaces consuming vault's `extension` field to dispatch
+renderers.
+
+Open questions captured: where format validation lives (Q1),
+third-party surface capability declaration (Q2), sidecar lifecycle
+across multi-writer edits (Q3), MDX bundle weight (Q4),
+extension-vs-attachment boundary (Q5).
+
+Research-tier (not patterns/) per
+[`CLAUDE.md`](../CLAUDE.md) — pattern docs are for resolved
+patterns. Promotion tracker filed at
+[parachute-patterns#65](https://github.com/ParachuteComputer/parachute-patterns/issues/65).
+
+**Affected:**
+
+- `parachute-patterns` — research doc landed (this PR). Tracker
+  issue #65 opened.
+- `parachute-vault` — context for the shipped vault#328 work; no
+  new ask. Future Q1 resolution may affect substrate-side
+  validation.
+- `parachute-notes` — context for notes#138 (deferred v0.5
+  follow-up); no new ask. Future Q2/Q4 resolution affects the
+  PWA's renderer-fleet declaration.
+
+**Status:** research-tier. Promote to a pattern doc when Q1 + Q2
+resolve across vault + notes implementation.
+
+---
+
 ## 2026-05-17 — `module-discovery.md` umbrella lands
 
 **Change:** new umbrella pattern
