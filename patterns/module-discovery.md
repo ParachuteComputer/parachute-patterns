@@ -85,7 +85,21 @@ same one-source-two-surfaces pattern.
 
 ## Worked example: vault declares itself
 
-The canonical end-to-end:
+> **Note.** This example shows the full-complement *target* shape — the
+> fields a future vault would emit once `hasAuth`, `init`, and
+> `urlForEntry.perConsumer` flow through `module.json` end-to-end
+> (today some of those declarations still live in hub's transitional
+> `FIRST_PARTY_FALLBACKS` per
+> [`module-json-extensibility.md`](./module-json-extensibility.md)).
+> Vault's currently-shipped
+> [`.parachute/module.json`](https://github.com/ParachuteComputer/parachute-vault/blob/main/.parachute/module.json)
+> is simpler: `name`, `manifestName`, `displayName`, `tagline`,
+> `kind`, `port`, `paths`, `health`, `managementUrl`, `startCmd`, and
+> a `scopes` object with a `defines` array. For the canonical field
+> catalog see
+> [`module-json-extensibility.md`](./module-json-extensibility.md).
+
+The canonical end-to-end (target shape):
 
 **1. `parachute-vault/.parachute/module.json`** declares the module:
 
@@ -107,16 +121,17 @@ The canonical end-to-end:
       "claude.ai": { "appendPath": "/mcp" }
     }
   },
-  "managementUrl": "/admin",
-  "scopes": ["vault:<name>:read", "vault:<name>:write", "vault:<name>:admin"]
+  "managementUrl": "/admin/",
+  "scopes": { "defines": ["vault:<name>:read", "vault:<name>:write", "vault:<name>:admin"] }
 }
 ```
 
 The field catalog is in
 [`module-json-extensibility.md`](./module-json-extensibility.md);
 `managementUrl` is the relative-resolves-against-module shape per
-the same doc; `init` carries a safety constraint that `command[0]`
-must equal a bin from the installed npm package.
+the same doc (trailing slash deliberate per its fragment-token-SPA
+section); `init` carries a safety constraint that `command[0]` must
+equal a bin from the installed npm package.
 
 **2. `parachute install @openparachute/vault`** populates
 `~/.parachute/services.json` with the entry, runs `init.command`,
@@ -143,7 +158,7 @@ first real tool call.
 
 **5. An OAuth-capable client** discovers the AS via
 `/.well-known/oauth-authorization-server/vault/<name>` per
-[`well-known-discovery-rfc.md`](../patterns/well-known-discovery-rfc.md),
+[`well-known-discovery-rfc.md`](./well-known-discovery-rfc.md),
 sees the hub origin in `issuer` per
 [`hub-as-issuer.md`](./hub-as-issuer.md), and runs the full DCR +
 consent dance with the auth cluster's

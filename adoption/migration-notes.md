@@ -57,8 +57,9 @@ the six: four close as already-fixed-or-deferred (#27 fix already
 in `tag-scoped-tokens.md` §Mint authority line 80; #34 paragraph
 already past-tensed at `tag-data-model.md` line 94; #38 pseudocode
 already replaced by `expandTokenTagScope` + `noteWithinTagScope`
-shape with explicit string-form fallback; #25 deferred past v0.5
-pending the hub-as-sole-AS migration arc); one folds into this PR
+shape with explicit string-form fallback; #25 closed pending the
+hub-as-sole-AS migration arc — reopen when hub#212 resolves); one
+folds into this PR
 as a small inline addition (#35 — trailing-slash recommendation
 appended to `managementUrl` semantics in
 [`module-json-extensibility.md`](../patterns/module-json-extensibility.md));
