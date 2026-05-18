@@ -5,6 +5,51 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-17 — governance.md gains Rule 5 (CHANGELOG discipline)
+
+**Change:** [`governance.md`](../patterns/governance.md) extended from
+four rules to five. New **Rule 5 — CHANGELOG discipline: match the
+release log to the npm record.** The CHANGELOG carries two readers
+(consumers want "what's in `@latest`"; developers want per-bump
+archaeology) and both deserve space. Shape: stable section per
+published `@latest`, headlining the rc-chain narrative; per-rc-bump
+detail section *only when that rc actually publishes to `@rc`*. An
+rc bump that doesn't `npm publish --tag rc` gets no CHANGELOG entry —
+entries for versions that don't exist on npm are fiction.
+
+**Why now.** vault's `0.3.6-rc.X` chain accumulated ~28 ghost-version
+CHANGELOG entries (rc.1 plus rc.30–rc.39 written down; only four
+versions actually live on npm — `0.3.0-rc.1`, `0.3.0`, `0.3.1`,
+`0.3.3`). Rule 2 (RC versioning) covered the publish discipline;
+nothing covered the CHANGELOG discipline that has to ride alongside
+it. Rule 5 names it. Drafted + landed 2026-05-17.
+
+Header bumped from "Four rules" to "Five rules." Existing rules
+(no-auto-merge / RC versioning / patterns check / PR cadence) are
+unchanged.
+
+**Affected:**
+
+- `parachute-patterns` — rule landed (this PR).
+- All Parachute repos with shipping tentacles (`parachute-hub`,
+  `parachute-vault`, `parachute-notes`, `parachute-scribe`,
+  `parachute-agent`, `parachute.computer`) — on next CHANGELOG touch,
+  audit existing entries against `npm view <pkg> versions` and reconcile:
+  fold ghost rc entries into the stable narrative they belong to, or
+  drop them. No retroactive CHANGELOG rewrite is required for already-
+  shipped versions, but new entries from this date forward follow Rule
+  5.
+- Tentacle briefs: before writing a CHANGELOG section for an rc bump,
+  confirm the publisher will `npm publish --tag rc` for that bump (or
+  is the publish at-stable-promotion-only). If the rc won't publish,
+  no entry.
+
+**Status:** doc-only refresh. No code-side behavior change; the
+shift is in how tentacles + team-lead write CHANGELOG entries going
+forward.
+
+---
+
 ## 2026-05-15 — governance.md gains Rule 4 (PR cadence)
 
 **Change:** [`governance.md`](../patterns/governance.md) extended from
