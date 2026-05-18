@@ -50,6 +50,41 @@ forward.
 
 ---
 
+## 2026-05-17 — Stale-issue triage + module-json fragment-slash recommendation
+
+**Change:** triage pass on six 12-14-day-stale patterns issues. Of
+the six: four close as already-fixed-or-deferred (#27 fix already
+in `tag-scoped-tokens.md` §Mint authority line 80; #34 paragraph
+already past-tensed at `tag-data-model.md` line 94; #38 pseudocode
+already replaced by `expandTokenTagScope` + `noteWithinTagScope`
+shape with explicit string-form fallback; #25 deferred past v0.5
+pending the hub-as-sole-AS migration arc); one folds into this PR
+as a small inline addition (#35 — trailing-slash recommendation
+appended to `managementUrl` semantics in
+[`module-json-extensibility.md`](../patterns/module-json-extensibility.md));
+one stays open with priority comment (#37 — the R1-R15
+tag-scoped-tokens-survey triage is real + ready-to-execute but too
+big for this PR's scope; queued for next session).
+
+The trailing-slash recommendation captures the vault#252→#254→#255
+fragment-loss-through-301 lesson: SPA admin UIs receiving tokens
+via URL fragment should emit the canonical trailing-slash form
+from `managementUrl` to avoid the 301 dropping the fragment.
+
+**Affected:**
+
+- `parachute-patterns` — this PR. `module-json-extensibility.md`
+  gains the fragment-slash paragraph; five issues closed (#25,
+  #27, #34, #35, #38); one stays open (#37) with priority comment.
+- Module authors emitting `managementUrl` for fragment-token SPAs
+  — emit trailing-slash form. Today's only known affected module
+  (vault) is already conformant.
+
+**Status:** doc-only. Triage decisions logged per-issue via
+`gh issue close` comments; this entry summarizes.
+
+---
+
 ## 2026-05-17 — Research: format-aware notes design space
 
 **Change:** new research doc
