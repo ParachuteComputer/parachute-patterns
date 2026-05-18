@@ -1,7 +1,7 @@
 # Governance: PR review, RC versioning, patterns alignment
 
 > One short doc covering how Parachute repos ship code post-launch (v0.x,
-> April 2026 onward). Four rules, one shared shape.
+> April 2026 onward). Five rules, one shared shape.
 
 ## Rule 1 — No auto-merge
 
@@ -127,6 +127,38 @@ The two are independent axes:
 Most session-shaped work satisfies both: one bundle PR (granularity),
 landed before the next session begins (serial).
 
+## Rule 5 — CHANGELOG discipline: match the release log to the npm record
+
+The CHANGELOG serves two readers: consumers want "what's in this
+release" (canonical, aligned 1:1 with npm `@latest`); developers want
+per-bump archaeology. Both deserve space.
+
+The shape:
+
+- **Stable section per published `@latest` version.** Headline
+  narrative rolling up the rc chain. Migration risks + breaking
+  changes in the TL;DR. This is what upgrade docs (e.g.
+  `UPGRADING.md`) and external readers parse.
+- **RC section per rc-bump-that-actually-publishes-to-`@rc`.** Per-PR
+  development log. Stays as historical detail; not retroactively
+  edited.
+
+**An rc bump that doesn't `npm publish --tag rc` gets NO CHANGELOG
+section.** This is the discipline gap that produced ~28 ghost-version
+entries in the `vault@0.3.6-rc.X` chain (rc.1 then rc.30–rc.39 in
+CHANGELOG; only `0.3.0-rc.1`, `0.3.0`, `0.3.1`, `0.3.3` on npm).
+Don't write CHANGELOG entries for versions that don't exist in the
+world.
+
+At stable promotion: the rc-chain entries stay below the new stable
+section. The stable section's narrative is the headline; the rc
+entries are the citations.
+
+**Why this is its own rule.** Rule 2 (RC versioning) covers the
+publish discipline; this rule covers the CHANGELOG discipline that
+has to ride alongside it. Skipping either produces drift: publish
+without entry = silent; entry without publish = fiction.
+
 ## Why these rules
 
 The first two months of post-launch shipping (April 2026 → ?) are the period
@@ -139,11 +171,14 @@ of most rapid change. In that window:
 - Every undocumented pattern becomes harder to retrofit later.
 - Every fragmented PR set is a click-cost that scales with the wrong axis
   (issues touched), not the right one (sessions of work).
+- Every CHANGELOG entry for a version that never reached npm becomes
+  a footgun for the consumer reader who's trying to decide what to
+  install.
 
 The cost of these rules is small (one extra click for merge, one extra
 command for promotion, one extra paragraph in review, one extra
-discipline on bundling). The benefit is durable alignment across modules
-and humans.
+discipline on bundling, one extra check before writing a CHANGELOG
+section). The benefit is durable alignment across modules and humans.
 
 ## Open questions
 

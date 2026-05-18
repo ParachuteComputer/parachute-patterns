@@ -277,6 +277,20 @@ for vault's SPA). The hub doesn't proxy module internals or sniff auth
 headers; it links out and the module's own SPA boots up under its
 origin and runs its own OAuth dance against the hub if it needs one.
 
+**Trailing slash for fragment-token SPAs.** For SPA-style admin UIs
+that receive auth tokens via URL fragment (e.g., `#token=…`), the
+`managementUrl` SHOULD end with `/`. Browsers drop URL fragments
+through 301 redirects (RFC 7231 SHOULD-preserves, but
+Chrome/Firefox/Safari behave inconsistently — most drop). If the
+module's server canonicalizes bare → trailing-slash form via 301,
+the fragment is silently lost and the SPA receives no token. By
+emitting the canonical trailing-slash form directly from
+`managementUrl`, the redirect never fires and the token survives.
+Real-world example: vault#252 added a 301 from `/vault/<name>/admin`
+→ `/vault/<name>/admin/`; vault#255 fixed token loss by changing
+`managementUrl: "/admin"` → `"/admin/"`. Modules with non-SPA
+admin UIs, or SPAs that don't use fragment-tokens, don't need this.
+
 **Backwards-compatible.** Absent field = no link rendered. Modules that
 manage purely via CLI, or have no admin surface at all, simply omit the
 field. Same rule as `hasAuth` / `init` / `urlForEntry`.

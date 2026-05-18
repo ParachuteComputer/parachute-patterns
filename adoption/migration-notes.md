@@ -5,6 +5,192 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-17 — governance.md gains Rule 5 (CHANGELOG discipline)
+
+**Change:** [`governance.md`](../patterns/governance.md) extended from
+four rules to five. New **Rule 5 — CHANGELOG discipline: match the
+release log to the npm record.** The CHANGELOG carries two readers
+(consumers want "what's in `@latest`"; developers want per-bump
+archaeology) and both deserve space. Shape: stable section per
+published `@latest`, headlining the rc-chain narrative; per-rc-bump
+detail section *only when that rc actually publishes to `@rc`*. An
+rc bump that doesn't `npm publish --tag rc` gets no CHANGELOG entry —
+entries for versions that don't exist on npm are fiction.
+
+**Why now.** vault's `0.3.6-rc.X` chain accumulated ~28 ghost-version
+CHANGELOG entries (rc.1 plus rc.30–rc.39 written down; only four
+versions actually live on npm — `0.3.0-rc.1`, `0.3.0`, `0.3.1`,
+`0.3.3`). Rule 2 (RC versioning) covered the publish discipline;
+nothing covered the CHANGELOG discipline that has to ride alongside
+it. Rule 5 names it. Drafted + landed 2026-05-17.
+
+Header bumped from "Four rules" to "Five rules." Existing rules
+(no-auto-merge / RC versioning / patterns check / PR cadence) are
+unchanged.
+
+**Affected:**
+
+- `parachute-patterns` — rule landed (this PR).
+- All Parachute repos with shipping tentacles (`parachute-hub`,
+  `parachute-vault`, `parachute-notes`, `parachute-scribe`,
+  `parachute-agent`, `parachute.computer`) — on next CHANGELOG touch,
+  audit existing entries against `npm view <pkg> versions` and reconcile:
+  fold ghost rc entries into the stable narrative they belong to, or
+  drop them. No retroactive CHANGELOG rewrite is required for already-
+  shipped versions, but new entries from this date forward follow Rule
+  5.
+- Tentacle briefs: before writing a CHANGELOG section for an rc bump,
+  confirm the publisher will `npm publish --tag rc` for that bump (or
+  is the publish at-stable-promotion-only). If the rc won't publish,
+  no entry.
+
+**Status:** doc-only refresh. No code-side behavior change; the
+shift is in how tentacles + team-lead write CHANGELOG entries going
+forward.
+
+---
+
+## 2026-05-17 — Stale-issue triage + module-json fragment-slash recommendation
+
+**Change:** triage pass on six 12-14-day-stale patterns issues. Of
+the six: four close as already-fixed-or-deferred (#27 fix already
+in `tag-scoped-tokens.md` §Mint authority line 80; #34 paragraph
+already past-tensed at `tag-data-model.md` line 94; #38 pseudocode
+already replaced by `expandTokenTagScope` + `noteWithinTagScope`
+shape with explicit string-form fallback; #25 closed pending the
+hub-as-sole-AS migration arc — reopen when hub#212 resolves); one
+folds into this PR
+as a small inline addition (#35 — trailing-slash recommendation
+appended to `managementUrl` semantics in
+[`module-json-extensibility.md`](../patterns/module-json-extensibility.md));
+one stays open with priority comment (#37 — the R1-R15
+tag-scoped-tokens-survey triage is real + ready-to-execute but too
+big for this PR's scope; queued for next session).
+
+The trailing-slash recommendation captures the vault#252→#254→#255
+fragment-loss-through-301 lesson: SPA admin UIs receiving tokens
+via URL fragment should emit the canonical trailing-slash form
+from `managementUrl` to avoid the 301 dropping the fragment.
+
+**Affected:**
+
+- `parachute-patterns` — this PR. `module-json-extensibility.md`
+  gains the fragment-slash paragraph; five issues closed (#25,
+  #27, #34, #35, #38); one stays open (#37) with priority comment.
+- Module authors emitting `managementUrl` for fragment-token SPAs
+  — emit trailing-slash form. Today's only known affected module
+  (vault) is already conformant.
+
+**Status:** doc-only. Triage decisions logged per-issue via
+`gh issue close` comments; this entry summarizes.
+
+---
+
+## 2026-05-17 — Research: format-aware notes design space
+
+**Change:** new research doc
+[`research/format-aware-notes.md`](../research/format-aware-notes.md)
+covering the format-aware-notes design space — vault#328 (extension
+column + sidecar metadata, shipped at vault 0.4.5) + notes#138
+(Phase 2 PWA rendering dispatch, deferred for v0.5) + the emerging
+pattern of surfaces consuming vault's `extension` field to dispatch
+renderers.
+
+Open questions captured: where format validation lives (Q1),
+third-party surface capability declaration (Q2), sidecar lifecycle
+across multi-writer edits (Q3), MDX bundle weight (Q4),
+extension-vs-attachment boundary (Q5).
+
+Research-tier (not patterns/) per
+[`CLAUDE.md`](../CLAUDE.md) — pattern docs are for resolved
+patterns. Promotion tracker filed at
+[parachute-patterns#65](https://github.com/ParachuteComputer/parachute-patterns/issues/65).
+
+**Affected:**
+
+- `parachute-patterns` — research doc landed (this PR). Tracker
+  issue #65 opened.
+- `parachute-vault` — context for the shipped vault#328 work; no
+  new ask. Future Q1 resolution may affect substrate-side
+  validation.
+- `parachute-notes` — context for notes#138 (deferred v0.5
+  follow-up); no new ask. Future Q2/Q4 resolution affects the
+  PWA's renderer-fleet declaration.
+
+**Status:** research-tier. Promote to a pattern doc when Q1 + Q2
+resolve across vault + notes implementation.
+
+---
+
+## 2026-05-17 — `module-discovery.md` umbrella lands
+
+**Change:** new umbrella pattern
+[`module-discovery.md`](../patterns/module-discovery.md). Single
+"if you're trying to X, read Y" reference that signposts across
+the 5 module-cluster pattern docs (`module-protocol`,
+`module-json-extensibility`, `module-ui-declaration`,
+`vault-mcp-discovery`, `mcp-transport`). Includes a lifecycle
+diagram (publish → install → discovery → MCP connect), a worked
+end-to-end example (vault declaring itself via `module.json`),
+and the two seams with the auth cluster (`hasAuth: true` +
+`urlForEntry.perConsumer`).
+
+**Why now.** Same shape as the auth-stack umbrella sibling — the
+module cluster had grown enough that a reader landing on one file
+struggled to discover the rest. Pattern-per-file mandate stays;
+umbrella solves discovery without merging.
+
+**Affected:**
+
+- `parachute-patterns` — umbrella landed (this PR). No change to
+  the five underlying single-concept docs.
+- Downstream repos — none. Pure documentation reorg; nothing to
+  adopt.
+- Module authors (first- and third-party) — when authoring a new
+  `module.json`, the worked-example section is the fastest read.
+  No required change to existing modules.
+
+**Status:** doc-only. The five underlying docs can gain a top-of-
+file "see also: [module-discovery.md](./module-discovery.md)" link
+on next touch.
+
+---
+
+## 2026-05-17 — `auth-stack.md` umbrella lands
+
+**Change:** new umbrella pattern
+[`auth-stack.md`](../patterns/auth-stack.md). Single "if you're
+trying to X, read Y" reference that signposts across the 7
+auth-cluster pattern docs (`hub-as-issuer`, `oauth-scopes`,
+`oauth-dcr-approval`, `token-auth`, `tag-scoped-tokens`,
+`service-to-service-auth`, `well-known-discovery-rfc`) and the
+deeper [`research/auth-architecture-shape.md`](../research/auth-architecture-shape.md).
+Includes a stack-diagram, the two-token-paths table (OAuth bearer
+vs `pvt_*` PAT), and a "how the cluster composes" cheatsheet for
+PR reviewers.
+
+**Why now.** The auth cluster had grown to the point where a reader
+landing on one file struggled to discover the other six. Per
+CLAUDE.md ("one pattern per file"), the cluster can't be merged;
+the umbrella solves discovery without merging.
+
+**Affected:**
+
+- `parachute-patterns` — umbrella landed (this PR). No change to
+  the seven underlying single-concept docs.
+- Downstream repos — none. Pure documentation reorg; nothing to
+  adopt.
+- Reviewers — when a PR's `## Patterns check` per
+  [`governance.md`](../patterns/governance.md) Rule 3 names an
+  auth-cluster pattern, surfacing the umbrella alongside is a
+  reasonable courtesy. Not required.
+
+**Status:** doc-only. The seven underlying docs can gain a top-of-
+file "see also: [auth-stack.md](./auth-stack.md)" link on next
+touch, but no audit was performed in this PR to bulk-add them.
+
+---
+
 ## 2026-05-15 — governance.md gains Rule 4 (PR cadence)
 
 **Change:** [`governance.md`](../patterns/governance.md) extended from
