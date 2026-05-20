@@ -1,8 +1,7 @@
 # Trust-gradient determines isolation level
 
-> Same-operator vaults + same-operator automation = no isolation needed
-> = lightweight primitive. Hosted multi-tenant + third-party prompts =
-> steep trust gradient = container isolation. The same module shouldn't
+> Same-operator vault + same-operator automation: no isolation needed.
+> Hosted multi-tenant + third-party prompts: container isolation. Don't
 > try to span both.
 
 ## The pattern
