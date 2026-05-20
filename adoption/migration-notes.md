@@ -5,6 +5,53 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-20 — trust-gradient-isolation.md introduced
+
+**Change:** new pattern
+[`trust-gradient-isolation.md`](../patterns/trust-gradient-isolation.md).
+Names a design principle that's been implicit across runtime
+primitives: the level of isolation a Parachute primitive needs is
+determined by the trust gradient between the actor and the resource.
+Flat gradient (owner-operated vaults + same-operator automation) = no
+isolation needed = lightweight runner (subprocess + scrubbed env +
+cron). Steep gradient (hosted multi-tenant + third-party prompts) =
+container isolation. The same module shouldn't try to span both;
+ship two narrower primitives instead.
+
+**Why now.** The Gitcoin Brain prototype (May 2026) proved that a
+~200-line cron-Python runner spawning `claude -p` is a complete
+solution for owner-operated automation against a vault. That made
+the over-isolation in parachute-agent legible — every container
+mechanism it shipped was solving for a trust gradient the actual
+audience didn't have. parachute-agent was deprecated 2026-05-20;
+this pattern doc generalizes the lesson so the next runtime
+primitive (`parachute-jobs` for owner-operated; `parachute-cloud`
+for hosted) starts from "name the audience first" instead of
+"build the safest thing."
+
+**Affected:**
+
+- `parachute-patterns` — pattern doc landed (this PR).
+- `parachute-agent` — deprecation already documented in
+  [`DEPRECATED.md`](https://github.com/ParachuteComputer/parachute-agent/blob/main/DEPRECATED.md);
+  no further action.
+- `parachute-jobs` (TBD) — design doc, when written, should cite
+  this pattern as the design principle behind the lightweight shape.
+- `parachute-cloud` (TBD) — design doc, when written, should cite
+  this pattern as the design principle behind the container-isolation
+  shape, and explicitly call out the steep-gradient audience.
+- Cross-link from existing patterns:
+  [`oauth-scopes.md`](../patterns/oauth-scopes.md) (auth-layer cousin),
+  [`service-to-service-auth.md`](../patterns/service-to-service-auth.md)
+  (separate trust axis), [`governance.md`](../patterns/governance.md)
+  (rules these patterns live inside) — links live in the new doc's
+  "Related patterns" section, no edits needed in the linked-to files.
+
+**Status:** doc-only addition. No code-side behavior change; the
+shift is in how future runtime primitives are scoped and named.
+
+---
+
 ## 2026-05-17 — governance.md gains Rule 5 (CHANGELOG discipline)
 
 **Change:** [`governance.md`](../patterns/governance.md) extended from
