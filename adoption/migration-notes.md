@@ -5,6 +5,29 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-21 — trust-gradient-isolation.md: parachute-jobs → parachute-runner
+
+**Change:** rename references to the lightweight owner-operated job-substrate
+module from `parachute-jobs` to `parachute-runner` in
+[`trust-gradient-isolation.md`](../patterns/trust-gradient-isolation.md).
+Naming was settled 2026-05-21 with the runner design doc
+([`parachute.computer/design/2026-05-21-parachute-runner-design.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-05-21-parachute-runner-design.md));
+the module shipped through Phase 1.2 at
+[`github.com/ParachuteComputer/parachute-runner`](https://github.com/ParachuteComputer/parachute-runner).
+Worked-examples and History sections updated; `(TBD)` markers dropped
+because the module exists.
+
+**Affected:**
+
+- `parachute-patterns` — pattern doc updated (this PR).
+- No downstream code changes; the prior entries in this migration-notes
+  log retain their historical `parachute-jobs` wording on purpose
+  (running log, not retroactive rewrite).
+
+**Status:** doc-only. Tracked in patterns#71.
+
+---
+
 ## 2026-05-20 — trust-gradient-isolation.md introduced
 
 **Change:** new pattern
