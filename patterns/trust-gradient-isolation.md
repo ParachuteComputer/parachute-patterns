@@ -163,6 +163,13 @@ from "name the audience first" instead of "build the safest thing."
   trust axis between Parachute services. Today flat (loopback +
   shared secret); tomorrow JWT-mediated, but still distinct from
   user-prompt trust. Different gradients, different mechanisms.
+- [`module-self-registration.md`](./module-self-registration.md) —
+  why modules in the owner-operated trust gradient self-register via
+  filesystem writes to hub's `~/.parachute/services.json`: hub and
+  module share a filesystem, share an operator. Multi-tenant cloud
+  (v0.7+) is the seam where the same `selfRegister` function would
+  swap from filesystem-direct to HTTP-to-hub; same shape, different
+  transport, different gradient.
 - [`governance.md`](./governance.md) — the rules these patterns live
   inside. Naming the audience belongs to the same family of
   decisions as RC-versioning and the patterns check.
