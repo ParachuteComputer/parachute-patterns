@@ -62,7 +62,7 @@ with `--mode lightweight` vs `--mode container` becomes two codebases
 glued together at the CLI. The operational surfaces diverge fast: logs,
 restart semantics, lifecycle hooks, secret handling, debugging stories.
 Better to ship two narrower modules that each do their job well
-(`parachute-jobs` for owner-operated, `parachute-cloud` for hosted)
+(`parachute-runner` for owner-operated, `parachute-cloud` for hosted)
 than one wide module that does both poorly.
 
 **Default to the lightest viable primitive.** For owner-operated
@@ -84,9 +84,9 @@ discipline, the whole architecture). Don't half-isolate.
 
 ## Worked examples
 
-### parachute-jobs (lightweight, owner-operated) — TBD
+### parachute-runner (lightweight, owner-operated)
 
-The future home of the Gitcoin-Brain-style runner. Trust gradient: flat.
+The home of the Gitcoin-Brain-style runner. Trust gradient: flat.
 The operator wrote the prompts, owns the vault, runs the cron entry on
 their own host. Architecture:
 
@@ -114,7 +114,7 @@ this audience*:
 - Resource limits enforced at the container layer, not by the
   application.
 
-The same container mechanics that are overhead for parachute-jobs are
+The same container mechanics that are overhead for parachute-runner are
 load-bearing here.
 
 ### parachute-agent (deprecated 2026-05-20)
@@ -182,10 +182,12 @@ the audience actually using it.
 captures the per-module narrative; this pattern doc captures the
 generalizable lesson so the next runtime primitive doesn't repeat it.
 
-**Future.** `parachute-jobs` (TBD) implements the lightweight
-primitive for owner-operated automation — the Gitcoin Brain shape
-graduated into a committed module. `parachute-cloud` (TBD) handles
-the hosted-multi-tenant case if and when that demand materializes,
-reusing the container-isolation ideas where they're load-bearing.
+**Future.** [`parachute-runner`](https://github.com/ParachuteComputer/parachute-runner)
+implements the lightweight primitive for owner-operated automation — the
+Gitcoin Brain shape graduated into a committed module (design doc:
+[`parachute.computer/design/2026-05-21-parachute-runner-design.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-05-21-parachute-runner-design.md)).
+`parachute-cloud` (TBD) handles the hosted-multi-tenant case if and when
+that demand materializes, reusing the container-isolation ideas where
+they're load-bearing.
 Two modules, two audiences, two clearly-distinct trust gradients —
 which is the whole point.
