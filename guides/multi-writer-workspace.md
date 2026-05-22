@@ -75,8 +75,8 @@ The committed-core that this guide leans on:
 | **parachute-vault** | The knowledge graph + MCP. Notes, tags, links, schemas. |
 | **parachute-hub** | The portal + Authorization Server. Token issuance, identity, service catalog. |
 | **parachute-scribe** | Transcription daemon. Picks up audio attachments + writes transcripts back. |
-| **parachute-agent** | (Optional) Container-hosted Claude distribution for automation. |
-| **parachute-notes** | (Optional) Frontend PWA for human authoring. |
+| **parachute-runner** | (Optional) Background job runner; spawns `claude -p` against vault jobs. |
+| **parachute-app** | (Optional) UI host module; ships Notes as canonical first app. |
 
 Each is its own repo with its own conventions. Vault is the one this guide is centered on; the others appear where they matter.
 
