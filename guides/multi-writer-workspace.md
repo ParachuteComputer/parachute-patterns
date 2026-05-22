@@ -501,26 +501,28 @@ await fetch(`${VAULT_URL}/api/notes/${note.id}/attachments`, {
 // 3. Done. Scribe takes over. The note's content updates async when transcription lands.
 ```
 
-Scribe is vault-level, not Notes-PWA-level — configure scribe once against the vault and every client (Telegram bot, Notes PWA, future agents) gets transcripts as a free service. The Notes UI doesn't need to know transcription is configured; that's vault's concern.
+Scribe is vault-level, not app-UI-level — configure scribe once against the vault and every client (Telegram bot, the Notes app under parachute-app, future custom apps and agents) gets transcripts as a free service. None of the consuming UIs needs to know transcription is configured; that's vault's concern.
 
 ---
 
 ## 8. Agent-as-writer patterns
 
-### parachute-agent vs your own cron
+### parachute-runner vs your own cron
 
 Two paths for agent-driven writes:
 
 **Plain script + cron.** A small Bun/Python/node script that reads its source, talks to vault's REST API or MCP with a long-lived token, runs on a system cron. Lowest-friction shape for one or two scheduled jobs.
 
-**parachute-agent.** A distribution of Claude that runs in containers, with named agent groups, scheduled or webhook-triggered execution, hub-issued auto-rotated tokens, a UI to monitor runs, and first-class vault writes attributable to the agent identity.
+**parachute-runner.** The lightweight successor to the retired parachute-agent (see [`patterns/trust-gradient-isolation.md`](../patterns/trust-gradient-isolation.md) for the architectural reasoning). Runner uses vault itself as the job substrate — operators create notes tagged `#job` with a prompt and a schedule; runner watches for those notes and spawns `claude -p` against each one. Same `claude -p` substrate the operator runs by hand, but supervised and scheduled. Writes are attributable to the runner's hub-minted identity.
 
 Rule of thumb:
 
-- **1–2 scheduled jobs:** plain script + cron. The token-rotation and monitor-UI overhead of parachute-agent doesn't earn its weight yet.
-- **3+ agent groups with distinct scopes + schedules:** parachute-agent. Token rotation handled for you; restart/reconfigure without redeploying scripts; the agent's writes are attributable to its identity in the (forthcoming) per-identity attribution columns.
+- **1–2 scheduled jobs:** plain script + cron. The hub-token + vault-job-substrate overhead of parachute-runner doesn't earn its weight yet.
+- **3+ scheduled jobs with distinct scopes + schedules:** parachute-runner. Vault is already the substrate where jobs are authored; runner reads the job notes, schedules them, and writes results back into vault. No separate orchestration store. Token issuance is hub's job; rotation comes for free.
 
-You can start with a script and migrate to parachute-agent later. The vault doesn't care which is doing the writing; the writes look the same.
+You can start with a script and migrate to parachute-runner later. The vault doesn't care which is doing the writing; the writes look the same.
+
+> Historical note: **parachute-agent** (a containerized Claude distribution) shipped as committed-core 2026-05-05 and retired 2026-05-20. The Gitcoin Brain pattern proved the "Claude in containers" architecture was overengineered for the owner-operated, trusted-vault audience this guide is centered on. parachute-runner is the lightweight primitive that absorbed the use case; parachute-cloud (TBD) will handle multi-tenant container isolation when that demand materializes.
 
 ### Hub-issued scoped tokens for agents
 
