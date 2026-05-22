@@ -537,7 +537,7 @@ hub tokens mint --identity nightly-source-scraper \
 Two design notes:
 
 1. **Don't use a single service token for many agents.** Each agent gets its own identity, so the attribution columns (when they land — vault#298) tell you which agent did what.
-2. **Token rotation is hub's job.** With parachute-agent, rotation is automatic. With your own scripts, rotate manually via `hub tokens rotate <id>` and update the script's secret store.
+2. **Token rotation is hub's job.** With parachute-runner, rotation is automatic. With your own scripts, rotate manually via `hub tokens rotate <id>` and update the script's secret store.
 
 ### Writing back to the vault from agents
 

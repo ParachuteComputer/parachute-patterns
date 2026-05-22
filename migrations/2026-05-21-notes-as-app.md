@@ -65,7 +65,8 @@ Locations that consumed the old "Notes-as-module-installed-via-install-Notes" sh
 - [x] Hub `/notes/*` → `/app/notes/*` 301 redirect added in `hub-server.ts` with opt-out flag `hub_settings.notes_redirect_disabled`. (hub#316)
 - [x] `web/ui` admin SPA install + upgrade UI surfaces `app` correctly. (hub#304, verified by hub#324 wizard test pass)
 - [x] `src/services-manifest.ts` ServiceEntry hierarchical `uis` schema extension — sub-units under app's row carry per-UI displayName/iconUrl/path. (hub#315)
-- [ ] Hub README port table — already updated to reflect 1942 deprecating + 1946 app committed-core. (landed in hub README at the time of hub#324; no separate PR needed)
+- [ ] `parachute-hub/README.md` — port table + module list line (hub#325 in flight)
+- [ ] `parachute-hub/src/service-spec.ts` — `notes` module tagline still reads `"Notes PWA backed by your vault."` (line ~296). Should reframe — notes-daemon is wrapper around notes-ui now. Caught by audit script post-cleanup.
 
 ### parachute-app
 
@@ -92,8 +93,8 @@ Locations that consumed the old "Notes-as-module-installed-via-install-Notes" sh
 - [x] `patterns/canonical-ports.md` — 1942 marked `deprecating`; 1944 (agent) marked `retired`; 1945 (runner) + 1946 (app) added; body updated to name vault/app/scribe/hub as committed-core. (patterns#75)
 - [x] `patterns/governance.md` — `parachute-app` + `parachute-runner` added to branch-protected list; `parachute-notes` noted as protected through Phase 2-3 then archive at Phase 4. (patterns#75)
 - [x] `guides/multi-writer-workspace.md` — "Three modules, one workspace" table refreshed: `parachute-agent` and old `parachute-notes` rows replaced with `parachute-runner` + `parachute-app`. (patterns#75)
-- [x] `migrations/` directory + this file + README + audit script. (patterns#NN — this PR)
-- [x] `guides/multi-writer-workspace.md` §8 — "parachute-agent vs your own cron" retargeted to parachute-runner. (patterns#NN — this PR)
+- [x] `migrations/` directory + this file + README + audit script. (patterns#76 — this PR)
+- [x] `guides/multi-writer-workspace.md` §8 — "parachute-agent vs your own cron" retargeted to parachute-runner. (patterns#76 — this PR)
 
 ### parachute.computer (public site)
 

@@ -37,7 +37,7 @@ echo ""
 Keep the script honest:
 
 - One grep block per class of stale ref.
-- Exclude `CHANGELOG`, `migrations/`, `_site`, `node_modules`, `.git/`, `DEPRECATED` by default (already in `$EXCLUDES`).
+- Exclude `CHANGELOG`, `migrations/`, `_site`, `node_modules`, `.git/`, `DEPRECATED`, `BLOG-OUTLINE` by default (already in `$EXCLUDES`). Workspace-root draft docs (`BLOG-OUTLINE-*.md`, etc.) are expected noise — they legitimately quote stale framing as historical narration; add new filename fragments to `LINE_EXCLUDES` (in the script) the same way `BLOG-OUTLINE` was added if a future draft class leaks through.
 - Cite the migration that introduced the shift in the block's intro echo.
 - Cap each block at `head -20` so output stays readable.
 

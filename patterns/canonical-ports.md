@@ -19,7 +19,7 @@ chosen port into the service's `.env`. See
 assignment algorithm, idempotency rules, and the service-side contract
 this doc's reservations get enforced through.
 
-## Reservations (state of the world, 2026-05-08)
+## Reservations (state of the world, 2026-05-22)
 
 | Port | Service | Tier | Status | Notes |
 |---|---|---|---|---|

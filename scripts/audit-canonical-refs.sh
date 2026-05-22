@@ -14,7 +14,7 @@
 # discipline is "one class of stale ref per block" — each block names
 # what it's looking for + cites which migration introduced the shift.
 
-set -uo pipefail
+set -euo pipefail
 
 WORKSPACE="${1:-$HOME/ParachuteComputer}"
 
@@ -38,53 +38,55 @@ GREP_DIR_EXCLUDES=(
 )
 
 # After grep finishes, line-level excludes for files we can't prune via
-# --exclude-dir (CHANGELOGs and DEPRECATED.md files are inside live repos).
-LINE_EXCLUDES='CHANGELOG\|DEPRECATED'
+# --exclude-dir (CHANGELOGs and DEPRECATED.md files are inside live repos;
+# BLOG-OUTLINE-*.md are workspace-root drafts that legitimately quote
+# stale framing as historical narration).
+LINE_EXCLUDES='CHANGELOG\|DEPRECATED\|BLOG-OUTLINE'
 
 echo "=== Auditing canonical-architecture references in $WORKSPACE ==="
 echo ""
 
 echo "--- 'install Notes' / 'parachute install notes' ---"
 echo "(should be 'install App' per Notes-as-app migration 2026-05-21)"
-grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+{ grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
     -E "parachute install notes|install Notes|Install Notes" \
-    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | head -20
+    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | head -20; } || true
 echo ""
 
 echo "--- 'four committed-core' / 'five committed-core' ---"
 echo "(post-Notes-as-app: four — vault/app/scribe/hub. Anything saying 'five' is stale)"
-grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+{ grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.njk' \
     -E "four committed.core|five committed.core" \
-    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | head -20
+    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | head -20; } || true
 echo ""
 
 echo "--- 'Notes — frontend PWA' / 'Notes PWA backed by' (legacy framing) ---"
 echo "(Notes is hosted by parachute-app now; 'Notes — frontend PWA' wording is stale)"
-grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+{ grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
     -E "Notes — frontend PWA|Notes PWA backed by" \
-    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | head -20
+    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | head -20; } || true
 echo ""
 
 echo "--- hardcoded port 1942 outside parachute-notes ---"
 echo "(1942 is the deprecating notes-daemon port; new operator-facing copy should point at /app/notes via hub)"
-grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+{ grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
     -E ":1942|port: 1942|port=1942" \
-    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | grep -v "parachute-notes\|canonical-ports\|service-spec" | head -20
+    "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | grep -v "parachute-notes\|canonical-ports\|service-spec" | head -20; } || true
 echo ""
 
 echo "--- 'parachute-agent' (retired 2026-05-20) outside retirement/historical docs ---"
 echo "(operator-facing docs should reference parachute-runner; agent retired)"
-grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+{ grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
     -E "parachute-agent|parachute_agent" \
     "$WORKSPACE" 2>/dev/null \
     | grep -v "$LINE_EXCLUDES" \
     | grep -v "parachute-agent/\|trust-gradient\|retired\|governance\|FALLBACK\|service-spec\|loadAgents\|RELEASE-NOTES\|WAKE-UP\|BETA-EMAIL\|launch-day" \
-    | head -20
+    | head -20; } || true
 echo ""
 
 echo "=== Done. Review findings; cross-check against migrations/*.md. ==="
