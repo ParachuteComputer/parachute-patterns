@@ -183,7 +183,9 @@ The pattern shipped across three modules on 2026-05-21:
   `FIRST_PARTY_FALLBACKS[vault]`.
 - **runner#3** — Phase 1.3, modeled on the agent + scribe shape (which
   predate the vault POC by a few weeks but weren't formalized as a
-  pattern yet).
+  pattern yet). (Note: parachute-runner is currently exploration-tier;
+  cited as a faithful implementation of the same pattern as vault/scribe,
+  not as a canonical committed-core module.)
 - **scribe#50** — converged on the runner shape; module.json is now the
   single source of truth for paths/health/displayName/tagline.
 

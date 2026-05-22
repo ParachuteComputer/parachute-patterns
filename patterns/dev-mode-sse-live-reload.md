@@ -1,6 +1,6 @@
 # Dev-mode SSE live-reload
 
-> Hosted UIs in a supervisor module ship a dev mode that automatically
+> Hosted UIs in a host module ship a dev mode that automatically
 > reloads the browser when their source changes. The shape: a file
 > watcher (or manual trigger) broadcasts a `reload` event over an SSE
 > stream; an injected `<script>` in the served HTML listens via
@@ -10,7 +10,7 @@
 
 ## The principle
 
-UIs hosted inside a supervisor module (apps host UIs; a hypothetical
+UIs hosted inside a host module (apps host UIs; a hypothetical
 runner could host job dashboards) don't get the dev affordances a
 standalone Vite dev server gives them — they're served by the host as
 static bundles. Without a deliberate dev mode the iteration loop is:
@@ -167,10 +167,12 @@ Per-module knobs in the module config:
 - **`dev_watch_dir` is validated relative.** An absolute path in
   the manifest would let a malformed UI ask the host to watch
   `/Users/<op>/.ssh/`. Schema rejects absolute paths at meta-load.
-- **CORS / cross-origin:** SSE stream uses standard CORS, not
-  credentialed — a third-party origin can connect (and observe a
-  noisy "the operator reloaded their dev tab" signal), but can't
-  trigger a reload (no auth means no `/dev/trigger`).
+- **CORS / cross-origin:** The endpoint sets no CORS headers;
+  browsers block cross-origin EventSource connections by default
+  (same-origin policy). The default 127.0.0.1 bind further limits
+  reach. The intent: the SSE endpoint is intentionally unauthenticated
+  for dev-mode simplicity — a local same-origin tab observes reload
+  events without a token.
 
 ## Cross-references
 

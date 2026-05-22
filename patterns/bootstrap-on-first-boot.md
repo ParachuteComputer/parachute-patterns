@@ -143,6 +143,10 @@ migrate. The behavior is the same on every cold start.
 
 ## Failure modes
 
+**Note**: `<things>` in the table below is the array key for the
+module's default units, e.g. `apps` for parachute-app, `jobs` for
+a future parachute-jobs.
+
 | Condition | Behavior |
 | --- | --- |
 | `enabled: false` | Whole pass skipped, logged as `skipReason: "config.bootstrap_default_apps.enabled is false"`. |
