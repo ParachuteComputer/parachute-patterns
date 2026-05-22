@@ -65,7 +65,7 @@ Locations that consumed the old "Notes-as-module-installed-via-install-Notes" sh
 - [x] Hub `/notes/*` → `/app/notes/*` 301 redirect added in `hub-server.ts` with opt-out flag `hub_settings.notes_redirect_disabled`. (hub#316)
 - [x] `web/ui` admin SPA install + upgrade UI surfaces `app` correctly. (hub#304, verified by hub#324 wizard test pass)
 - [x] `src/services-manifest.ts` ServiceEntry hierarchical `uis` schema extension — sub-units under app's row carry per-UI displayName/iconUrl/path. (hub#315)
-- [ ] `parachute-hub/README.md` — port table + module list line (hub#325 in flight)
+- [x] `parachute-hub/README.md` — port table + module list line (hub#325)
 - [ ] `parachute-hub/src/service-spec.ts` — `notes` module tagline still reads `"Notes PWA backed by your vault."` (line ~296). Should reframe — notes-daemon is wrapper around notes-ui now. Caught by audit script post-cleanup.
 
 ### parachute-app
