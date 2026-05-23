@@ -189,10 +189,11 @@ in either order.
   for these three. If a service named `aardvark` later wanted
   bottom-of-list placement, an explicit numeric `displayOrder` (lower
   = earlier) is the obvious knob. Defer.
-- **Display kind beyond a single link.** `kind: "tool"` modules (no
-  one ships one yet) might want a launch-button vs. a card. Today
-  the tile is the only render shape; revisit if a tool-kind module
-  actually arrives.
+- **Tile shape beyond a single link.** Today the tile is the only
+  render shape; if a module ever wants a launch-button or a richer
+  card, the decision is driven by whether the module declares
+  `uiUrl` (discovery tile), `managementUrl` (admin link), or both.
+  Defer until a real use case lands.
 
 ## Where this applies
 

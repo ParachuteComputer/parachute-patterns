@@ -27,7 +27,7 @@ A self-registering module:
 
 1. **Ships `.parachute/module.json`** with the required fields (see
    [`module-json-extensibility.md`](./module-json-extensibility.md)):
-   `name`, `manifestName`, `displayName`, `tagline`, `kind`, `port`,
+   `name`, `manifestName`, `displayName`, `tagline`, `port`,
    `paths`, `health`, `startCmd`, `scopes`.
 2. **Exposes a `selfRegister(opts) → result` function** that reads the
    manifest, atomically upserts the services.json row, and returns
