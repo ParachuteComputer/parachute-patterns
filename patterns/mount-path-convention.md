@@ -1,5 +1,20 @@
 # Mount-path convention
 
+> **⚠️ Superseded for parachute-app hosted UIs (2026-05-23).**
+> This doc describes the build-time-baked-mount pattern (Vite `base` +
+> `import.meta.env.BASE_URL`) that the notes-daemon era used. For app
+> bundles hosted under **parachute-app**, the canonical pattern is
+> **runtime mount detection** via `@openparachute/app-client` reading
+> host-injected metadata. See:
+>
+> - [`runtime-tenancy-contract.md`](./runtime-tenancy-contract.md) — what hosts inject
+> - [`app-bundle-shape.md`](./app-bundle-shape.md#mount-agnosticism) — mount-agnosticism requirement
+>
+> This doc remains accurate for the deprecating notes-daemon path and
+> as historical context. Don't follow its build-time-mount guidance for
+> new apps under parachute-app — they need to work at any operator-
+> chosen mount, which the old pattern can't support.
+
 ## Convention
 
 Every Parachute frontend module is served at a **subpath** under the

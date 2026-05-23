@@ -64,6 +64,44 @@ Vault hosts named vaults; app hosts named apps. Same shape, different
 content. The pattern doc canonicalizes the contract so future apps
 (and a future scaffolder) point at one source.
 
+## Mount-agnosticism
+
+An app bundle MUST work at any `/app/<name>/` mount where `<name>` is
+set by the operator at install time. Don't bake in a specific path.
+
+Specifically:
+
+- **Vite build with `base: ""`** — emits relative asset URLs that
+  work at any mount when paired with the host's `<base href>`
+  injection (see
+  [`runtime-tenancy-contract.md`](./runtime-tenancy-contract.md)).
+- **React Router `basename`** derived at runtime via
+  `@openparachute/app-client#getMountBase()`. Don't read
+  `import.meta.env.BASE_URL` for the basename.
+- **OAuth callback URLs** derived from the runtime mount. The DCR
+  (Dynamic Client Registration) flow registers redirect URIs that
+  match the actual mount.
+- **PWA manifest `start_url` / `scope`** are an acknowledged
+  limitation — PWA install requires a build-time-pinned base because
+  `manifest.webmanifest`'s URLs are static. Operators who want PWA at
+  non-default mounts must build with `VITE_BASE_PATH=/app/<name>/`.
+  The bundle should DETECT the mismatch and skip SW registration
+  gracefully (see
+  [notes-ui#160](https://github.com/ParachuteComputer/parachute-notes/issues/160)
+  for the reference implementation).
+
+The runtime mount is provided by the host via injected meta tags. The
+canonical set is `parachute-mount` (the mount path), `parachute-hub`
+(hub origin), `parachute-vault` (bound vault path, when applicable),
+`parachute-tenant-id` (tenant's logical name). Read them through
+`@openparachute/app-client`; don't regex-detect from
+`window.location.pathname` (that pattern was the interim during
+notes-ui's 0.1.1 rollout — phasing out as app-client lands).
+
+For the full host↔tenant runtime metadata contract — including
+`<base href>` injection, hub origin, and bound vault discovery — see
+[`runtime-tenancy-contract.md`](./runtime-tenancy-contract.md).
+
 ## The `meta.json` fields
 
 Quick reference. Canonical source:
@@ -232,6 +270,9 @@ These build on this pattern doc as the contract:
 - [`mount-path-convention.md`](./mount-path-convention.md) — how an
   SPA at `/app/<name>/` configures its routing (`base` / `basename` /
   internal routes).
+- [`runtime-tenancy-contract.md`](./runtime-tenancy-contract.md) — the
+  host↔tenant runtime metadata handshake that makes mount-agnostic
+  bundles possible.
 - [`canonical-ports.md`](./canonical-ports.md) — apps don't have
   ports; backend modules do. Reference for the other side.
 - [`oauth-scopes.md`](./oauth-scopes.md) — scope-string shape that
@@ -258,3 +299,11 @@ These build on this pattern doc as the contract:
   scaffolder) have a single source to point at. The Phase 2.0
   `required_schema`, Phase 3.0 `dev_*` knobs, PWA fields, and
   `public` are all live in `meta-schema.ts` as of this doc.
+- **2026-05-23 (v2)** — Mount-agnosticism section added. Aaron's
+  install loop revealed that bundles with `VITE_BASE_PATH` baked in
+  broke at operator-chosen mounts; notes-ui#159 shipped interim regex
+  detection, and the canonical answer became explicit host-injected
+  metadata — see
+  [`runtime-tenancy-contract.md`](./runtime-tenancy-contract.md).
+  Closes
+  [parachute-patterns#80](https://github.com/ParachuteComputer/parachute-patterns/issues/80).

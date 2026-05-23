@@ -162,6 +162,10 @@ lighthouse — modules know which way they're heading.
   auth gradient every surface shares.
 - [`ssrf-safe-fetch.md`](./ssrf-safe-fetch.md) — for modules whose API
   surface fetches external URLs.
+- [`runtime-tenancy-contract.md`](./runtime-tenancy-contract.md) — the
+  third side of the contract triad: what hosts inject into tenants at
+  runtime, mirroring this doc (what modules expose) and
+  [`app-bundle-shape.md`](./app-bundle-shape.md) (what apps ship).
 
 ## History
 
