@@ -95,6 +95,10 @@ Locations that consumed the old "Notes-as-module-installed-via-install-Notes" sh
 - [x] `guides/multi-writer-workspace.md` — "Three modules, one workspace" table refreshed: `parachute-agent` and old `parachute-notes` rows replaced with `parachute-runner` + `parachute-app`. (patterns#75)
 - [x] `migrations/` directory + this file + README + audit script. (patterns#76 — this PR)
 - [x] `guides/multi-writer-workspace.md` §8 — "parachute-agent vs your own cron" retargeted to parachute-runner. (patterns#76 — this PR)
+- [x] `patterns/services-json-row-conventions.md` — canonicalized the row-naming rule that the duplicate-port bug revealed (patterns#77 — this PR)
+- [x] `scripts/audit-canonical-refs.sh` — `self-register row name` block added to catch the bug shape going forward (patterns#77 — this PR)
+- [x] `parachute-app#13` — app self-register row key fix (`name: "app"` → `name: ROW_NAME` derived from `manifestName`)
+- [x] `parachute-runner#4` — runner self-register row key fix (mirror of app#13)
 
 ### parachute.computer (public site)
 

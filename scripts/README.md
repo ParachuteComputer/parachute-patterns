@@ -23,7 +23,7 @@ When adding one:
 
 ## Adding a new audit class to `audit-canonical-refs.sh`
 
-Each architectural shift produces a new class of stale-reference pattern. When you spot one (during a migration, or via a bug report like hub#323 → hub#324), add a grep block to the script:
+Each architectural shift produces a new class of stale-reference pattern. When you spot one (during a migration, or via a bug report like hub#323 → hub#324, or via a bug-shape like the parachute-app#13 / parachute-runner#4 duplicate-port-row regression), add a grep block to the script:
 
 ```bash
 echo "--- '<pattern description>' ---"
@@ -40,5 +40,10 @@ Keep the script honest:
 - Exclude `CHANGELOG`, `migrations/`, `_site`, `node_modules`, `.git/`, `DEPRECATED`, `BLOG-OUTLINE` by default (already in `$EXCLUDES`). Workspace-root draft docs (`BLOG-OUTLINE-*.md`, etc.) are expected noise — they legitimately quote stale framing as historical narration; add new filename fragments to `LINE_EXCLUDES` (in the script) the same way `BLOG-OUTLINE` was added if a future draft class leaks through.
 - Cite the migration that introduced the shift in the block's intro echo.
 - Cap each block at `head -20` so output stays readable.
+
+Not every block has to fit the `--include='*.md'` shape. The `self-register row name` block, for example, walks a discovered list of `self-register.ts` files (under `parachute-*/src` and `parachute-*/packages/*/src`) and runs a focused regex per-file rather than a workspace-wide grep. Use whichever shape gives the cleanest signal:
+
+- **Workspace-wide grep** when the stale ref is text that could appear anywhere (doc copy, comments, hardcoded ports).
+- **Discover-then-check** when the bug shape is structural — a specific kind of file where a specific line shape is wrong (the convention violation in [`patterns/services-json-row-conventions.md`](../patterns/services-json-row-conventions.md), wrong import path, missing required field). Cite the pattern doc that establishes the convention.
 
 The script is not exhaustive — it catches known stale patterns, not unknown ones. Real audits still rely on a human reading the changes against the migration doc. The script is the safety net for the patterns we've already seen drift.

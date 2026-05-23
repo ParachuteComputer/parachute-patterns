@@ -89,6 +89,25 @@ echo "(operator-facing docs should reference parachute-runner; agent retired)"
     | head -20; } || true
 echo ""
 
+echo "--- self-register row name written as literal short name ---"
+echo "(should be \`name: manifest.manifestName\` or \`name: ROW_NAME\` per services-json-row-conventions; literal short names create duplicate-port rows)"
+{
+  # Discover self-register.ts under any first-party package layout (src/ or
+  # packages/*/src/). Sort + uniq so the broad glob doesn't re-list the
+  # explicit set above. Quiet `find` so missing dirs don't noise the output.
+  find "$WORKSPACE"/parachute-*/src \
+       "$WORKSPACE"/parachute-*/packages/*/src \
+       -maxdepth 1 -name self-register.ts -type f 2>/dev/null \
+    | sort -u
+} | while read -r f; do
+  hits=$(grep -nE "^\s+name:\s*\"[a-z][a-z-]+\"" "$f" 2>/dev/null || true)
+  if [[ -n "$hits" ]]; then
+    echo "$hits"
+    echo "  ^ $f writes a literal short name as services.json row identity — should be manifestName"
+  fi
+done
+echo ""
+
 echo "=== Done. Review findings; cross-check against migrations/*.md. ==="
 echo ""
 echo "Notes:"
