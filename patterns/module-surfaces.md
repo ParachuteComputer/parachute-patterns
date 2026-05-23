@@ -79,7 +79,7 @@ lighthouse, not a deadline.
 Most complete: vault. Look at:
 
 - [`parachute-vault/src/routing.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routing.ts) — full REST API + MCP route dispatch
-- [`parachute-vault/src/mcp/`](https://github.com/ParachuteComputer/parachute-vault/tree/main/src/mcp) — MCP server (the canonical example for a Parachute-module MCP)
+- [`parachute-vault/src/mcp-http.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/mcp-http.ts) — MCP server (the canonical example for a Parachute-module MCP)
 - [`parachute-vault/web/ui/`](https://github.com/ParachuteComputer/parachute-vault/tree/main/web/ui) — admin SPA (the canonical example for a module-side admin UI)
 - [`parachute-vault/.parachute/module.json`](https://github.com/ParachuteComputer/parachute-vault/blob/main/.parachute/module.json) — manifest declares paths + `managementUrl` + scopes
 - [`parachute-vault/src/self-register.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/self-register.ts) — self-registration
@@ -180,7 +180,9 @@ lighthouse — modules know which way they're heading.
 - **Forthcoming** —
   [hub#301](https://github.com/ParachuteComputer/parachute-hub/issues/301)
   Phase B/C/D will drop `kind` from all module.json files. As of this
-  doc, [`module-protocol.md`](./module-protocol.md) and
-  [`module-json-extensibility.md`](./module-json-extensibility.md)
-  still document `kind` as required; they update once Phase B/C/D
-  lands.
+  doc, [`module-protocol.md`](./module-protocol.md),
+  [`module-json-extensibility.md`](./module-json-extensibility.md),
+  and [`module-ui-declaration.md`](./module-ui-declaration.md) (which
+  references `kind: "tool"` rendering) still document `kind` as
+  required; they update once Phase B/C/D lands.
+  Tracked at [hub#330](https://github.com/ParachuteComputer/parachute-hub/issues/330).
