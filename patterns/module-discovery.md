@@ -50,7 +50,7 @@ file in this cluster is a refinement of one slot in that protocol.
 
 Read [`module-json-extensibility.md`](./module-json-extensibility.md).
 The full `module.json` field catalog — `name`, `manifestName`,
-`displayName`, `tagline`, `kind`, `port`, `paths`, `health`,
+`displayName`, `tagline`, `port`, `paths`, `health`,
 `startCmd`, `scopes`, `dependencies`, plus the extensibility fields
 (`hasAuth`, `init`, `urlForEntry`, `managementUrl`, `uiUrl`). No
 `@openparachute/` scope or `parachute-*` prefix required; the
@@ -94,7 +94,7 @@ same one-source-two-surfaces pattern.
 > Vault's currently-shipped
 > [`.parachute/module.json`](https://github.com/ParachuteComputer/parachute-vault/blob/main/.parachute/module.json)
 > is simpler: `name`, `manifestName`, `displayName`, `tagline`,
-> `kind`, `port`, `paths`, `health`, `managementUrl`, `startCmd`, and
+> `port`, `paths`, `health`, `managementUrl`, `startCmd`, and
 > a `scopes` object with a `defines` array. For the canonical field
 > catalog see
 > [`module-json-extensibility.md`](./module-json-extensibility.md).
@@ -109,7 +109,6 @@ The canonical end-to-end (target shape):
   "manifestName": "@openparachute/vault",
   "displayName": "Vault",
   "tagline": "Personal knowledge graph",
-  "kind": "api",
   "port": 1940,
   "paths": ["/vault/:name"],
   "health": "/vault/:name/health",

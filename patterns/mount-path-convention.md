@@ -191,8 +191,10 @@ internal route shape after users already have bookmarks.
   slug, set `base`, write mount-relative routes, mirror the manifest.
   The hub catalog (`/.well-known/parachute.json`, see
   [`module-protocol.md`](./module-protocol.md)) auto-renders any
-  frontend module that publishes a `services.json` entry with
-  `kind: "frontend"`.
+  module that publishes a `services.json` entry with `paths`,
+  `health`, and (optionally) `uiUrl`. The legacy `kind: "frontend"`
+  field has been retired (hub#330); rendering is driven by capability
+  fields, not type labels.
 - **Third-party frontends** — same contract. There's nothing
   Parachute-specific in the convention; it's standard SPA-under-subpath
   hygiene that Parachute's hub-as-front-door composition pins.
