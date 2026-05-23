@@ -1,5 +1,12 @@
 # Module JSON extensibility
 
+> **Note (2026-05-23):** The `kind` field has been removed from the canonical
+> manifest shape ([hub#327](https://github.com/ParachuteComputer/parachute-hub/pull/327)
+> made it optional; [hub#330](https://github.com/ParachuteComputer/parachute-hub/issues/330)
+> completes the retirement). Hub doesn't branch on kind anymore; capabilities
+> are explicit (`paths`, `health`, `managementUrl`, `uiUrl`). See
+> [`module-surfaces.md`](./module-surfaces.md) for the canonical framing.
+
 > **Status: target convention, partial implementation.** The shape is
 > declared in
 > [`parachute.computer/design/2026-04-20-module-architecture.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md#extensibility-path)
@@ -33,7 +40,6 @@ one file the author controls.
   "manifestName": "my-service",
   "displayName": "My Service",
   "tagline": "What the service does",
-  "kind": "api",
   "port": 7001,
   "paths": ["/my-service"],
   "health": "/health",
@@ -59,7 +65,6 @@ one file the author controls.
 | `manifestName` | The name used in user-facing manifests (PWA / OAuth client name). Often equals `name`. |
 | `displayName` | Human label rendered on the hub card. |
 | `tagline` | One-line description rendered under `displayName`. |
-| `kind` | One of `"api" \| "frontend" \| "tool"`. Hub picks card vs. iframe vs. launcher. |
 | `port` | Default loopback port. Pick outside the reserved Parachute range (`1939–1949`) — see [`canonical-ports.md`](./canonical-ports.md). The CLI warns on collision but does not block. |
 | `paths` | URL paths the module serves under the hub origin. |
 | `health` | Path for liveness probes. |
@@ -90,13 +95,12 @@ hasAuth?: boolean;  // default false
 
 Declares the module as an OAuth resource server — i.e., it validates
 bearer tokens on its own endpoints. The hub uses this to derive
-`publicExposure`'s default for `kind: "api" | "tool"` services: with
-`hasAuth: true` they default to `"allowed"` (safe to expose because the
-module gates itself); without it they default to `"auth-required"`
-(the module hasn't claimed auth, so non-loopback layers are gated by
-hub on its behalf). It also informs how `parachute expose` and the
-discovery surface treat bearer-bearing modules. `kind: "frontend"`
-modules ignore this field — they default to `"allowed"` regardless.
+`publicExposure`'s default: with `hasAuth: true` the module defaults to
+`"allowed"` (safe to expose because the module gates itself); without it
+the module defaults to `"auth-required"` (the module hasn't claimed
+auth, so non-loopback layers are gated by hub on its behalf). It also
+informs how `parachute expose` and the discovery surface treat
+bearer-bearing modules.
 
 #### Runtime behavior — hub-side per-request layer-gate
 
@@ -334,7 +338,7 @@ initial pass at hub-side per-vault detail pages was reverted.
 3. Validate against the module-manifest schema. Reject malformed
    modules early.
 4. Write a `services.json` entry using the declared `name`, `port`,
-   `paths`, `health`, `displayName`, `tagline`, `kind`.
+   `paths`, `health`, `displayName`, `tagline`.
 5. Register `startCmd` so `parachute start <name>` knows what to spawn.
 6. For each `dependencies` entry, run `auto-wire` (mints credential,
    writes both ends, idempotent) — same machinery the vault↔scribe

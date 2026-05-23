@@ -1,5 +1,12 @@
 # Module protocol
 
+> **Note (2026-05-23):** The `kind` field has been removed from the canonical
+> manifest shape ([hub#327](https://github.com/ParachuteComputer/parachute-hub/pull/327)
+> made it optional; [hub#330](https://github.com/ParachuteComputer/parachute-hub/issues/330)
+> completes the retirement). Hub doesn't branch on kind anymore; capabilities
+> are explicit (`paths`, `health`, `managementUrl`, `uiUrl`). See
+> [`module-surfaces.md`](./module-surfaces.md) for the canonical framing.
+
 ## Convention
 
 Every Parachute module plugs into the ecosystem by implementing the same
@@ -24,8 +31,7 @@ exist on this machine and how to reach them.
   "health": "/vault/default/health",
   "version": "0.3.0",
   "displayName": "Vault",
-  "tagline": "Agent-native knowledge graph …",
-  "kind": "api"
+  "tagline": "Agent-native knowledge graph …"
 }
 ```
 
@@ -39,14 +45,13 @@ Phase 2+ lands.
 
 | Path | Purpose | Auth |
 | --- | --- | --- |
-| `GET /.parachute/info` | identity + version + `kind` + capabilities | none (CORS `*`) |
+| `GET /.parachute/info` | identity + version + capabilities | none (CORS `*`) |
 | `GET /.parachute/icon.svg` | small inline SVG, `image/svg+xml` + `nosniff` | none |
 | `GET /.parachute/config/schema` | JSON Schema for configuration | none |
 | `GET /.parachute/config` | current config values | `<module>:admin` (Phase 2) |
 | `PUT /.parachute/config` | write config, validated against schema | `<module>:admin` (Phase 3) |
 
-`kind` is one of `"api" | "frontend" | "tool"`. Reference implementation
-dispatches these in
+Reference implementation dispatches these in
 [`parachute-vault/src/routing.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routing.ts)
 (`/.parachute/info`, `/.parachute/icon.svg`, `/.parachute/config/schema`,
 `/.parachute/config`).
@@ -100,8 +105,6 @@ the hub page fetch lives in
   `/v1/.parachute/*`. Keeps cross-module URL construction uniform.
 - **`info` + `icon.svg` are unauthenticated and CORS-open.** The hub page
   loads them from the browser with `credentials: 'omit'`.
-- **`kind` is required.** Hubs decide how to render the card (link vs.
-  iframe vs. tool launcher) from this field.
 - **Every service gets one `services.json` entry.** Multi-tenant modules
   (e.g. multiple vaults) write one entry per instance with distinct `name`
   + `paths`.
