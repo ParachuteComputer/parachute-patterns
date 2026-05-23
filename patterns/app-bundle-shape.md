@@ -90,9 +90,11 @@ Specifically:
   [notes-ui#160](https://github.com/ParachuteComputer/parachute-notes/issues/160)
   for the reference implementation).
 
-The runtime mount is provided by the host via injected meta tag
-(`<meta name="parachute-mount" content="/app/<name>">`). Read it
-through `@openparachute/app-client`; don't regex-detect from
+The runtime mount is provided by the host via injected meta tags. The
+canonical set is `parachute-mount` (the mount path), `parachute-hub`
+(hub origin), `parachute-vault` (bound vault path, when applicable),
+`parachute-tenant-id` (tenant's logical name). Read them through
+`@openparachute/app-client`; don't regex-detect from
 `window.location.pathname` (that pattern was the interim during
 notes-ui's 0.1.1 rollout — phasing out as app-client lands).
 
