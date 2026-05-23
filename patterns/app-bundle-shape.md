@@ -96,7 +96,8 @@ Quick reference. Canonical source:
 - `pwa` (boolean, default `false`) — declares PWA mode. When `true`,
   `pwa_service_worker` is required.
 - `pwa_service_worker` (string, relative path within `dist/`) — SW
-  file path. App serves it with no-cache headers.
+  file path. App serves it with no-cache headers. Leading-slash form
+  rejected at parse time — use `sw.js`, not `/sw.js`.
 - `public` (boolean, default `false`) — when `true`, hub does NOT
   enforce a session gate at `/app/<name>/*`. Use sparingly.
 - `required_schema` ({ tags: [...] }) — tag-role declarations the
@@ -106,10 +107,19 @@ Quick reference. Canonical source:
 - `dev_watch_dir`, `dev_build_cmd`, `dev_debounce_ms` — Phase 3.0
   dev-mode file watcher knobs. Operators iterating from a source
   checkout point these at the source directory and a build command.
-  See [`dev-mode-sse-live-reload.md`](./dev-mode-sse-live-reload.md).
+  `dev_watch_dir` also rejects leading-slash absolute paths at parse
+  time (use a path relative to your checkout). See
+  [`dev-mode-sse-live-reload.md`](./dev-mode-sse-live-reload.md).
 
-Defaults are filled at parse time so consumers can read every field
-unconditionally.
+`$schema` (optional, top-level) — point at
+`https://parachute.computer/schemas/app-ui-meta.json` to get
+schema-aware autocomplete + validation in editors. Not required by
+`parseMeta()`; purely operator ergonomics.
+
+Three fields are default-filled at parse time so consumers can read
+them unconditionally: `scopes_required` (→ `["vault:*:read"]`), `pwa`
+(→ `false`), `public` (→ `false`). Other optional fields stay
+`undefined` when absent — code reading them needs to handle that.
 
 ## Reference implementation
 
@@ -204,12 +214,12 @@ These build on this pattern doc as the contract:
   directory with `meta.json`, a build config, and vault-client wiring.
   Different framework templates (Vite+React default; vanilla HTML for
   the simplest case). Tracked at
-  [parachute-app#scaffold-issue](https://github.com/ParachuteComputer/parachute-app/issues)
+  [parachute-app#17](https://github.com/ParachuteComputer/parachute-app/issues/17)
   (TBD).
 - **`/create-parachute-app` Claude skill** — TBD; natural-language
   scaffolding. The operator describes a use case, the skill generates
   a working starter. Tracked at
-  [parachute-app#claude-skill-issue](https://github.com/ParachuteComputer/parachute-app/issues)
+  [parachute-app#18](https://github.com/ParachuteComputer/parachute-app/issues/18)
   (TBD).
 - **`parachute-app validate-bundle <path-or-tarball>`** — TBD; CLI
   that runs `parseMeta()` against a built bundle so CI can catch shape
