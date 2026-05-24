@@ -241,7 +241,7 @@ parent owned by root, not bun.
 - [`parachute-hub/docker-entrypoint.sh`](https://github.com/ParachuteComputer/parachute-hub/blob/main/docker-entrypoint.sh)
   — the entrypoint chown pattern.
 - [hub#349](https://github.com/ParachuteComputer/parachute-hub/pull/349)
-  — the issue trail; chain of seven PRs to land the full fix:
+  — the issue trail; chain of nine PRs to land the full fix:
   - #349 — opening issue
   - #350 — entrypoint chown stub
   - #351 — `TMPDIR` on persistent disk
@@ -253,25 +253,48 @@ parent owned by root, not bun.
     completes for the first time)
   - #356 — platform-injected `PORT` clobbers child ports (third load-
     bearing fix; vault + scribe finally start cleanly after install)
+  - #357 — `bootSupervisedModules` was a third PORT-spawn site missed
+    by #356 (fourth load-bearing fix; auto-spawn on hub boot now sets
+    PORT for each child too)
+  - #358 — reverse proxy must forward `X-Forwarded-Host` + `X-Forwarded-
+    Proto` to supervised modules (fifth load-bearing fix; OAuth metadata
+    now publishes the public origin instead of internal loopback)
 - [hub#352](https://github.com/ParachuteComputer/parachute-hub/pull/352)
   — the `Bun.spawn { env: process.env }` fix specifically.
 - [hub#355](https://github.com/ParachuteComputer/parachute-hub/pull/355)
   — the mkdir-as-root pitfall fix; diagnosed via live SSH into a fresh
   Render deploy.
 - [hub#356](https://github.com/ParachuteComputer/parachute-hub/pull/356)
-  — the platform-PORT pitfall fix; surfaced one PR later when vault
-  could finally try to start.
+  — the platform-PORT pitfall fix (install + lifecycle paths).
+- [hub#357](https://github.com/ParachuteComputer/parachute-hub/pull/357)
+  — the PORT-fix-for-boot-path follow-up; symmetric fix in the third
+  spawn site (`bootSupervisedModules`).
+- [hub#358](https://github.com/ParachuteComputer/parachute-hub/pull/358)
+  — the X-Forwarded-* proxy pitfall fix; surfaced after vault + scribe
+  started cleanly and OAuth flows were first exercised via the public URL.
 - [patterns#85](https://github.com/ParachuteComputer/parachute-patterns/issues/85)
   — open audit: verify `Bun.spawn` passes `env: process.env` across
   vault / scribe / app / runner.
 
+## Security note on X-Forwarded-Host
+
+Modules that honor `X-Forwarded-Host` for public-URL construction (e.g.
+vault's `getBaseUrl` for OAuth metadata) are trusting that header — a
+malicious client that can reach the module DIRECTLY (bypassing hub)
+could send `X-Forwarded-Host: evil.com` and poison the published OAuth
+metadata, enabling redirect-URI attacks. Defense: each module should
+bind loopback-only (`127.0.0.1`) so the only way in is through hub's
+reverse proxy, which is a trusted forwarder. Direct internet exposure
+of supervised modules is out of scope for this pattern.
+
 ## History
 
 - **2026-05-23 → 2026-05-24** — bugs discovered + fixed across
-  hub#349-#356. The pattern of "each fix unblocks the next reachable
-  bug" repeated three times: env-var chain → mkdir-as-root → platform-
-  injected PORT. Local docker-volume repro caught most but missed both
-  load-bearing bugs that required live SSH into a fresh Render deploy.
+  hub#349-#358. The pattern of "each fix unblocks the next reachable
+  bug" repeated five times: env-var chain → mkdir-as-root → platform-
+  injected PORT (install path) → PORT (boot path) → X-Forwarded-*
+  forwarding. Local docker-volume repro caught the first; live SSH
+  into a fresh Render deploy was load-bearing for the rest.
 - **2026-05-24** — pattern doc landed so the next module deployed to
   a container + persistent disk doesn't walk the same path. Updated
   same day with the mkdir-as-root + platform-PORT pitfall callouts.
