@@ -61,11 +61,16 @@ The image artifact exists even if no deploy target is currently using it.
 Lets future image-pinned `render.yaml` variants land as a doc/yaml
 change, not an infra change.
 
-## Operator one-time setup per repo
+## Operator one-time setup per published package
 
-1. **`NPM_TOKEN` secret.** npmjs.com → Access Tokens → New Token
-   (type: **Automation**) → scope `@openparachute/*`. Add as `NPM_TOKEN`
-   under GitHub repo Settings → Secrets and variables → Actions.
+1. **npm Trusted Publisher.** For each published package (one per `package.json` in the repo that isn't `private: true`):
+   - npmjs.com → the package's Settings page → "Trusted Publishers" section
+   - Add publisher: GitHub Actions
+   - Organization `ParachuteComputer`, Repository = the repo it ships from, Workflow filename `release.yml`, Environment blank
+
+   Multi-package repos (e.g. parachute-hub ships hub + scope-guard) configure ONE rule per published package, all pointing at the same `release.yml` file.
+
+   No `NPM_TOKEN` secret needed — the workflow uses OIDC. Requires `permissions: id-token: write` at the job level (already in the canonical workflow) AND npm CLI 11.5+ (use `actions/setup-node@v4` with `node-version: '24'`; node 20 LTS ships only npm 10 which lacks OIDC support).
 
 2. **ghcr.io permissions.** No secret needed (the workflow uses
    `GITHUB_TOKEN`), but the first push creates the package as **private
