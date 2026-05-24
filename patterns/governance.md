@@ -39,32 +39,44 @@ summary; the repo owner (currently Aaron) clicks merge.
 While the ecosystem is pre-1.0, every published change goes to npm's `rc`
 dist-tag first; promotion to `@latest` is a deliberate, separate step.
 
-**Per PR:**
+**Tag when it makes sense to ship, not on every PR.** Updated 2026-05-24
+from the earlier "every PR bumps rc.N" rule — that produced 30+ rc
+artifacts per stable cycle (hub#349-#358 was the worst offender, with
+rc.30/31/32 living in commits but never reaching npm). The new policy:
+PRs land without version bumps; bump+tag happen together, only when
+there's intent to release.
 
-- The PR bumps `package.json` to `0.X.Y-rc.N` (next rc number; the patch
-  number `Y` stays fixed across the rc chain until promotion). Don't
-  ship a "final" version straight from a feature PR.
-- After the human merge, push a matching git tag (`v0.X.Y-rc.N`). CI
-  publishes — see [`release-ci.md`](release-ci.md) for the workflow shape.
-  The tag is the canonical release marker; the publish is automated.
+**Per PR (typical case):**
 
-**Promotion (a separate, deliberate action):**
+- The PR does NOT bump `package.json` version. `package.json` stays at
+  whatever the last released version is.
+- Reviewer + merge as usual.
+- No tag, no publish. The PR's changes accumulate on `main`.
 
-- Open a PR that drops the `-rc.N` suffix (e.g. `0.X.Y-rc.N` → `0.X.Y`).
-- Reviewer + merge.
-- Push the bare-version tag (`v0.X.Y`). CI publishes with `dist-tag=latest`
-  AND tags the container image as `:stable`.
-- Same source commit; no second build, no second version. Keeps git
-  history, npm versions, and container image tags aligned.
+**When you want to ship (operator-driven):**
 
-**Doc-only PRs are EXEMPT from rc.N bumping** during an active rc chain —
-they merge without a version change and get picked up by the next
-code-touching PR's rc bump (or by the stable promotion, whichever lands
-first). Don't fragment a release into many patch bumps mid-validation.
+- Bump `package.json` to the next rc number (`0.X.Y-rc.(N+1)`) or to a
+  stable (`0.X.Y` with no -rc suffix) in a small dedicated PR, OR
+  directly on `main` if your repo allows that. The patch number `Y`
+  stays fixed across the rc chain until promotion.
+- Push a matching git tag (`v0.X.Y-rc.N` or `v0.X.Y`). CI publishes —
+  see [`release-ci.md`](release-ci.md) for the workflow shape. The tag
+  is the canonical release marker; the publish is automated.
 
-If a doc-only fix needs to ship outside an active rc chain (main is on a
-stable version with no rc in flight), bump the next patch
-(`0.X.Y` → `0.X.(Y+1)`), tag, ship.
+**Promotion to stable:**
+
+- Bump `package.json` to drop the `-rc.N` suffix (e.g. `0.X.Y-rc.N` →
+  `0.X.Y`) — separate small PR, or direct on main per repo norms.
+- Push the bare-version tag (`v0.X.Y`). CI publishes with
+  `dist-tag=latest` AND (where applicable) tags the container image as
+  `:stable`.
+
+**Doc-only PRs never bump version.** They merge straight to main and
+will be included in whatever the next ship-driven version bump captures.
+
+**v1.0 and after** — switch to standard SemVer with `alpha` / `beta` /
+`rc` prerelease tags as feature stability warrants. This pattern doc
+gets a v1.0 update at that time.
 
 **At v1.0 and after**, switch to standard SemVer with `alpha` / `beta` / `rc`
 prerelease tags as feature stability warrants, and to a "release PR" pattern
