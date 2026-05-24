@@ -41,24 +41,30 @@ dist-tag first; promotion to `@latest` is a deliberate, separate step.
 
 **Per PR:**
 
-- The PR bumps `package.json` to `0.X.Y-rc.N` (next patch + a fresh rc
-  number). Don't ship a "final" version straight from a feature PR.
-- After the human merge, the publisher runs `npm publish --tag rc` so the
-  build is reachable as `@openparachute/<pkg>@rc` (or
-  `@openparachute/<pkg>@0.X.Y-rc.N` directly) but **not** the default
-  `@latest` install for new users.
+- The PR bumps `package.json` to `0.X.Y-rc.N` (next rc number; the patch
+  number `Y` stays fixed across the rc chain until promotion). Don't
+  ship a "final" version straight from a feature PR.
+- After the human merge, push a matching git tag (`v0.X.Y-rc.N`). CI
+  publishes — see [`release-ci.md`](release-ci.md) for the workflow shape.
+  The tag is the canonical release marker; the publish is automated.
 
 **Promotion (a separate, deliberate action):**
 
-- Run `npm dist-tag add @openparachute/<pkg>@0.X.Y-rc.N latest` once the RC
-  has been validated (smoke install, manual demo, real-world feedback).
-- The same RC artifact becomes the `@latest`; no second build, no second
-  version. This keeps git history and npm versions aligned and keeps the
-  cadence fast.
+- Open a PR that drops the `-rc.N` suffix (e.g. `0.X.Y-rc.N` → `0.X.Y`).
+- Reviewer + merge.
+- Push the bare-version tag (`v0.X.Y`). CI publishes with `dist-tag=latest`
+  AND tags the container image as `:stable`.
+- Same source commit; no second build, no second version. Keeps git
+  history, npm versions, and container image tags aligned.
 
-**Doc-only / test-only PRs follow the same convention** for uniformity. Every
-PR that changes the published artifact bumps the version. The cost is one
-line in `package.json`; the benefit is no special-casing.
+**Doc-only PRs are EXEMPT from rc.N bumping** during an active rc chain —
+they merge without a version change and get picked up by the next
+code-touching PR's rc bump (or by the stable promotion, whichever lands
+first). Don't fragment a release into many patch bumps mid-validation.
+
+If a doc-only fix needs to ship outside an active rc chain (main is on a
+stable version with no rc in flight), bump the next patch
+(`0.X.Y` → `0.X.(Y+1)`), tag, ship.
 
 **At v1.0 and after**, switch to standard SemVer with `alpha` / `beta` / `rc`
 prerelease tags as feature stability warrants, and to a "release PR" pattern
