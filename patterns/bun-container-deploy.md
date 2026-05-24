@@ -34,8 +34,9 @@ redeploy.
 bin symlinks land. Defaults to `/usr/local/bin/` (root-owned system
 path). Non-root container user can't write there → `symlinkat() = -1
 EACCES`. Surfaces as `Failed to link <package>: EACCES`. This was the
-load-bearing bug for hub on Render — the one that took five PRs to
-isolate.
+first load-bearing bug for hub on Render. (A second load-bearing bug —
+the `mkdir`-as-root pitfall, see below — was found later via live SSH
+into a fresh Render deploy.)
 
 **`TMPDIR`** — bun extracts tarballs into `TMPDIR`, then `rename()`s
 files into `$BUN_INSTALL/install/global/node_modules/`. If `TMPDIR`
@@ -96,9 +97,11 @@ docker run --rm \
 
 The docker volume mount creates a separate filesystem at `/parachute`
 — same shape as Render's persistent disk. Iterating locally is ~10×
-faster than iterating on the actual deploy. The five-PR chain on
-hub#349-354 was bisected in ~5 minutes locally once the docker-volume
-reproduction was set up.
+faster than iterating on the actual deploy. The hub#349-#354 chain
+was bisected in ~5 minutes locally once the docker-volume reproduction
+was set up. (The final load-bearing bug, hub#355, was a class of
+failure the local repro missed — see the mkdir-as-root pitfall below
+— and required live SSH into a fresh Render deploy to catch.)
 
 ## Reference: parachute-hub's Dockerfile env block
 
@@ -110,9 +113,40 @@ ENV PARACHUTE_HOME=/parachute \
     PATH=/parachute/modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ```
 
-Plus an entrypoint script that idempotently chowns these paths to the
-non-root user at startup (so the persistent disk, which mounts as
+Plus an entrypoint script that recursively chowns these paths to the
+non-root user at every startup (so the persistent disk, which mounts as
 root-owned, becomes writable by the runtime user).
+
+## Pitfall: `mkdir` as root leaves the parent root-owned
+
+The entrypoint runs as root, then `exec gosu bun "$@"` drops privileges.
+The temptation: an early version of this pattern chowned `/parachute`
+only on first boot (when it's still root-owned), then ran `mkdir -p
+/parachute/modules/bin` and `chown -R bun:bun /parachute/modules/bin`.
+
+Looks fine. Isn't. The `mkdir -p` runs **as root**, so it creates
+`/parachute/modules` (the parent) AS ROOT. The subsequent `chown -R` on
+`/parachute/modules/bin` only fixes the leaf. The `/parachute/modules`
+parent stays `drwxr-sr-x root:bun` permanently — bun-user can list it
+but can't `mkdir /parachute/modules/install`, which is exactly what
+`bun add -g` needs to do. The first install fails with
+`error: An internal error occurred (AccessDenied)`.
+
+The fix: never trust the conditional-chown shortcut. **Always recursive-
+chown the bun-write paths on every start**, no guards:
+
+```sh
+mkdir -p /parachute/tmp /parachute/modules/bin
+chown -R bun:bun /parachute/tmp /parachute/modules
+```
+
+Cheap on a 1GB persistent disk (no measurable startup latency),
+idempotent (chown on an already-correct tree is a no-op), and catches
+both this pitfall AND any other root-write that an operator's debug
+attempts might have introduced (e.g. a shell `bun add` without `gosu`).
+
+Diagnostic when this is the bug: `ls -la /parachute/modules` shows the
+parent owned by root, not bun.
 
 ## Cross-references
 
@@ -121,11 +155,20 @@ root-owned, becomes writable by the runtime user).
 - [`parachute-hub/docker-entrypoint.sh`](https://github.com/ParachuteComputer/parachute-hub/blob/main/docker-entrypoint.sh)
   — the entrypoint chown pattern.
 - [hub#349](https://github.com/ParachuteComputer/parachute-hub/pull/349)
-  — the issue trail; chain of five PRs (#349 → #350 chown → #351
-  TMPDIR → #352 `Bun.spawn` env → #353 banner → #354
-  `BUN_INSTALL_BIN`) to land the full fix.
+  — the issue trail; chain of six PRs to land the full fix:
+  - #349 — opening issue
+  - #350 — entrypoint chown stub
+  - #351 — `TMPDIR` on persistent disk
+  - #352 — `Bun.spawn { env: process.env }` (env-inheritance fix)
+  - #353 — bootstrap-token banner (UX polish surfaced during diagnosis)
+  - #354 — `tini -g` for signal forwarding, plus `BUN_INSTALL_BIN`
+    folded in (was the first load-bearing fix)
+  - #355 — `mkdir`-as-root pitfall (the second + final load-bearing fix)
 - [hub#352](https://github.com/ParachuteComputer/parachute-hub/pull/352)
   — the `Bun.spawn { env: process.env }` fix specifically.
+- [hub#355](https://github.com/ParachuteComputer/parachute-hub/pull/355)
+  — the mkdir-as-root pitfall fix; diagnosed via live SSH into a fresh
+  Render deploy.
 - [patterns#85](https://github.com/ParachuteComputer/parachute-patterns/issues/85)
   — open audit: verify `Bun.spawn` passes `env: process.env` across
   vault / scribe / app / runner.
@@ -133,8 +176,10 @@ root-owned, becomes writable by the runtime user).
 ## History
 
 - **2026-05-23 → 2026-05-24** — bugs discovered + fixed across
-  hub#349-354. Each PR fixed a real bug but missed the load-bearing
-  one; the actual root cause was found via local Docker + strace in
-  ~5 minutes once the reproduction was set up.
+  hub#349-355. Each PR fixed a real bug but missed the load-bearing
+  one; the final root cause (mkdir-as-root leaves parent root-owned)
+  was found via live SSH into a fresh Render deploy after the env-var
+  chain had landed.
 - **2026-05-24** — pattern doc landed so the next module deployed to
-  a container + persistent disk doesn't walk the same path.
+  a container + persistent disk doesn't walk the same path. Updated
+  same day with the mkdir-as-root pitfall callout.
