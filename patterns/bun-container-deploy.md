@@ -126,6 +126,9 @@ root-owned, becomes writable by the runtime user).
   `BUN_INSTALL_BIN`) to land the full fix.
 - [hub#352](https://github.com/ParachuteComputer/parachute-hub/pull/352)
   — the `Bun.spawn { env: process.env }` fix specifically.
+- [patterns#85](https://github.com/ParachuteComputer/parachute-patterns/issues/85)
+  — open audit: verify `Bun.spawn` passes `env: process.env` across
+  vault / scribe / app / runner.
 
 ## History
 
