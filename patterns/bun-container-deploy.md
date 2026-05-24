@@ -104,6 +104,61 @@ Diagnostic when this is the bug: container logs show
 `error: Failed to start server. Is port <N> in use? EADDRINUSE`
 where `<N>` is the platform's PORT injection (typically hub's port).
 
+## Pitfall: reverse-proxy hops drop X-Forwarded-* headers
+
+Once supervised modules start running, the next reachable bug: hub
+reverse-proxies HTTP requests to children at loopback. The children
+need to know the public origin to construct OAuth discovery metadata,
+redirect URIs, and similar public-facing URLs. Without forwarded
+headers, they fall back to `req.url.origin` which is the internal
+loopback URL.
+
+Concrete failure mode: a client hits
+`https://parachute-hub.onrender.com/vault/default/.well-known/oauth-authorization-server`.
+Hub proxies to `http://127.0.0.1:1940/.well-known/...`. Vault returns:
+
+```json
+{
+  "issuer": "http://127.0.0.1:1940/vault/default",
+  "authorization_endpoint": "http://127.0.0.1:1940/vault/default/oauth/authorize",
+  ...
+}
+```
+
+…not what the client can use. Any OAuth flow that touches the metadata
+redirects to an internal address.
+
+The fix has two sides:
+
+1. **The reverse proxy MUST forward `X-Forwarded-Host` and
+   `X-Forwarded-Proto`** to upstream services. Capture the public
+   `Host` header BEFORE deleting it (the upstream wants its own
+   loopback host); set `X-Forwarded-Host`. Synthesize
+   `X-Forwarded-Proto` from the request URL scheme if the edge didn't
+   already set it. Preserve already-set forwarded headers (nested
+   proxy chains).
+
+2. **Each supervised module's `getBaseUrl` MUST honor those
+   headers** when constructing public-facing URLs. Vault already did
+   this correctly via `oauth.ts:getBaseUrl`; the gap was hub not
+   forwarding them.
+
+```typescript
+// In hub's proxyRequest (or any reverse proxy)
+const publicHost = req.headers.get("host");
+headers.delete("host");
+if (publicHost && !headers.has("x-forwarded-host")) {
+  headers.set("x-forwarded-host", publicHost);
+}
+if (!headers.has("x-forwarded-proto")) {
+  headers.set("x-forwarded-proto", isHttpsRequest(req) ? "https" : "http");
+}
+```
+
+This was hub#358. Diagnostic: curl any supervised module's discovery
+endpoint via the public URL and inspect the `issuer` claim. If it
+shows the internal loopback address, the proxy isn't forwarding.
+
 ## Diagnosis flow when an install fails
 
 1. `bun add -g --verbose <package>` from a shell on the container —
