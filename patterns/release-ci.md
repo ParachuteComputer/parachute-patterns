@@ -8,14 +8,15 @@
 ## The convention (TL;DR)
 
 Every committed-core Parachute repo has `.github/workflows/release.yml`
-that triggers on `v*` tag push. The workflow:
+that triggers on `v*` tag push. Three jobs:
 
-1. **`test` job** — runs the repo's typecheck + test suite. Blocks publish.
-2. **`publish-npm` job** — publishes to npm with provenance attestation.
-   Dist-tag auto-detected from tag string: `-rc.` substring → `rc`,
-   else → `latest`.
-3. **`publish-image` job** (where applicable — modules that have a
-   container image artifact) — builds the Dockerfile, pushes to
+1. **`test`** — runs the repo's typecheck + test suite. Blocks publish.
+2. **`publish-npm`** (depends on `test`) — publishes to npm with
+   provenance attestation. Dist-tag auto-detected from tag string:
+   `-rc.` substring → `rc`, else → `latest`.
+3. **`publish-image`** (depends on `test`, runs in parallel with
+   `publish-npm`; only where applicable — modules with a container
+   image artifact) — builds the Dockerfile, pushes to
    `ghcr.io/parachutecomputer/<repo-name>` with tags `:rc` / `:stable` /
    `:v<X>.<Y>.<Z>[-rc.<N>]`.
 
@@ -25,7 +26,7 @@ Release flow becomes:
 # 1. Code-touching PR merges to main with rc.N bump
 # 2. Operator pulls latest main, pushes a matching tag
 git pull --ff-only
-VERSION="v$(node -p "require('./package.json').version")"
+VERSION="v$(bun -e "console.log(require('./package.json').version)")"
 git tag "$VERSION" && git push origin "$VERSION"
 # CI takes over: tests → publishes
 ```
@@ -140,33 +141,33 @@ The runtime bash check (`if [[ "$GITHUB_REF_NAME" =~ -rc\. ]]`)
 disambiguates rc-vs-stable for the dist-tag and the image-tag derivation,
 not the workflow trigger.
 
-## Cross-references
+## Examples
 
 - [`parachute-hub/.github/workflows/release.yml`](https://github.com/ParachuteComputer/parachute-hub/blob/main/.github/workflows/release.yml)
-  — canonical reference implementation.
+  — canonical reference implementation (three jobs incl. publish-image).
 - [`parachute-hub/RELEASING.md`](https://github.com/ParachuteComputer/parachute-hub/blob/main/RELEASING.md)
-  — operator-facing release flow doc (per-repo).
-- [`patterns/governance.md`](./governance.md) Rule 2 — the RC versioning
-  rule this workflow enforces.
+  — operator-facing release flow doc (per-repo template).
 
-## Rollout plan
+## Interaction with other rules
 
-Pilot: parachute-hub (landed 2026-05-24, hub#359).
+This pattern operates under [`governance.md`](./governance.md) Rule 2
+(RC versioning) and Rule 5 (CHANGELOG discipline). Specifically, the
+doc-only-exemption in Rule 2 means some merges never produce a tag,
+which per Rule 5 also means they produce no CHANGELOG entry — these
+merges get rolled into the next rc.N or stable bump's CHANGELOG section.
+No special-casing needed.
 
-Per-repo rollout (separate PRs):
+## Rollout
 
-- [ ] parachute-vault — same shape, no image job (npm only)
-- [ ] parachute-scribe — same shape, no image job
-- [ ] parachute-app — multi-package workspace; publish from
-  `packages/app-host`; no image job
-- [ ] parachute-runner — same shape, no image job
+Pilot: parachute-hub (landed 2026-05-24, hub#359). Per-repo rollout
+(vault / scribe / app / runner) tracked in
+[parachute-patterns#91](https://github.com/ParachuteComputer/parachute-patterns/issues/91).
 
-Each rollout PR:
-1. Adds `.github/workflows/release.yml` (copied + adapted from hub)
-2. Adds `RELEASING.md` (copied + adapted)
-3. Bumps `rc.N` (the first tag CI can react to)
-
-Operator adds `NPM_TOKEN` secret to each repo before the first tag push.
+Each rollout adapts hub's workflow + RELEASING.md, plus an `NPM_TOKEN`
+secret added by the operator before the first tag push. `parachute-app`
+publishes from `packages/app-host` (multi-package workspace); other
+modules are single-package. None except hub need the `publish-image`
+job today.
 
 ## History
 
