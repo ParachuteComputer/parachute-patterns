@@ -34,8 +34,9 @@ redeploy.
 bin symlinks land. Defaults to `/usr/local/bin/` (root-owned system
 path). Non-root container user can't write there → `symlinkat() = -1
 EACCES`. Surfaces as `Failed to link <package>: EACCES`. This was the
-load-bearing bug for hub on Render — the one that took five PRs to
-isolate.
+first load-bearing bug for hub on Render. (A second load-bearing bug —
+the `mkdir`-as-root pitfall, see below — was found later via live SSH
+into a fresh Render deploy.)
 
 **`TMPDIR`** — bun extracts tarballs into `TMPDIR`, then `rename()`s
 files into `$BUN_INSTALL/install/global/node_modules/`. If `TMPDIR`
@@ -96,9 +97,11 @@ docker run --rm \
 
 The docker volume mount creates a separate filesystem at `/parachute`
 — same shape as Render's persistent disk. Iterating locally is ~10×
-faster than iterating on the actual deploy. The five-PR chain on
-hub#349-354 was bisected in ~5 minutes locally once the docker-volume
-reproduction was set up.
+faster than iterating on the actual deploy. The hub#349-#354 chain
+was bisected in ~5 minutes locally once the docker-volume reproduction
+was set up. (The final load-bearing bug, hub#355, was a class of
+failure the local repro missed — see the mkdir-as-root pitfall below
+— and required live SSH into a fresh Render deploy to catch.)
 
 ## Reference: parachute-hub's Dockerfile env block
 
@@ -152,10 +155,15 @@ parent owned by root, not bun.
 - [`parachute-hub/docker-entrypoint.sh`](https://github.com/ParachuteComputer/parachute-hub/blob/main/docker-entrypoint.sh)
   — the entrypoint chown pattern.
 - [hub#349](https://github.com/ParachuteComputer/parachute-hub/pull/349)
-  — the issue trail; chain of six PRs (#349 → #350 chown → #351
-  TMPDIR → #352 `Bun.spawn` env → #353 banner → #354
-  `BUN_INSTALL_BIN` → #355 mkdir-parent-stays-root) to land the full
-  fix.
+  — the issue trail; chain of six PRs to land the full fix:
+  - #349 — opening issue
+  - #350 — entrypoint chown stub
+  - #351 — `TMPDIR` on persistent disk
+  - #352 — `Bun.spawn { env: process.env }` (env-inheritance fix)
+  - #353 — bootstrap-token banner (UX polish surfaced during diagnosis)
+  - #354 — `tini -g` for signal forwarding, plus `BUN_INSTALL_BIN`
+    folded in (was the first load-bearing fix)
+  - #355 — `mkdir`-as-root pitfall (the second + final load-bearing fix)
 - [hub#352](https://github.com/ParachuteComputer/parachute-hub/pull/352)
   — the `Bun.spawn { env: process.env }` fix specifically.
 - [hub#355](https://github.com/ParachuteComputer/parachute-hub/pull/355)
