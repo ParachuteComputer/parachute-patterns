@@ -73,6 +73,37 @@ all the right env vars in the Dockerfile, but the child `bun add`
 process didn't see them — so they had no effect until the spawn-site
 fix landed.
 
+## Pitfall: platform-injected `PORT` clobbers child ports
+
+A second consequence of `env: process.env` inheritance once `bun add`
+worked and supervised children started spawning: platforms like Render
+inject `PORT=<the-port-the-platform-routes-traffic-to>` into the
+container env. That ends up in hub's `process.env.PORT`, which then
+propagates to every supervised child via `Bun.spawn { env: process.env }`.
+
+Modules that read `PORT` from env (vault, scribe) try to bind hub's
+port → EADDRINUSE → crashloop → supervisor gives up. Modules that
+ignore `PORT` (app, runner — they only read a `--port` CLI flag)
+escape, but only because their hardcoded `DEFAULT_PORT` happens to
+match their services.json canonical. If those ever drift, same bug.
+
+The fix: the supervisor / lifecycle spawner MUST explicitly override
+`PORT` with the child's canonical port from services.json:
+
+```typescript
+const childEnv = { PORT: String(entry.port), ...operatorOverrides };
+Bun.spawn(cmd, { env: { ...process.env, ...childEnv } });
+```
+
+This was hub#356. Surfaced live on a fresh Render deploy after the
+mkdir-as-root entrypoint fix (hub#355) unblocked the wizard install for
+the first time — vault crashed immediately on EADDRINUSE because the
+supervisor passed PORT=1939 (hub's port) to it.
+
+Diagnostic when this is the bug: container logs show
+`error: Failed to start server. Is port <N> in use? EADDRINUSE`
+where `<N>` is the platform's PORT injection (typically hub's port).
+
 ## Diagnosis flow when an install fails
 
 1. `bun add -g --verbose <package>` from a shell on the container —
@@ -155,7 +186,7 @@ parent owned by root, not bun.
 - [`parachute-hub/docker-entrypoint.sh`](https://github.com/ParachuteComputer/parachute-hub/blob/main/docker-entrypoint.sh)
   — the entrypoint chown pattern.
 - [hub#349](https://github.com/ParachuteComputer/parachute-hub/pull/349)
-  — the issue trail; chain of six PRs to land the full fix:
+  — the issue trail; chain of seven PRs to land the full fix:
   - #349 — opening issue
   - #350 — entrypoint chown stub
   - #351 — `TMPDIR` on persistent disk
@@ -163,12 +194,18 @@ parent owned by root, not bun.
   - #353 — bootstrap-token banner (UX polish surfaced during diagnosis)
   - #354 — `tini -g` for signal forwarding, plus `BUN_INSTALL_BIN`
     folded in (was the first load-bearing fix)
-  - #355 — `mkdir`-as-root pitfall (the second + final load-bearing fix)
+  - #355 — `mkdir`-as-root pitfall (second load-bearing fix; install
+    completes for the first time)
+  - #356 — platform-injected `PORT` clobbers child ports (third load-
+    bearing fix; vault + scribe finally start cleanly after install)
 - [hub#352](https://github.com/ParachuteComputer/parachute-hub/pull/352)
   — the `Bun.spawn { env: process.env }` fix specifically.
 - [hub#355](https://github.com/ParachuteComputer/parachute-hub/pull/355)
   — the mkdir-as-root pitfall fix; diagnosed via live SSH into a fresh
   Render deploy.
+- [hub#356](https://github.com/ParachuteComputer/parachute-hub/pull/356)
+  — the platform-PORT pitfall fix; surfaced one PR later when vault
+  could finally try to start.
 - [patterns#85](https://github.com/ParachuteComputer/parachute-patterns/issues/85)
   — open audit: verify `Bun.spawn` passes `env: process.env` across
   vault / scribe / app / runner.
@@ -176,10 +213,10 @@ parent owned by root, not bun.
 ## History
 
 - **2026-05-23 → 2026-05-24** — bugs discovered + fixed across
-  hub#349-355. Each PR fixed a real bug but missed the load-bearing
-  one; the final root cause (mkdir-as-root leaves parent root-owned)
-  was found via live SSH into a fresh Render deploy after the env-var
-  chain had landed.
+  hub#349-#356. The pattern of "each fix unblocks the next reachable
+  bug" repeated three times: env-var chain → mkdir-as-root → platform-
+  injected PORT. Local docker-volume repro caught most but missed both
+  load-bearing bugs that required live SSH into a fresh Render deploy.
 - **2026-05-24** — pattern doc landed so the next module deployed to
   a container + persistent disk doesn't walk the same path. Updated
-  same day with the mkdir-as-root pitfall callout.
+  same day with the mkdir-as-root + platform-PORT pitfall callouts.
