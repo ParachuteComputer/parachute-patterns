@@ -6,13 +6,16 @@ The hub is the OAuth issuer ([`hub-as-issuer.md`](./hub-as-issuer.md)) and
 the gatekeeper for which OAuth clients exist on the install. **Every
 public Dynamic Client Registration (RFC 7591) lands as `pending`.** A
 pending client cannot exchange auth codes; it cannot reach `/oauth/token`.
-The operator must explicitly grant approval via one of four paths before
+The operator must explicitly grant approval via one of five paths before
 the client can complete a flow. Same-origin SPAs (running at the hub's
 origin) auto-approve when the operator's session cookie is present and
 the request's `Origin` matches the issuer. Cross-origin SPAs (or
 fresh-cache scenarios where the session isn't on the registration POST)
 hit an inline approve button on the `/oauth/authorize` pending page —
-one click and the flow continues.
+one click and the flow continues. The SPA approve page
+(`/admin/approve-client/<id>`) is a sibling surface for deep-link / share-
+link / direct-nav cases; it optionally resumes a parked OAuth flow via
+`return_to`.
 
 The authoritative implementation is in
 [`parachute-hub/src/oauth-handlers.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts)
@@ -101,9 +104,10 @@ operator consents at /oauth/authorize ──────────────
 | **Operator-bearer header** | `Authorization: Bearer <hub-admin-token>` (with `hub:admin` scope) on `POST /oauth/register` | [`oauth-handlers.ts:handleRegister`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts) — bearer branch | [hub#74](https://github.com/ParachuteComputer/parachute-hub/issues/74) |
 | **Same-origin session cookie + matching Origin** | Hub session cookie present on `POST /oauth/register` AND request `Origin` matches `deps.issuer` | [`oauth-handlers.ts:handleRegister`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts) — cookie branch + `originMatchesIssuer` | [hub#200](https://github.com/ParachuteComputer/parachute-hub/pull/200) |
 | **Inline approve button** | Operator browser navigates to `/oauth/authorize` for a pending client; session detected → approve form rendered → operator clicks → `POST /oauth/authorize/approve` | [`oauth-handlers.ts:handleApproveClientPost`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts) + [`oauth-ui.ts:renderApprovePending`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-ui.ts) | [hub#209](https://github.com/ParachuteComputer/parachute-hub/pull/209) |
+| **SPA approve page** | Operator navigates to `/admin/approve-client/<id>` in the hub SPA (deep-linked from `/oauth/token`'s `approve_url`, the unauth pending-client share-link, or direct nav). One-click → `POST /api/oauth/clients/<id>/approve`. Optionally resumes a parked OAuth flow via `return_to` (see "SPA approve page (two cases, one route)" below). | [`admin-clients.ts:handleApproveClient`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/admin-clients.ts) + [`web/ui/src/routes/ApproveClient.tsx`](https://github.com/ParachuteComputer/parachute-hub/blob/main/web/ui/src/routes/ApproveClient.tsx) | [hub#74](https://github.com/ParachuteComputer/parachute-hub/issues/74) + workstream D (AUDIT-UI-UX §5 row D) |
 | **CLI** | `parachute auth approve-client <id>` (operator with shell access to the hub install) | [`commands/auth.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/auth.ts) + [`clients.ts:approveClient`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/clients.ts) | [hub#74](https://github.com/ParachuteComputer/parachute-hub/issues/74) |
 
-The four paths exist because the operator demonstrates authority in
+The five paths exist because the operator demonstrates authority in
 different contexts and the right friction profile is different in each:
 
 - **Operator-bearer** — scripted / automation. The install path uses this
@@ -118,6 +122,14 @@ different contexts and the right friction profile is different in each:
   SPA, fresh cache, redirect_uri changed). The friction event is rare
   but real. Trust comes from triple-belt: CSRF token + active session +
   Origin/Referer match.
+- **SPA approve page** — operator's browser, deep-linked from
+  `/oauth/token`'s `approve_url`, the unauth pending-client share-link,
+  or a "share this with another admin" handoff. The same UI as inline
+  but reachable as a standalone admin route. Optionally resumes a
+  parked OAuth flow (workstream D) when given a `return_to` query
+  parameter; without one, dead-ends on a "return to the app" success
+  message for the share-link case. Trust comes from the `host:admin`
+  Bearer (minted from the session cookie at `/admin/host-admin-token`).
 - **CLI** — headless / multi-machine / SSH-only contexts. Trust comes
   from shell access to the hub install (= already trusted).
 
@@ -152,6 +164,12 @@ Each path has a different gate, sized to the context:
   it prevents the endpoint being used as a generic redirect-after-approve
   gadget. The operator sees `client_id`, `client_name`, `redirect_uris`,
   and the requested scopes before clicking.
+- **SPA approve page.** Same Bearer gate as every other admin endpoint:
+  `parachute:host:admin` scoped JWT, minted from the operator's session
+  cookie at `/admin/host-admin-token`. The cookie itself rides
+  `SameSite=Lax`; the mint endpoint is same-origin only. The browser
+  surface reuses the SPA's auth boundary — there's no new gate to
+  reason about, just a new client of the existing one.
 - **CLI.** Assumes the operator has shell access to the hub install.
   The threat model treats shell access as already trusted — anything
   the CLI can do, anything else on the same shell can do. The CLI path
@@ -159,9 +177,124 @@ Each path has a different gate, sized to the context:
   them.
 
 The shared invariant: **a client only becomes `approved` after the
-operator has demonstrated authority via one of the four paths.**
+operator has demonstrated authority via one of the five paths.**
 There is no path that promotes a client without an explicit operator
 action.
+
+## SPA approve page (two cases, one route)
+
+`/admin/approve-client/<id>` serves two distinct flows distinguished
+purely by the presence of a `return_to` query parameter. Both share the
+same route, the same auth gate, the same approve action, the same
+audit-log line. They diverge only on what happens after the click.
+
+### Case 1 — OAuth resume (`return_to` present)
+
+```
+caller has a parked OAuth flow
+  │
+  ▼
+operator navigates to /admin/approve-client/<id>?return_to=<authorize-url>
+  │
+  ▼
+SPA validates return_to with isSafeReturnTo (starts with /, doesn't start with //)
+  — intentionally broader than the server gate so future non-/oauth/authorize
+  resume targets can be wired without an SPA change. Server is the authority.
+  │
+  ▼
+operator clicks Approve
+  │
+  ▼
+SPA POSTs { return_to } to /api/oauth/clients/<id>/approve
+  │
+  ▼
+server runs isSafeAuthorizeReturnTo (same gate as POST /oauth/authorize/approve)
+  │
+  ├── valid → response carries redirect_to
+  │   │
+  │   ▼
+  │   SPA re-validates same-origin, window.location.assign(redirect_to)
+  │   │
+  │   ▼
+  │   hub-server's /oauth/authorize handler finishes the parked flow
+  │
+  └── invalid → response omits redirect_to (silently dropped)
+      │
+      ▼
+      SPA falls back to case 2's dead-end success state
+```
+
+**Validation gate.** Same shape as the inline button's `return_to`:
+hub-relative path, must start with `/`, must not start with `//`,
+and the server-side gate additionally requires `/oauth/authorize?`
+prefix (open-redirect defense + "this endpoint isn't a generic redirect
+gadget"). The SPA gates client-side too as belt-and-suspenders; the
+server is the authoritative gate.
+
+**Re-approve race tolerance.** When the page loads and the client is
+already approved (parallel session, automation, page reload), the SPA
+auto-redirects to `return_to` immediately rather than rendering the
+"already approved" dead-end — the parked OAuth flow can finish without
+a redundant operator click.
+
+**Server response shape.** `{ client_id, status: "approved",
+already_approved, redirect_to? }`. `redirect_to` is present iff the
+caller's `return_to` passed the gate. A bad / missing `return_to` drops
+`redirect_to` off the response but DOES NOT fail the approve — the
+client is now approved either way; the SPA falls back to case 2.
+
+### Case 2 — Share link / direct nav (no `return_to`)
+
+```
+operator opens /admin/approve-client/<id>
+  (from /oauth/token's approve_url, the unauth pending-client share-link,
+   or direct browse-to-URL)
+  │
+  ▼
+operator clicks Approve
+  │
+  ▼
+SPA POSTs (no body) to /api/oauth/clients/<id>/approve
+  │
+  ▼
+server omits redirect_to from the response
+  │
+  ▼
+SPA renders "Approved. Return to the app that sent you here and retry."
+```
+
+The share-link case is the original pre-D shape. The operator opened
+this from another tab / device / browser; the goal is "close this and
+return to the app that sent you," not "navigate around the hub SPA."
+Deliberately no auto-redirect.
+
+### Why two cases on one route
+
+The alternative — split into two routes — was considered and rejected:
+
+- The action (approve client `<id>`) is the same; the auth gate is the
+  same; the audit-log line is the same. Splitting the route would
+  duplicate the surface area without changing the behaviour.
+- The discriminator (`return_to` presence) is already in the URL. URL-
+  parameter-as-flag is the simplest possible API.
+- Future flows can adopt the resume case without coordinating a new
+  route — they just append `?return_to=<their-authorize-url>` to the
+  existing deep link.
+
+### When to use which
+
+| Caller | Case | Why |
+|---|---|---|
+| `/oauth/token` `approve_url` (currently surfaced to dead-end on the SPA) | 2 | The deep link is opened from a different origin (the caller's app). The operator's natural action is to close the tab and retry on the caller side — no OAuth flow is parked in this browser. A future revision could switch this caller to case 1 by appending `?return_to=` to the `approve_url`, but D deliberately did not flip the existing callsite — that's a separate UX call. |
+| `/oauth/authorize` (pending client, signed-in operator) | (not this route — uses inline button at the authorize URL itself) | Inline resume already works post-rc.38; no reason to bounce to the SPA. |
+| `/oauth/authorize` (pending client, unauth) | (not this route — uses sign-in CTA at the authorize URL itself; post-login the operator hits the inline button) | Same as above. |
+| "Share this link with an admin" deep link (from the unauth pending-client page) | 2 | The admin clicking the link is not the operator who started the OAuth flow. No flow to resume. |
+| Future: a flow that prefers the SPA's richer details over the inline button | 1 | Caller appends `?return_to=<authorize-url>` to the deep link. SPA approves AND resumes in one click. |
+
+Workstream D added the case-1 affordance but did NOT change any existing
+callsite to use it. Future flows that prefer the SPA approve UI over
+the inline button can opt in by passing `return_to` — the existing
+share-link case continues to work unchanged.
 
 ## The deliberate non-fix: cross-origin auto-approve
 
@@ -284,8 +417,9 @@ as deferred; this section is the canonical record of why.
   via the operator-bearer path during `parachute install <svc>`. They
   never see `pending`.
 - **Third-party SPAs** — register via public DCR. They start
-  `pending`. Operator promotes via one of the three operator-driven
-  paths (cookie auto-approve, inline button, or CLI).
+  `pending`. Operator promotes via one of the four operator-driven
+  paths (cookie auto-approve, inline button, SPA approve page, or
+  CLI).
 
 ## Open questions
 
@@ -330,3 +464,10 @@ as deferred; this section is the canonical record of why.
   — agent SPA companion issues; closed when A4 (inline button) was
   chosen, since cross-origin SPA-side `credentials: 'include'` doesn't
   help.
+- **hub workstream D** (post-rc.38) — SPA approve page learns to
+  resume parked OAuth flows via `?return_to=<authorize-url>`. Adds
+  the optional JSON body field to `POST /api/oauth/clients/<id>/approve`
+  and the `redirect_to` echo, plus client-side validation +
+  `window.location.assign` on the SPA. The share-link case is
+  deliberately preserved — calls without `return_to` keep their
+  dead-end behaviour. Source: AUDIT-UI-UX.md §5 row D.
