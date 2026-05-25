@@ -204,7 +204,62 @@ This is a principled drift, not a bug. The result is:
 
 ## 4. Typography
 
-TODO — Instrument Serif + DM Sans + system-font fallbacks for OAuth surfaces.
+Two type stacks: a **brand-forward stack** for surfaces that may load Google Fonts (§3), and a **privacy-safe stack** for surfaces that may not. Both are designed to read continuously — the swap should feel like a different weight class, not a different product.
+
+### Brand-forward stack (hub discovery, Notes PWA, public site)
+
+```css
+--serif: 'Instrument Serif', Georgia, serif;
+--sans:  'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+--mono:  ui-monospace, 'SF Mono', Monaco, monospace;
+```
+
+Source: `parachute-hub/src/hub.ts:141–142` (sans + serif), `:301` (mono). The fonts load via `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" />` (`hub.ts:127`) with `<link rel="preconnect">` priming on `fonts.googleapis.com` and `fonts.gstatic.com` (`hub.ts:125–126`).
+
+- **Headings, brand wordmark, hero copy:** Instrument Serif. Weight 400 (the only weight Parachute ships); leverage italic variant for emphasis. Letter-spacing `-0.01em` on display sizes (per `hub.ts:228`); slight tightening keeps the serif tightly-set rather than baroque.
+- **Body, UI, labels, captions, buttons:** DM Sans. Weights in use: 400 (body), 500 (labels, button text), 600 (chip text, brand-name when set in sans).
+- **Code, inline mono, key/value:** system monospace stack. Never set as a Google Font — privacy-safe even on brand-forward surfaces.
+
+### Privacy-safe stack (OAuth, login, admin SPAs, scribe admin)
+
+```css
+--font-serif: Georgia, "Times New Roman", serif;
+--font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+--font-mono:  ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", monospace;
+```
+
+Source: `parachute-hub/src/oauth-ui.ts:43–45`, `parachute-hub/src/admin-login-ui.ts:38–40`, `parachute-hub/web/ui/src/styles.css:25–27`.
+
+- **Headings, brand wordmark on auth surfaces:** Georgia. Georgia is the closest system fallback to Instrument Serif's vibe; both are humanist serifs with relatively open counters that hold up at small sizes. Use weight 400 on headings; the system fallback is `Times New Roman` (also weight 400), which is acceptable on the rare machine without Georgia.
+- **Body, UI, buttons:** the system-UI sans cascade. On Apple platforms this resolves to San Francisco; on Windows to Segoe UI; on Linux to whatever `system-ui` maps to (usually Cantarell or Noto Sans). This is intentional — we let the OS pick its native sans so the surface feels native rather than web-y on each platform.
+- **Code:** same mono stack as brand-forward. `ui-monospace` resolves to SF Mono on Apple, Cascadia Mono on Windows, DejaVu Sans Mono on Linux.
+
+### Size scale
+
+The hub-discovery page and the SPA both use unprefixed `rem` units anchored to the browser default (`16px`). The size hierarchy in use today:
+
+| Use | Size | Notes |
+|---|---|---|
+| Hero headline | `clamp(2.75rem, 6vw, 4rem)` | Serif. `hub.ts:225`. |
+| Card title (discovery) | `1.4rem` | Serif. `hub.ts:281`. |
+| Section heading | `1.5rem` / `1.4rem` | Serif on discovery, sans on SPA. |
+| H2 (SPA) | `1.4rem`, weight 500 | Sans. `styles.css:243–246`. |
+| H1 (login + auth cards) | `1.75rem` | Serif. `admin-login-ui.ts:173–180`. |
+| Body | `1rem` (= 16px) | Sans, line-height 1.5. |
+| Muted / subtitle | `0.92–0.95rem` | Sans, color `--fg-muted`. |
+| Caption / dim | `0.78–0.85rem` | Sans, color `--fg-dim`. |
+| Button label | inherits (= 1rem) | Sans, weight 500. |
+| Chip / tag | `0.7rem` uppercase, `letter-spacing: 0.06em` | Sans. |
+| Code | `0.85em` | Mono. Cascades from parent size, not anchored to root. |
+
+Don't introduce new sizes ad-hoc. If a surface needs a size not in this scale, propose adding it here first.
+
+### Things to avoid
+
+- **`#1e6bb8` + sans-stack on app-admin** (`parachute-app/web/admin/src/styles.css:21`, `:121`, `:123`, `:275`). The single largest typographic + palette outlier; Workstream B retires it.
+- **Cramming custom font-faces into auth surfaces.** Don't add an `@font-face` rule or Google Fonts link to any privacy-safe surface (per §3). System fonts only.
+- **Using the brand serif for body copy.** Instrument Serif is for headings, hero, brand wordmark. Body is always sans.
+- **Bumping serif weight above 400.** Instrument Serif ships at weight 400 only; bolding it pulls a synthetic-bold from the browser and looks broken. If a heading needs more weight, scale it up rather than bolding it.
 
 ## 5. Verb vocabulary
 
