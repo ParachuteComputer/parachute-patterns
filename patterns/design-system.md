@@ -880,4 +880,43 @@ Run [`scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) afte
 
 ## 10. Open questions for branding
 
-TODO — final tagline, custom wordmark, mobile + dark-mode coherence.
+The questions that don't block adoption of this doc but need a branding-team answer before the next round.
+
+### 1. Final tagline pick **(blocks merge of this PR)**
+
+§2 lists three candidates; recommended primary is **"Truly personal computing. Your knowledge stays yours."** Aaron's call. Once picked, this doc updates to remove the `[CANDIDATE — to confirm with branding]` markers and reduce §2 to the one chosen tagline + a sentence explaining why the others were retired.
+
+### 2. Custom wordmark for "Parachute"
+
+The wordmark today is just the word **Parachute** set in Instrument Serif. Two options:
+
+- **Keep the type-set wordmark.** Cheap, consistent with how Linear / Notion / Stripe set their wordmarks. The brand-mark + Instrument Serif "Parachute" reads as intentional, not as missing-asset.
+- **Commission a custom wordmark.** More distinctive at hero scales; commits to a logo file the way the SVG mark already does. Decoupling the wordmark from a Google-Fonts dependency would also strengthen the privacy-safe stack (today, the wordmark on hub-discovery uses Instrument Serif via Google Fonts; on OAuth surfaces it falls back to Georgia).
+
+No urgency either way. Decision can wait for a branding pass with a designer.
+
+### 3. Mobile + dark-mode coherence pass
+
+This doc specs tokens for both modes (§3) but the audit (§7) noted dark-mode coherence wasn't verified surface-by-surface, and mobile-responsive behavior beyond the existing breakpoints wasn't audited at all. The OAuth flow on a phone (real use case — Notes is a PWA installed to home screen) deserves its own pass before the persistent-chrome-strip (Workstream G) ships, since the chrome strip's 32px height + auth cluster has to read at mobile widths too.
+
+### 4. Two palettes (web canon vs Daily mobile)
+
+The earlier `brand/palette.md` documents the parachute-daily Flutter mobile palette (Forest Green `#40695B` + Fraunces). This doc documents the web canon (sage `#4a7c59` + Instrument Serif). Are these meant to be one palette eventually, or do we accept that mobile-Daily and web-Parachute legitimately have different brand languages? Three answers:
+
+- **One palette, web canon wins.** Re-port the mobile app to sage + Instrument Serif (lots of code change, ship discipline pain).
+- **One palette, Daily canon wins.** Re-port every web surface to Forest Green + Fraunces (similar cost, kills the brand-forward typography that already shipped).
+- **Two palettes, separate brand languages.** Accept that parachute-daily-the-mobile-app and Parachute-the-web-platform have different audiences and different visual languages; document the boundary explicitly.
+
+Recommend (3) but flag for the branding team. parachute-daily is the only Flutter target in the ecosystem; it's reasonable for it to feel a little different.
+
+### 5. Custom wordmark for the **app** chip
+
+Hub today shows `Parachute · admin` (chip after the wordmark); app would show `Parachute · app` (with `app` chip). The word "app" inside the chip is grammatically lossy — every hosted UI is an "app" in some sense. Is `app` the right chip text, or should it be the more specific name of the host module ("apps" plural? "host"? something else)? Naming team's call.
+
+### 6. Icon set
+
+The audit didn't surface icon usage as a major drift, but it'll matter once the persistent chrome strip ships. Today the SPA uses native unicode symbols (`▾` for dropdown, `›` for chevrons). The Notes PWA uses lucide icons. App-admin uses none. A shared icon set (lucide is the obvious candidate — already in Notes) would unify the icon language across surfaces. Defer until Workstream G needs it.
+
+### 7. Voice + tone beyond verbs
+
+This doc covers the verbs (§5) and state words (§6). It doesn't cover prose voice — the body copy on empty states, the tone of error messages, how technical or how casual to be in operator-facing copy. Worth a sibling pattern (`voice-and-tone.md`?) once two surfaces converge on a voice that feels right.
