@@ -785,7 +785,55 @@ Primary on the left, secondary beside, destructive pushed to the far right (the 
 
 ## 8. Where this applies
 
-TODO — committed-core surface inheritance, Notes PWA + public site.
+Three concentric circles of conformance — strict at the center, looser at the edge.
+
+### Circle 1 — committed-core admin chrome (strict conformance)
+
+Every surface in this ring uses the canonical mark (§2), canonical palette (§3), privacy-safe type stack (§4), canonical verbs (§5), canonical states (§6), and shared components (§7). No exceptions, no per-module palettes.
+
+| Module | Surfaces in scope |
+|---|---|
+| `parachute-hub` | `/`, `/hub.html`, `/login`, `/logout`, `/account/change-password`, `/oauth/*`, `/admin/setup`, `/admin/*` (the SPA), all generic error pages |
+| `parachute-vault` | `/vault/<name>/admin/*` (the per-vault SPA mounted via hub proxy), the standalone vault admin SPA at `/admin/` (when reachable; Workstream E is retiring the standalone OAuth surface separately — see §10) |
+| `parachute-app` | `/app/admin/*` (the app-admin SPA — currently the largest outlier; Workstream B brings it into conformance) |
+| `parachute-scribe` | `/scribe/admin` (the server-rendered admin) |
+
+These surfaces share an operator audience and an auth posture (post-session-cookie, mostly). Visual continuity here is what makes Parachute read as "one product, several rooms" instead of "four cousins."
+
+### Circle 2 — committed-core hosted UIs (inherit tokens, own composition)
+
+Apps that the host module bundles inherit the palette + mark + type stack but compose their own layout, navigation, and interaction patterns. The persistent chrome strip from §7 may sit at the top of these (Workstream G's call per app), but the app's interior is its own.
+
+| Module | Surfaces in scope |
+|---|---|
+| `parachute-app` packages | `/app/notes/*` (Notes PWA — the canonical example of inherit-tokens-own-composition), future `/app/<ui>/*` apps as they ship |
+
+Notes already does this well (audit §4): "own application, looks distinctively Notes, reads as Parachute because the tokens are continuous." Future apps under `parachute-app/packages/` are expected to clear the same bar — adopt the tokens, then compose freely.
+
+### Circle 3 — brand-mark source of truth (separate composition entirely)
+
+The public site is the source-of-truth for the brand mark (§2). It uses the canonical palette + type but composes a marketing-site layout that doesn't share components with any committed-core surface.
+
+| Module | Surfaces in scope |
+|---|---|
+| `parachute.computer` | The static site — landing, blog, design notes, install guide |
+
+### What's NOT in scope
+
+- **The CLI** (`parachute` binary). The CLI's vocabulary (commands, state words) is governed by §5 + §6 because cross-surface consistency matters. But it's a terminal, not a web surface — palette, typography, and component shapes don't apply.
+- **Machine surfaces.** Discovery JSON (`/.well-known/parachute.json`), OAuth metadata, JWKS, MCP endpoints, REST APIs. These are read by programs, not people.
+- **Third-party modules**, when they exist. They may adopt the design system (and the docs above are written so they can). They aren't required to — the goal here is committed-core coherence first.
+- **The bespoke vault-standalone OAuth UI** at `parachute-vault/src/oauth.ts`. Workstream E (separate parachute-vault PR) is deleting this surface, not bringing it into conformance. Don't touch it here.
+
+### Inheritance rules
+
+When a downstream surface deviates from this doc, the rule is:
+
+1. **First, change this doc** — propose the update in `parachute-patterns/`.
+2. **Then, change the surface** — adopt the new convention.
+3. **Don't ship a one-off** — even a "small" per-surface palette swap drifts the system. If the deviation is right, lift it into the canon here; if not, don't ship it.
+
+The exception is when a downstream surface discovers a real reason the canonical shape is wrong (a colorblindness contrast issue, a screen-reader regression, etc.). In that case open an issue against this doc, propose the fix here, then adopt downstream.
 
 ## 9. Adoption + enforcement
 
