@@ -1,22 +1,46 @@
 # Module UI declaration
 
-Services declare their user-facing UI URL in `module.json`; hub renders
-one discovery tile per declaring service.
+Services declare their UI URL in `module.json`; hub renders one
+discovery tile per declaring service. For multi-instance services
+(vault today), `uiUrl` is a per-instance path that hub prefixes with
+the mount path during well-known fan-out.
 
-> **Status: target convention, not yet implemented.** Hub's discovery
-> page today hardcodes which services have UIs in a JS
-> `SERVICE_LABELS` map at the top of
-> [`parachute-hub/src/hub.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub.ts)
-> (`notes`, `scribe`, `agent`) plus a vault-name filter that suppresses
-> vault entries. Titles, descriptions, ordering, and which-services-have-UIs
-> are baked in; only the mount `path` is read from `services.json`. This
-> doc captures the convention so the hardcoding can retire — services
-> declare their UIs, hub renders dynamically.
+> **Status: adopted.** Data-driven discovery shipped in hub#288 and
+> the consumer-side `uiUrl` reader (`loadServiceUiMetadata`) landed
+> with it. The earlier hardcoded `SERVICE_LABELS` map retired; the
+> remaining hardcoded surface is the "Browse Vault" tile in the
+> Get-started section of [`parachute-hub/src/hub.ts`](https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub.ts),
+> which workstream C (UX audit §5 row C, 2026-05-25) retires once
+> vault and scribe declare `uiUrl` in their `module.json` files.
+
+## Use vs admin — both can be true
+
+The earlier framing of this doc said "vault has no `uiUrl` because
+vault content is browsed via Notes." That framing collapsed two
+different audiences into one decision. They split cleanly:
+
+- **End users** browse vault data via Notes. Notes is the user-facing
+  surface; vault is the storage backend Notes reads from.
+- **Operators** administer the vault — provision, configure, manage
+  per-vault tokens, inspect — via vault's own admin SPA at
+  `/vault/<name>/admin/`.
+
+`uiUrl` points operators at the admin SPA. It is not content
+browsing. The Notes tile (Notes' own `uiUrl`) covers the end-user
+surface; the vault tile covers the operator surface. Both belong on
+discovery; they're complementary, not duplicative.
+
+The Circle 1 conformance band ([design-system.md §8](./design-system.md#8-where-this-applies))
+explicitly names `/vault/<name>/admin/*` and `/scribe/admin` as
+admin-chrome surfaces — they exist, they're maintained, they're part
+of the Parachute brand surface, and they deserve a discovery tile of
+their own.
 
 ## Convention
 
-Every module that has a user-facing UI **declares its UI URL in
-`module.json`** as a top-level optional field:
+Every committed-core module that has an admin or user-facing UI
+**declares its UI URL in `module.json`** as a top-level optional
+field:
 
 ```json
 {
@@ -28,11 +52,39 @@ Every module that has a user-facing UI **declares its UI URL in
 ```
 
 The hub's discovery page reads `uiUrl` (via the well-known doc) and
-renders one tile per service that declares it — `displayName` as the
-title, `tagline` as the description, `uiUrl` as the link target. Modules
-that omit `uiUrl` are still registered (still appear in
+renders one tile per declaring service — `displayName` as the title,
+`tagline` as the description, `uiUrl` as the link target. Modules that
+omit `uiUrl` are still registered (still appear in
 `/.well-known/parachute.json`, still routable for API consumers); they
 just don't render a clickable card on discovery.
+
+### Multi-instance services (vault)
+
+Vault runs N instances behind one backend (`/vault/default`,
+`/vault/techne`, …). The declared `uiUrl` is the **per-instance path
+relative to the vault mount**, not relative to the hub origin. Hub
+prefixes it with the per-vault path when building well-known rows.
+
+```json
+{
+  "name": "parachute-vault",
+  "uiUrl": "/admin/",
+  "managementUrl": "/admin/",
+  "paths": ["/vault/default"]
+}
+```
+
+For a vault mounted at `/vault/default`, hub emits one services row
+per instance with `uiUrl: "/vault/default/admin/"` (the configured
+hub origin joined onto the prefixed path). For a vault with paths
+`["/vault/default", "/vault/techne"]`, hub emits two rows, each with
+its own `uiUrl`. Discovery renders one tile per instance; operators
+running multiple vaults see them all.
+
+Single-instance services (scribe, notes, app) declare `uiUrl` as the
+hub-origin path directly; the prefix rule degenerates to a no-op
+(scribe's `paths: ["/scribe"]` + `uiUrl: "/scribe/admin"` resolves
+verbatim).
 
 ## Shape
 
@@ -42,24 +94,30 @@ uiUrl?: string;  // path under the hub origin, leading "/"
 
 Resolution rules:
 
-- **Path form** — `uiUrl: "/notes"`. `uiUrl` is a path on **hub's
-  origin** (not the module's). Hub renders the link as
-  `<hub-origin>${uiUrl}` regardless of where the module itself is
-  hosted. Leading `/` required; no trailing slash. Hub is the renderer
-  of the discovery page; clicks happen from hub, so the relative path
-  resolves there. This is **distinct from `managementUrl`'s relative
-  form**, which resolves against the *module's own well-known origin*
-  — see
+- **Path form (single-instance)** — `uiUrl: "/notes"`. `uiUrl` is a
+  path on **hub's origin** (not the module's). Hub renders the link
+  as `<hub-origin>${uiUrl}` regardless of where the module itself is
+  hosted. Leading `/` required; no trailing slash. Hub is the
+  renderer of the discovery page; clicks happen from hub, so the
+  relative path resolves there. This is **distinct from
+  `managementUrl`'s relative form**, which resolves against the
+  *module's own well-known origin* — see
   [`module-json-extensibility.md`](./module-json-extensibility.md#managementurl-string).
   The two collapse to the same URL for first-party modules colocated
-  on hub's origin, but a third-party module hosted elsewhere would see
-  the two diverge.
+  on hub's origin, but a third-party module hosted elsewhere would
+  see the two diverge.
+- **Path form (multi-instance)** — `uiUrl: "/admin/"`. Hub prefixes
+  with the per-instance mount path during well-known fan-out: a
+  vault mounted at `/vault/default` resolves the declared `"/admin/"`
+  to `<hub-origin>/vault/default/admin/`. Trailing slash permitted on
+  multi-instance forms (vault's admin SPA expects one); leading `/`
+  required. Today vault is the only multi-instance service.
 - **Absolute URL** — `uiUrl: "https://notes.example.com"`. Hub uses
-  verbatim. Escape hatch for modules whose UI is hosted somewhere
-  other than the hub origin.
+  verbatim, no prefix. Escape hatch for modules whose UI is hosted
+  somewhere other than the hub origin.
 - **Omitted** — no tile rendered. Use this for API-only services
-  (vault today, scribe today) or services whose UI is only reachable
-  via another module (vault content browsed via Notes).
+  (no admin UI shipped yet) or services whose UI is only reachable
+  via another module.
 
 The hub picks `displayName` and `tagline` for the tile from the same
 `module.json` fields it already reads
@@ -113,23 +171,30 @@ don't conflict.
 - **`parachute-notes`** — declares `uiUrl: "/notes"`. The Notes PWA is
   the module's UI. Hub discovery renders a Notes tile. No
   `managementUrl` (admin and use are the same surface).
-- **`parachute-agent`** — declares `uiUrl: "/agent"`. The agent UI
-  combines run, config, and admin. Hub discovery renders an Agent tile.
-- **`parachute-scribe`** — omits `uiUrl` today (no UI; CLI- and
-  API-only). When the combined transcribe + config UI ships, it adds
-  `uiUrl: "/scribe"`.
-- **`parachute-vault`** — omits `uiUrl`. Vault content is browsed via
-  Notes; a "Vault" tile on discovery would dead-end at the hub-owned
-  vault-management SPA, which is the friction Aaron flagged earlier
-  ("clicked Vault, took me to hub management"). Vault keeps its
-  per-instance `managementUrl: "/admin"` for the hub's vault-list
-  page; that's the right surface for "manage this specific vault."
+- **`parachute-app`** — declares `uiUrl: "/app/admin/"` for the
+  app-admin SPA (managing bundled UIs); the PWA apps like Notes are
+  separately surfaced via their own modules' `uiUrl`.
+- **`parachute-scribe`** — declares `uiUrl: "/scribe/admin"`. The
+  server-rendered admin page (`src/admin-ui.ts`) is the operator
+  surface — config form, provider status, credential clearing. No
+  `managementUrl` (single-instance, no hub-side vault-list surface).
+- **`parachute-vault`** — declares `uiUrl: "/admin/"` (multi-instance
+  form). Hub prefixes with the per-vault mount path on emission,
+  producing one tile per vault instance pointing at
+  `/vault/<name>/admin/`. The earlier "vault content is browsed via
+  Notes — no tile" rule is retired: Notes covers the end-user surface,
+  vault's admin SPA covers the operator surface (per-vault tokens,
+  config, MCP). Both deserve discovery presence. Vault keeps its
+  per-instance `managementUrl: "/admin/"` for the hub admin SPA's
+  vault-list "Manage" link — a different surface, same target path.
 
 ## Rules
 
-- **Path-form `uiUrl` starts with `/`, no trailing slash.** Same
-  normalization as `managementUrl`. Hub joins origin + `uiUrl`
-  verbatim.
+- **Path-form `uiUrl` starts with `/`.** Single-instance forms omit
+  the trailing slash (`/notes`, `/scribe/admin`); multi-instance
+  forms may include it (`/admin/`) when the target SPA expects it.
+  Hub joins origin + (mount path if multi-instance) + `uiUrl`
+  verbatim — no extra normalization.
 - **`uiUrl` is for the hub discovery page.** Don't hand-jam admin-only
   paths in here when the user-facing UI is what belongs on discovery —
   that's what `managementUrl` is for. If a service has only an admin
@@ -149,35 +214,35 @@ don't conflict.
 Standard parallel-cross-repo shape (see
 [`parallel-cross-repo-PRs.md`](./parallel-cross-repo-PRs.md)):
 
-1. **This PR (parachute-patterns)** — define the convention.
+1. **Patterns** — define the convention (this doc).
 2. **Module `module.json` updates (one PR per module)** —
-   `parachute-notes` declares `uiUrl: "/notes"`;
-   `parachute-agent` declares `uiUrl: "/agent"`. Vault and scribe stay
-   absent at this step. Each module ships its updated `module.json`
-   inside its npm artifact.
+   `parachute-notes` declares `uiUrl: "/notes"`,
+   `parachute-app` declares `uiUrl: "/app/admin/"`,
+   `parachute-scribe` declares `uiUrl: "/scribe/admin"`,
+   `parachute-vault` declares `uiUrl: "/admin/"` (multi-instance form).
+   Each module ships its updated `module.json` inside its npm artifact.
 3. **Hub consumer-side update** — well-known doc carries `uiUrl`
    through; discovery page (`hub.ts`) reads `uiUrl` from
    `/.well-known/parachute.json` and renders one tile per declaring
-   service. The hardcoded `SERVICE_LABELS` + `SERVICE_ORDER` arrays
-   and the `isVaultName` filter retire. Tile order: stable by service
-   `name` alphabetical (or by an explicit `displayOrder` field if a
-   need for explicit ordering surfaces — defer until two services
-   actually conflict on natural order).
+   service. The hardcoded `SERVICE_LABELS` / `SERVICE_ORDER` arrays
+   and the `isVaultName` filter retired in hub#288. The hardcoded
+   "Browse Vault" Get-started tile (added in hub#342 as a stopgap)
+   retires under workstream C once vault declares `uiUrl` and hub
+   reads it for vault entries (the current `loadServiceUiMetadata`
+   skips vault rows; lift that skip and have `buildWellKnown`
+   prefix the declared `uiUrl` with the per-instance mount path).
+   Tile order: stable by service `displayName` alphabetical (or by
+   an explicit `displayOrder` field if a need for explicit ordering
+   surfaces — defer until two services actually conflict on natural
+   order).
 
 Steps 2 and 3 are backwards-compatible with each other: hub before
 step 3 ignores the new field; modules before step 2 simply don't
-appear (same behavior as today's hardcoded omission). They can land
-in either order.
+appear (same behavior as today's omission). They can land in either
+order.
 
 ## Open questions
 
-- **Per-instance `uiUrl` for multi-instance services.** Vault is
-  multi-instance (`default`, `boulder`, `techne`); if a future vault
-  grows a per-instance use-facing UI (not just admin), each instance
-  would want its own UI URL. The `services.json` row shape today is
-  per-instance, so the natural extension is "module declares `uiUrl`
-  template; vault writes it into each instance's `services.json` row
-  on init." Defer until a real use case lands.
 - **Auth requirements metadata.** Should `uiUrl` carry whether the UI
   supports anonymous access vs. requires sign-in? Useful for hub to
   hint "Sign in to use Agent" vs. "Open Notes" on the tile. Defer
@@ -197,9 +262,13 @@ in either order.
 
 ## Where this applies
 
-- **Today (target):** `parachute-notes` (`uiUrl: "/notes"`),
-  `parachute-agent` (`uiUrl: "/agent"`).
+- **Today (committed-core):**
+  - `parachute-notes` — `uiUrl: "/notes"`.
+  - `parachute-app` — `uiUrl: "/app/admin/"`.
+  - `parachute-scribe` — `uiUrl: "/scribe/admin"` (workstream C).
+  - `parachute-vault` — `uiUrl: "/admin/"` (workstream C, multi-instance form).
 - **Later:** any first- or third-party module that ships a UI under
   the hub origin. Same field, same shape.
-- **Not in scope:** services with no UI (vault today, scribe today)
-  simply omit the field.
+- **Not in scope:** services with truly no operator-facing UI simply
+  omit the field. No committed-core module is in this bucket today —
+  every module has at least an admin surface to declare.

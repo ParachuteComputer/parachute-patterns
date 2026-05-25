@@ -5,6 +5,48 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-05-25 — module-ui-declaration.md: vault + scribe declare `uiUrl` (workstream C)
+
+**Change:** reverse the "vault has no `uiUrl`" stance in
+[`module-ui-declaration.md`](../patterns/module-ui-declaration.md).
+Every committed-core module with an admin or user-facing UI declares
+`uiUrl` in `module.json`; vault uses the multi-instance form
+(`/admin/`) that hub prefixes with the per-vault mount path during
+well-known fan-out. The earlier framing collapsed two audiences
+(end-users browsing content via Notes; operators administering the
+vault via its admin SPA) into one decision; they split cleanly.
+
+**Why now.** The UX audit (2026-05-25) surfaced that hub's "Browse
+Vault" Get-started tile (added in hub#342) was a hardcoded stopgap
+working around vault's missing `uiUrl`. The fix is data-driven:
+vault declares `uiUrl`; hub reads it and emits per-vault tiles via
+the existing well-known fan-out; the hardcoded tile retires. The
+prior entry's "vault intentionally omits `uiUrl`" guidance was the
+correct call at the time (May 7) but became friction once the Circle 1
+conformance band in [`design-system.md`](../patterns/design-system.md)
+named `/vault/<name>/admin/*` as an in-scope brand surface — if it's
+a brand surface, it deserves a discovery tile.
+
+**Affected:**
+
+- `parachute-patterns` — pattern doc updated (this PR).
+- `parachute-vault` — declare `uiUrl: "/admin/"` in
+  `.parachute/module.json`. One PR.
+- `parachute-scribe` — declare `uiUrl: "/scribe/admin"` in
+  `.parachute/module.json`. One PR.
+- `parachute-hub` — lift the `isVaultEntry` skip in
+  `loadServiceUiMetadata` (src/hub-server.ts); update `buildWellKnown`
+  to prefix vault's declared `uiUrl` with the per-instance mount
+  path; delete the hardcoded "Browse Vault" tile from
+  `renderGetStarted` (src/hub.ts:493-511). One PR.
+- `parachute-notes` and `parachute-app` already declare `uiUrl` —
+  no change.
+
+**Status:** in flight. Tracked across patterns + vault + scribe + hub
+PRs (workstream C, 2026-05-25).
+
+---
+
 ## 2026-05-21 — trust-gradient-isolation.md: parachute-jobs → parachute-runner
 
 **Change:** rename references to the lightweight owner-operated job-substrate
