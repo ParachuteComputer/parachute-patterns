@@ -85,7 +85,7 @@ The canonical Parachute mark is the bespoke dotted-grid glyph currently live on 
 - **Default size:** 24×24px. Scales up via CSS — the SVG itself uses `viewBox` so any width/height pair preserves proportions. Recommended sizes: 16 (favicon), 24 (chrome / nav), 32 (auth surfaces), 48+ (hero / setup wizard).
 - **Color:** `currentColor`. Pair with `color: var(--accent)` for accent-on-cream surfaces, `color: var(--fg)` for ink-on-cream, `color: var(--accent-hover)` for hover lift on interactive elements.
 - **Always pair with the wordmark "Parachute"** on first appearance in a surface. The mark alone is permitted in nav chrome and favicons only.
-- **Retire the three legacy marks.** Hub's `🪂` parachute-emoji favicon (`src/hub.ts:124`), the `⌬` typographic mark on OAuth + login (`src/oauth-ui.ts`, `src/admin-login-ui.ts:68`), and any ad-hoc `S Scribe` letter-mark variants — all replaced by the SVG above. Workstream G migrations should do this swap as part of the persistent-chrome rollout.
+- **Retire the three legacy marks.** Hub's `🪂` parachute-emoji favicon (`src/hub.ts:124`), the `⌬` typographic mark on OAuth + login (`src/oauth-ui.ts:260, 348, 515, 686, 798`, `src/admin-login-ui.ts:67`), and the scribe-admin `S` letter-mark (`parachute-scribe/src/admin-ui.ts:80`) — all replaced by the SVG above. Workstream G migrations should do this swap as part of the persistent-chrome rollout.
 - **Spacing:** at least 8px breathing room between the mark and adjacent text or chrome. The dotted-grid geometry needs negative space to read.
 
 ### Wordmark
@@ -113,8 +113,8 @@ Picking one is the single decision blocking adoption of this doc. Section 10 car
 | Surface | Current | Action |
 |---|---|---|
 | `parachute-hub/src/hub.ts:124` favicon | `🪂` emoji-in-SVG | Swap to the inlined mark. Workstream G. |
-| `parachute-hub/src/oauth-ui.ts` brand-line | `⌬ Parachute` | Swap to mark + wordmark. Workstream G. |
-| `parachute-hub/src/admin-login-ui.ts:68` brand-line | `⌬ Parachute admin` | Swap to mark + wordmark + `admin` chip. Workstream G. |
+| `parachute-hub/src/oauth-ui.ts` brand-line (lines 260, 348, 515, 686, 798 — same shape, five surfaces) | `⌬ Parachute` | Swap to mark + wordmark. Workstream G. |
+| `parachute-hub/src/admin-login-ui.ts:67–69` brand-line | `⌬ Parachute admin` (across `brand-mark` + `brand-name` + `brand-tag` spans) | Swap to mark + wordmark + `admin` chip. Workstream G. |
 | `parachute-hub/web/ui/src/App.tsx` brand-line | `Parachute Admin` (with route-derived subtitle) | Swap to mark + wordmark + `admin` chip. Workstream G. |
 | `parachute-app/web/admin/` brand-line | `parachute-app · admin` | Swap to mark + wordmark + `app` chip. Workstream B. |
 | `parachute-scribe/src/admin-ui.ts` brand-line | `S Scribe · configuration` | Swap to mark + wordmark + `scribe` chip. Workstream G. |
@@ -146,7 +146,7 @@ Source-of-truth files (all in lockstep — drift in one is a bug):
 | `--accent` | `#4a7c59` | sage — primary actions, links, brand-mark color, focus ring |
 | `--accent-hover` | `#3d6849` | accent hover state (also reused as `--success`) |
 | `--accent-soft` | `rgba(74, 124, 89, 0.08)` | accent backgrounds, tag fills, active states |
-| `--accent-light` | `#6a9b77` | hover lift on card borders (`hub.ts:138`) |
+| `--accent-light` | `#6a9b77` | hover lift on card borders. Currently declared only in `parachute-hub/src/hub.ts:138`; this spec lifts it into the canonical token set so the SPA + auth surfaces can use it too. |
 | `--border` | `#e4e0d8` | default border on cards, inputs, dividers |
 | `--border-light` | `#ece9e2` | subtler dividers (sub-unit rules in module rows, etc.) |
 | `--card-bg` | `#ffffff` | card / surface fill on cream pages |
@@ -212,7 +212,7 @@ Two type stacks: a **brand-forward stack** for surfaces that may load Google Fon
 --mono:  ui-monospace, 'SF Mono', Monaco, monospace;
 ```
 
-Source: `parachute-hub/src/hub.ts:141–142` (sans + serif), `:301` (mono). The fonts load via `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" />` (`hub.ts:127`) with `<link rel="preconnect">` priming on `fonts.googleapis.com` and `fonts.gstatic.com` (`hub.ts:125–126`).
+Source: `parachute-hub/src/hub.ts:141–142` (sans + serif), `:302` (mono). The fonts load via `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" />` (`hub.ts:127`) with `<link rel="preconnect">` priming on `fonts.googleapis.com` and `fonts.gstatic.com` (`hub.ts:125–126`).
 
 - **Headings, brand wordmark, hero copy:** Instrument Serif. Weight 400 (the only weight Parachute ships); leverage italic variant for emphasis. Letter-spacing `-0.01em` on display sizes (per `hub.ts:228`); slight tightening keeps the serif tightly-set rather than baroque.
 - **Body, UI, labels, captions, buttons:** DM Sans. Weights in use: 400 (body), 500 (labels, button text), 600 (chip text, brand-name when set in sans).
@@ -254,7 +254,7 @@ Don't introduce new sizes ad-hoc. If a surface needs a size not in this scale, p
 
 ### Things to avoid
 
-- **`#1e6bb8` + sans-stack on app-admin** (`parachute-app/web/admin/src/styles.css:21`, `:121`, `:123`, `:275`). The single largest typographic + palette outlier; Workstream B retires it.
+- **`#1e6bb8` blue + 15px body size + square-cornered buttons on app-admin** (`parachute-app/web/admin/src/styles.css:16` body size, `:21` accent text, `:121, :123` button fill + border, `:275` accent text). The font stack on app-admin is system-UI (`-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` at `:12`) — same family as the privacy-safe stack — so the typographic outlier is the *size scale*, not the font family. Workstream B brings the palette + size + radii into conformance.
 - **Cramming custom font-faces into auth surfaces.** Don't add an `@font-face` rule or Google Fonts link to any privacy-safe surface (per §3). System fonts only.
 - **Using the brand serif for body copy.** Instrument Serif is for headings, hero, brand wordmark. Body is always sans.
 - **Bumping serif weight above 400.** Instrument Serif ships at weight 400 only; bolding it pulls a synthetic-bold from the browser and looks broken. If a heading needs more weight, scale it up rather than bolding it.
@@ -373,7 +373,7 @@ Four lowercase states, in CSS class form `status-<state>`:
 | `Active` | SPA `/admin/modules` status badge | `active` | Lowercase. |
 | `Pending-OAuth` | SPA `/admin/modules` status badge | `pending` | Broadens; CSS class becomes `status-pending`. Old `status-pending-oauth` class redirects to `status-pending`. |
 | `Disabled` | SPA `/admin/modules` status badge | `inactive` | The word "disabled" overloads with HTML's button `:disabled` and is read as "broken" by some operators; `inactive` reads cleaner. |
-| `unhealthy` / `ok` | services.json + status probe | not user-facing — internal probe result | The user-facing rollup is `active` (healthy) / `failing` (unhealthy). |
+| `ok` / `http <code>` / `down` | `parachute status` HEALTH column (per `status.ts:253–257`) | not user-facing as state — internal probe result | The user-facing rollup is `active` (healthy) / `failing` (any non-ok). `LATENCY` column survives as a separate measurement. |
 | `active` | supervisor internal state | `active` | Same. |
 | `pending-oauth` | supervisor internal state | `pending` | Rename. |
 | `disabled` | supervisor internal state | `inactive` | Rename. |
@@ -472,9 +472,9 @@ button.destructive:hover, .btn.destructive:hover {
 
 - **Primary** (default `button`): sage fill, white text. Use for the one most-likely action per form. Never more than one primary per visible area.
 - **Secondary** (`button.secondary`): white fill, ink text, border. Use for adjacent actions of equal weight (Cancel beside Save), or for any action when there's already a primary nearby.
-- **Destructive** (`button.destructive`): white fill, error-color text + border. Use for Delete / Revoke / Uninstall. Currently used in `parachute-hub/web/ui/src/styles.css:583–588` for module-config form's destructive actions (an existing convention; this codifies it).
+- **Destructive** (`button.destructive`): white fill, error-color text + border. Use for Delete / Revoke / Uninstall. **This is a new convention**, not a codification — today's `parachute-hub/web/ui/src/styles.css:580–588` `.module-config-form .actions button.destructive` uses `color: var(--fg)` (ink) + `border: var(--border)` (neutral); the only "destructive" affordance is the lack-of-primary-fill. The §7 spec above proposes lifting it to `color: var(--error)` + `border-color: var(--error)` so destructive actions read distinctly across surfaces. Workstream J adopts.
 
-Source today: `parachute-hub/web/ui/src/styles.css:49–73` (primary + secondary), `:701–718` (`.btn` link variant), `:583–588` (destructive).
+Source today: `parachute-hub/web/ui/src/styles.css:49–73` (primary + secondary), `:701–718` (`.btn` link variant), `:580–588` (the existing soft-destructive shape that this spec strengthens).
 
 ### Brand-line (header chrome)
 
@@ -518,7 +518,7 @@ The persistent mark + wordmark + optional context chip. Drop into the top-left o
 }
 ```
 
-Source today: `parachute-hub/src/admin-login-ui.ts:153–172` (the existing brand-line shape; this spec retires the `⌬` glyph and substitutes the SVG mark).
+Source today: `parachute-hub/src/admin-login-ui.ts:153–172` (the existing brand-line CSS shape, exposing classes `.brand`, `.brand-mark`, `.brand-name`, `.brand-tag`). This spec proposes two changes: (1) retire the `⌬` glyph and substitute the SVG mark inside `.brand-mark`; (2) rename the chip class `.brand-tag` → `.brand-chip` (the word "tag" overloads with the existing `.tag` accent-chip in `styles.css:307–319`). A one-release back-compat alias keeps `.brand-tag` working while migrations land.
 
 ### Loading
 
