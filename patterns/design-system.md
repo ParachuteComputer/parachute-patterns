@@ -6,8 +6,6 @@ This file declares: one brand mark, one tagline (pending confirmation), one pale
 
 This doc is the lighthouse. Downstream workstreams (B/C/F/G/I/J in the 2026-05-25 audit) reference it; they do not re-derive its decisions. Update this file when the convention itself changes — adopters follow.
 
-<!-- TODO sections — populate in order, commit each as a checkpoint -->
-
 ## 1. Why this doc exists
 
 The 2026-05-25 UI/UX audit ([`parachute-hub/AUDIT-UI-UX.md`](https://github.com/ParachuteComputer/parachute-hub/blob/main/AUDIT-UI-UX.md)) found Parachute shipping eight distinct surfaces with two-and-a-half palettes, three brand marks, two competing taglines, and six action verbs covering the same OAuth approval flow. The audit's headline recommendation was Workstream A: **declare a Parachute design system in `parachute-patterns/`** as the single lever every downstream UI consistency fix hangs on (audit §5, recommendations A–J).
