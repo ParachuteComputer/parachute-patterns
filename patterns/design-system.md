@@ -10,7 +10,20 @@ This doc is the lighthouse. Downstream workstreams (B/C/F/G/I/J in the 2026-05-2
 
 ## 1. Why this doc exists
 
-TODO
+The 2026-05-25 UI/UX audit ([`parachute-hub/AUDIT-UI-UX.md`](https://github.com/ParachuteComputer/parachute-hub/blob/main/AUDIT-UI-UX.md)) found Parachute shipping eight distinct surfaces with two-and-a-half palettes, three brand marks, two competing taglines, and six action verbs covering the same OAuth approval flow. The audit's headline recommendation was Workstream A: **declare a Parachute design system in `parachute-patterns/`** as the single lever every downstream UI consistency fix hangs on (audit §5, recommendations A–J).
+
+This is that doc. It supersedes the earlier `[DRAFT]` brand stubs in [`brand/palette.md`](../brand/palette.md), [`brand/typography.md`](../brand/typography.md), and [`brand/tokens.css`](../brand/tokens.css). Those files were ports of the parachute-daily Flutter app's tokens (Forest Green `#40695B`, Fraunces/Inter); they were never adopted by any committed-core web surface. The committed-core surfaces that did ship — hub-discovery, hub-OAuth, hub-admin, vault SPA, scribe admin, the Notes PWA — converged independently on a different palette (sage `#4a7c59`) and different type stack (Instrument Serif + DM Sans). This doc canonizes what shipped, not what was drafted.
+
+Downstream workstreams gated on this lighthouse:
+
+- **B** — adopt the design system in app-admin (replace `#1e6bb8` blue + JetBrains sans-stack with the canonical palette + type).
+- **C** — declare `uiUrl` in vault + scribe `module.json` so the discovery page uses canonical chrome instead of bespoke tiles.
+- **F** — unify state vocabulary across CLI (`running` / `stopped`) and SPA (`active` / `pending-oauth` / `disabled`).
+- **G** — add persistent cross-surface chrome (the 32px brand strip).
+- **I** — audit + rewrite action-verb copy across OAuth + login + forms.
+- **J** — first-class loading / empty / error components shared across all surfaces.
+
+Each workstream cites Section N of this file rather than re-deriving its decisions. When a convention here is wrong, change it here first and propagate downstream via a [migration doc](../migrations/README.md).
 
 ## 2. Brand identity
 
