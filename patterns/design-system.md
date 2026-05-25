@@ -14,7 +14,7 @@ This is that doc. It supersedes the earlier `[DRAFT]` brand stubs in [`brand/pal
 
 Downstream workstreams gated on this lighthouse:
 
-- **B** — adopt the design system in app-admin (replace `#1e6bb8` blue + JetBrains sans-stack with the canonical palette + type).
+- **B** — adopt the design system in app-admin (replace `#1e6bb8` blue + `15px` body type with the canonical palette + type).
 - **C** — declare `uiUrl` in vault + scribe `module.json` so the discovery page uses canonical chrome instead of bespoke tiles.
 - **F** — unify state vocabulary across CLI (`running` / `stopped`) and SPA (`active` / `pending-oauth` / `disabled`).
 - **G** — add persistent cross-surface chrome (the 32px brand strip).
@@ -146,7 +146,7 @@ Source-of-truth files (all in lockstep — drift in one is a bug):
 | `--accent` | `#4a7c59` | sage — primary actions, links, brand-mark color, focus ring |
 | `--accent-hover` | `#3d6849` | accent hover state (also reused as `--success`) |
 | `--accent-soft` | `rgba(74, 124, 89, 0.08)` | accent backgrounds, tag fills, active states |
-| `--accent-light` | `#6a9b77` | hover lift on card borders. Currently declared only in `parachute-hub/src/hub.ts:138`; this spec lifts it into the canonical token set so the SPA + auth surfaces can use it too. |
+| `--accent-light` | `#6a9b77` | hover lift on card borders. Currently declared only in `parachute-hub/src/hub.ts:138` (the inline-style hub-discovery surface); this spec lifts it into the canonical token set. Surfaces that will need it added to their `:root` block when adopting: `parachute-hub/web/ui/src/styles.css`, `parachute-hub/src/oauth-ui.ts` `PALETTE`, `parachute-hub/src/admin-login-ui.ts`. |
 | `--border` | `#e4e0d8` | default border on cards, inputs, dividers |
 | `--border-light` | `#ece9e2` | subtler dividers (sub-unit rules in module rows, etc.) |
 | `--card-bg` | `#ffffff` | card / surface fill on cream pages |
@@ -373,7 +373,7 @@ Four lowercase states, in CSS class form `status-<state>`:
 | `Active` | SPA `/admin/modules` status badge | `active` | Lowercase. |
 | `Pending-OAuth` | SPA `/admin/modules` status badge | `pending` | Broadens; CSS class becomes `status-pending`. Old `status-pending-oauth` class redirects to `status-pending`. |
 | `Disabled` | SPA `/admin/modules` status badge | `inactive` | The word "disabled" overloads with HTML's button `:disabled` and is read as "broken" by some operators; `inactive` reads cleaner. |
-| `ok` / `http <code>` / `down` | `parachute status` HEALTH column (per `status.ts:253–257`) | not user-facing as state — internal probe result | The user-facing rollup is `active` (healthy) / `failing` (any non-ok). `LATENCY` column survives as a separate measurement. |
+| `ok` / `http <code>` / `down` | `parachute status` HEALTH column (per `parachute-hub/src/commands/status.ts:253–257`) | not user-facing as state — internal probe result | The user-facing rollup is `active` (healthy) / `failing` (any non-ok). `LATENCY` column survives as a separate measurement. |
 | `active` | supervisor internal state | `active` | Same. |
 | `pending-oauth` | supervisor internal state | `pending` | Rename. |
 | `disabled` | supervisor internal state | `inactive` | Rename. |
@@ -518,7 +518,9 @@ The persistent mark + wordmark + optional context chip. Drop into the top-left o
 }
 ```
 
-Source today: `parachute-hub/src/admin-login-ui.ts:153–172` (the existing brand-line CSS shape, exposing classes `.brand`, `.brand-mark`, `.brand-name`, `.brand-tag`). This spec proposes two changes: (1) retire the `⌬` glyph and substitute the SVG mark inside `.brand-mark`; (2) rename the chip class `.brand-tag` → `.brand-chip` (the word "tag" overloads with the existing `.tag` accent-chip in `styles.css:307–319`). A one-release back-compat alias keeps `.brand-tag` working while migrations land.
+Source today: `parachute-hub/src/admin-login-ui.ts:153–172` (the existing brand-line CSS shape, exposing classes `.brand`, `.brand-mark`, `.brand-name`, `.brand-tag`). This spec proposes two changes: (1) retire the `⌬` glyph and substitute the SVG mark inside `.brand-mark`; (2) rename the chip class `.brand-tag` → `.brand-chip` (the word "tag" overloads with the existing `.tag` accent-chip in `styles.css:307–319`). A one-release back-compat alias keeps `.brand-tag` working in CSS while the HTML emit sites are migrated.
+
+HTML emit sites that currently render `class="brand-tag"` (must be updated to `brand-chip` in the same migration window as the CSS alias retires, otherwise the back-compat-alias removal silently un-styles the chip): `parachute-hub/src/admin-login-ui.ts:69`, `parachute-hub/src/oauth-ui.ts` (multiple sites — grep for `brand-tag`), `parachute-scribe/src/admin-ui.ts:83`. Workstream G owns the migration sweep.
 
 ### Loading
 
@@ -779,7 +781,7 @@ A 32px-tall top strip injected on every server-rendered + module-served surface 
 }
 ```
 
-Primary on the left, secondary beside, destructive pushed to the far right (the visual distance discourages accidental clicks). Source: `parachute-hub/web/ui/src/styles.css:415–420`, `:576–588`.
+Primary on the left, secondary beside, destructive pushed to the far right (the visual distance discourages accidental clicks). The new `.form-actions` class is a convention this spec introduces — the existing equivalent (`form .actions` descendant selector at `parachute-hub/web/ui/src/styles.css:415–420`, paired with the destructive offset at `:576–588`) is preserved as the source of the values, but the class-based form is the canonical shape going forward (descendant-selector form continues to work; adopters can rename in their next surface-touching PR).
 
 ## 8. Where this applies
 
@@ -854,13 +856,13 @@ The five committed-core surfaces ranked by gap, biggest first. Each is owned by 
 
 | Rank | Surface | Gap | Workstream | Owner module |
 |---|---|---|---|---|
-| 1 | `parachute-app/web/admin/` (app-admin SPA) | Bespoke `#1e6bb8` blue palette + JetBrains sans-stack + square-cornered buttons + uppercase table headers + lowercase-hyphenated `parachute-app · admin` brand-line. **The single largest visual outlier in the ecosystem** (audit §2.4). | **B** | parachute-app |
+| 1 | `parachute-app/web/admin/` (app-admin SPA) | Bespoke `#1e6bb8` blue palette + `15px` body size + square-cornered buttons + uppercase table headers + lowercase-hyphenated `parachute-app · admin` brand-line. The type stack is the same `-apple-system, …` system-UI cascade as the privacy-safe surfaces (`web/admin/src/styles.css:12`); the outlier is the palette + sizing + radii, not the font family. **The single largest visual outlier in the ecosystem** (audit §2.4). | **B** | parachute-app |
 | 2 | `parachute-hub` brand-marks (`🪂` favicon + `⌬` OAuth + `Parachute Admin` SPA + various per-route headers) | Three competing brand-marks; persistent chrome strip not yet shipped. | **G** (chrome strip) + this doc's §2 retirement list | parachute-hub |
 | 3 | CLI + SPA state words (`running`/`stopped`/`-`/`Active`/`Pending-OAuth`/`Disabled`) | Three vocabularies for the same supervisor state. | **F** | parachute-hub (CLI + SPA in one repo) |
 | 4 | OAuth flow copy (Authorize/Approve-and-continue/Sign-in-as-admin-to-approve) | Verb drift across the flow's six surfaces. | **I** | parachute-hub |
 | 5 | Loading / empty / error treatments (four spinners, four empty states, two banner naming conventions) | Shared components not pulled into a shared sheet. | **J** | parachute-hub (then propagated downstream) |
 
-Per the workspace migration discipline ([`migrations/README.md`](../migrations/README.md)), the shift this doc declares ships with its own migration file: [`migrations/2026-05-25-design-system.md`](../migrations/2026-05-25-design-system.md) (TODO — file in a follow-up PR once workstream B/C/F/G/I/J PRs start landing). The migration file is the propagation checklist; this doc is the canon.
+Per the workspace migration discipline ([`migrations/README.md`](../migrations/README.md)), an architectural shift normally ships with a propagation-checklist file in the same PR. This PR defers that file to the first workstream PR that adopts from this doc — at which point the checklist is created with concrete items covering B/C/F/G/I/J and gets ticked off as each lands. The reason for the deferral: a checklist created here would name the workstreams but couldn't yet name the PRs that satisfy them. This doc is the canon; the propagation checklist follows as the first downstream PR lands.
 
 ### `[DRAFT]` brand stubs — what happens to them
 
@@ -874,7 +876,7 @@ The cleanup is not in scope for this PR; flag it as a follow-up.
 
 ### Audit script
 
-Run [`scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) after shifts to catch missed propagations. It currently checks for stale committed-core list references; extend it to grep for design-system canon (e.g. `--accent: #(?!4a7c59)`, `font-family.*JetBrains`, hardcoded `#1e6bb8`) as workstream B/F land.
+Run [`scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) after shifts to catch missed propagations. It currently checks for stale committed-core list references; extend it to grep for design-system canon (e.g. `--accent: #(?!4a7c59)`, hardcoded `#1e6bb8`, `font-size: 15px` outside body-default contexts) as workstream B/F land.
 
 ## 10. Open questions for branding
 
