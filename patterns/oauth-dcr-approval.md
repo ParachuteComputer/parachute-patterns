@@ -197,7 +197,9 @@ caller has a parked OAuth flow
 operator navigates to /admin/approve-client/<id>?return_to=<authorize-url>
   │
   ▼
-SPA validates return_to is same-origin (starts with /, doesn't start with //)
+SPA validates return_to with isSafeReturnTo (starts with /, doesn't start with //)
+  — intentionally broader than the server gate so future non-/oauth/authorize
+  resume targets can be wired without an SPA change. Server is the authority.
   │
   ▼
 operator clicks Approve
@@ -283,7 +285,7 @@ The alternative — split into two routes — was considered and rejected:
 
 | Caller | Case | Why |
 |---|---|---|
-| `/oauth/token` `approve_url` (currently surfaced to dead-end on the SPA) | 2 | The deep link is opened from a different origin (the caller's app). The operator's natural action is to close the tab and retry on the caller side — no OAuth flow is parked in this browser. |
+| `/oauth/token` `approve_url` (currently surfaced to dead-end on the SPA) | 2 | The deep link is opened from a different origin (the caller's app). The operator's natural action is to close the tab and retry on the caller side — no OAuth flow is parked in this browser. A future revision could switch this caller to case 1 by appending `?return_to=` to the `approve_url`, but D deliberately did not flip the existing callsite — that's a separate UX call. |
 | `/oauth/authorize` (pending client, signed-in operator) | (not this route — uses inline button at the authorize URL itself) | Inline resume already works post-rc.38; no reason to bounce to the SPA. |
 | `/oauth/authorize` (pending client, unauth) | (not this route — uses sign-in CTA at the authorize URL itself; post-login the operator hits the inline button) | Same as above. |
 | "Share this link with an admin" deep link (from the unauth pending-client page) | 2 | The admin clicking the link is not the operator who started the OAuth flow. No flow to resume. |
