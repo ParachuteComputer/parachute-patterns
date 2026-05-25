@@ -125,7 +125,82 @@ Picking one is the single decision blocking adoption of this doc. Section 10 car
 
 ## 3. Palette
 
-TODO — codify hub-home tokens as canon; document the Google-Fonts vs no-Google-Fonts split.
+The canonical palette is the warm-cream + sage-accent stack used by hub-discovery, hub-OAuth, hub-admin SPA, vault SPA, scribe admin, and the Notes PWA. Every committed-core web surface MUST use these tokens; bespoke per-surface palettes are the canonical violation.
+
+Source-of-truth files (all in lockstep — drift in one is a bug):
+
+- `parachute-hub/src/hub.ts:128–157` — discovery page palette (defines the inline `<style>` for `/` and `/hub.html`)
+- `parachute-hub/src/oauth-ui.ts:27–41` — OAuth surfaces palette (`PALETTE` const)
+- `parachute-hub/src/admin-login-ui.ts:20–36` — login + admin error palette (`PALETTE` const)
+- `parachute-hub/web/ui/src/styles.css:7–29` — admin SPA palette (`:root`)
+- `parachute-vault/web/ui/src/styles.css` — vault SPA palette (mirrors hub admin SPA per its CLAUDE.md "Don't drift them without updating both")
+- `parachute-scribe/src/admin-ui.ts` — scribe admin (uses the same body palette; sage variant `#6A9B77` on the scribe brand letter, retiring in Workstream G)
+
+### Canonical tokens (light mode)
+
+| CSS var | Value | Use |
+|---|---|---|
+| `--bg` | `#faf8f4` | page background — warm cream, not clinical white |
+| `--bg-soft` | `#f3f0ea` | hover lifts, code backgrounds, soft surface variants |
+| `--fg` | `#2c2a26` | primary text — warm near-black, not pure black |
+| `--fg-muted` | `#6b6860` | secondary text, labels, subtitles |
+| `--fg-dim` | `#9a9690` | tertiary text, captions, dates, meta |
+| `--accent` | `#4a7c59` | sage — primary actions, links, brand-mark color, focus ring |
+| `--accent-hover` | `#3d6849` | accent hover state (also reused as `--success`) |
+| `--accent-soft` | `rgba(74, 124, 89, 0.08)` | accent backgrounds, tag fills, active states |
+| `--accent-light` | `#6a9b77` | hover lift on card borders (`hub.ts:138`) |
+| `--border` | `#e4e0d8` | default border on cards, inputs, dividers |
+| `--border-light` | `#ece9e2` | subtler dividers (sub-unit rules in module rows, etc.) |
+| `--card-bg` | `#ffffff` | card / surface fill on cream pages |
+| `--error` | `#a3392b` | error border + text on banners |
+| `--error-soft` | `rgba(163, 57, 43, 0.08)` | error banner fill |
+| `--warn` | `#b08023` | warning border + text |
+| `--warn-soft` | `rgba(176, 128, 35, 0.08)` | warning banner fill |
+| `--success` | `#3d6849` | success border + text (= `--accent-hover`) |
+| `--success-soft` | `rgba(61, 104, 73, 0.08)` | success banner fill |
+
+### Canonical tokens (dark mode)
+
+Hub-discovery declares dark-mode overrides via `@media (prefers-color-scheme: dark)` (`hub.ts:144–158`); the admin SPA does the same implicitly via per-component rules. Tokens that change:
+
+| CSS var | Light | Dark |
+|---|---|---|
+| `--bg` | `#faf8f4` | `#1a1917` |
+| `--bg-soft` | `#f3f0ea` | `#24221f` |
+| `--fg` | `#2c2a26` | `#e8e4dc` |
+| `--fg-muted` | `#6b6860` | `#a8a49a` |
+| `--fg-dim` | `#9a9690` | `#6b6860` |
+| `--accent` | `#4a7c59` | `#7ab08a` |
+| `--accent-hover` | `#3d6849` | `#8fc49e` |
+| `--accent-light` | `#6a9b77` | `#8fc49e` |
+| `--border` | `#e4e0d8` | `#3a3733` |
+| `--card-bg` | `#ffffff` | `#24221f` |
+
+Semantic tokens (`--error`, `--warn`, `--success`) keep the same hex values in dark mode; the `*-soft` `rgba()` overlays auto-adjust because they're alpha against the dark background. Dark-mode coherence across all surfaces remains an open question (§10).
+
+### Google Fonts split
+
+OAuth + login + admin-error surfaces deliberately do NOT load fonts from Google. The reason is captured in `parachute-hub/src/oauth-ui.ts:9–14`:
+
+> OAuth screens see who's logging in and what they're authorizing; loading fonts from Google would leak that to a third party.
+
+This is a principled drift, not a bug. The result is:
+
+| Surface | Font source | Why |
+|---|---|---|
+| Hub discovery (`/`, `/hub.html`) | Google Fonts (Instrument Serif + DM Sans) | Pre-auth tile page. No PII in the URL. Brand-forward serif headings carry the most visual weight here. |
+| Hub OAuth (`/oauth/*`) | System fonts (Georgia / -apple-system) | Auth surface. Leaks would expose client_id + scope. Inline CSS only, no remote fetches. |
+| Hub login (`/login`) + admin error | System fonts (Georgia / -apple-system) | Auth surface. Same posture as OAuth. |
+| Hub admin SPA (`/admin/*`) | System fonts (Georgia / -apple-system) | Inherits the auth-flow posture so the SPA looks visually continuous with the password-login → consent flow the operator just walked through (per `styles.css:1–6`). |
+| Vault admin SPA | System fonts (Georgia / -apple-system) | Same posture as hub admin SPA — visual continuity with auth flow. |
+| App admin SPA + bundled UIs | TBD per UI | Defaults to system fonts for admin chrome; bundled UIs (Notes) may load fonts as needed for their own content. |
+| Scribe admin (`/scribe/admin`) | System fonts | Loopback-only surface for now; system fonts keep boot fast. |
+| Notes PWA | Google Fonts (Instrument Serif) | Destination app. Notes runs against the user's own vault — no third-party leak concern in the auth-surface sense; Notes' brand language calls for the serif. |
+| Public site (`parachute.computer`) | Google Fonts | Pre-auth marketing surface. |
+
+**Operational rule:** if a new surface is **pre-auth and brand-forward** OR **destination-app where the user's data is the user's own**, Google Fonts is allowed. Otherwise (any post-auth admin chrome, any flow showing client identity, any cross-tenant management surface) — system fonts only. When in doubt, system fonts.
+
+§4 specifies the actual stack for each posture.
 
 ## 4. Typography
 
