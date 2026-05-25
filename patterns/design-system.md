@@ -2,7 +2,7 @@
 
 The canonical visual + verbal language for every Parachute surface — the lighthouse this repo points at when a downstream module asks "what does a Parachute thing look like?"
 
-This file declares: one brand mark, one tagline (pending confirmation), one palette, one type stack, one verb vocabulary, one state vocabulary, one component library. Every committed-core module — hub server-rendered surfaces, hub admin SPA, vault SPA, app admin + bundled UIs, scribe admin — is expected to conform. The Notes PWA and the public site inherit the same tokens but own their own composition.
+This file declares: one brand mark, one tagline, one palette, one type stack, one verb vocabulary, one state vocabulary, one component library. Every committed-core module — hub server-rendered surfaces, hub admin SPA, vault SPA, app admin + bundled UIs, scribe admin — is expected to conform. The Notes PWA and the public site inherit the same tokens but own their own composition.
 
 This doc is the lighthouse. Downstream workstreams (B/C/F/G/I/J in the 2026-05-25 audit) reference it; they do not re-derive its decisions. Update this file when the convention itself changes — adopters follow.
 
@@ -98,15 +98,13 @@ The wordmark is the word **Parachute** set in the canonical serif (Instrument Se
 
 ### Tagline
 
-Aaron rejected both shipped taglines (`Your AI has memory.` on the public site; `Your personal-computing modules.` on hub-discovery). Direction: "in the ballpark of truly personal computing and your knowledge is yours."
+> **Truly personal computing. Your knowledge belongs with you.**
 
-Three candidates, ordered as the recommended primary first:
+Two short clauses. The first declares the stance ("personal" with the weight it deserves, distinct from cloud SaaS framed as personal); the second names what makes the computing personal — ownership of knowledge, framed as belonging rather than possession. Replaces the previously-shipped `Your AI has memory.` (public site) and `Your personal-computing modules.` (hub-discovery).
 
-1. `[CANDIDATE — to confirm with branding]` **Truly personal computing. Your knowledge stays yours.** — Aaron's exact phrasing, two short clauses. Reads as a stance, not a feature list. Long enough to carry the principle, short enough to fit under the wordmark on a hero. **Recommended primary** — it's the closest match to Aaron's stated direction with no editorial liberties taken.
-2. `[CANDIDATE — to confirm with branding]` **Truly personal computing.** — Single-clause minimal. Strongest for compact chrome (32px brand strip, nav bars, favicons paired with title tags). Loses the "knowledge stays yours" half — that half does load-bearing work explaining what makes the computing personal.
-3. `[CANDIDATE — to confirm with branding]` **Personal computing. Your knowledge, your call.** — Punchier rephrasing. "Your call" is more active than "stays yours" but slightly drifts the meaning (autonomy vs sovereignty); also loses "truly," which is the word that distinguishes Parachute from cloud SaaS framed as personal.
+**Compact form**, when the full tagline doesn't fit (32px brand strip, nav bars, favicons paired with title tags): **Truly personal computing.** The second clause carries load-bearing meaning, so prefer the full form everywhere the layout allows.
 
-Picking one is the single decision blocking adoption of this doc. Section 10 carries the open question; the rest of the doc is uncontested.
+The tagline is open to future refinement with the branding team (see §10), but it's now the in-use canon — adopt as-is in every surface that previously carried one of the retired lines.
 
 ### What to retire
 
@@ -882,9 +880,9 @@ Run [`scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) afte
 
 The questions that don't block adoption of this doc but need a branding-team answer before the next round.
 
-### 1. Final tagline pick **(blocks merge of this PR)**
+### 1. Tagline confirmation with branding team
 
-§2 lists three candidates; recommended primary is **"Truly personal computing. Your knowledge stays yours."** Aaron's call. Once picked, this doc updates to remove the `[CANDIDATE — to confirm with branding]` markers and reduce §2 to the one chosen tagline + a sentence explaining why the others were retired.
+Aaron picked **"Truly personal computing. Your knowledge belongs with you."** 2026-05-25 — this is the in-use canon as of this PR. Worth one more pass with the branding team to confirm the rhythm + the "belongs with you" framing (vs alternatives like "stays yours," "is yours," "your call"). Not a blocker; the canon ships with this doc.
 
 ### 2. Custom wordmark for "Parachute"
 
