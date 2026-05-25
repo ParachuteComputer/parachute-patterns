@@ -837,7 +837,46 @@ The exception is when a downstream surface discovers a real reason the canonical
 
 ## 9. Adoption + enforcement
 
-TODO — per-PR reviewer checks; migration plan listing the surfaces with biggest gap.
+### Per-PR reviewer checks
+
+Per workspace governance ([`governance.md`](./governance.md) rule 3), every PR review surfaces which patterns the change touches. PRs that touch any web surface in Circle 1 or 2 (§8) MUST be checked against this doc. The reviewer agent ([`reviewer-agent.md`](./reviewer-agent.md)) adds the following checks to its UI-surface PR script:
+
+- **Mark** — does the change introduce a new brand mark, retire a legacy one, or use the SVG from §2? If a new mark, why isn't it the canonical one?
+- **Palette** — are all new colors sourced from the §3 token table? Hardcoded hex literals outside that table are a flag (allow with rationale; warn loudly).
+- **Type** — does the new surface use the right type stack for its auth posture (§4)? Loading Google Fonts on a privacy-safe surface is a fail.
+- **Verbs** — does new button / link / page-title copy follow §5? Authorize / Allow / Grant / Connect are flags.
+- **States** — if the change touches a state badge or status display, does it use the §6 vocabulary?
+- **Components** — does the change reuse the §7 shapes, or invent a parallel one? Inventing is allowed only if the invention belongs back in this doc.
+
+The reviewer doesn't block on small per-cell issues; it surfaces them so the human reviewer (Aaron) can decide whether to fold inline.
+
+### Migration plan
+
+The five committed-core surfaces ranked by gap, biggest first. Each is owned by a downstream workstream from the audit's §5 menu.
+
+| Rank | Surface | Gap | Workstream | Owner module |
+|---|---|---|---|---|
+| 1 | `parachute-app/web/admin/` (app-admin SPA) | Bespoke `#1e6bb8` blue palette + JetBrains sans-stack + square-cornered buttons + uppercase table headers + lowercase-hyphenated `parachute-app · admin` brand-line. **The single largest visual outlier in the ecosystem** (audit §2.4). | **B** | parachute-app |
+| 2 | `parachute-hub` brand-marks (`🪂` favicon + `⌬` OAuth + `Parachute Admin` SPA + various per-route headers) | Three competing brand-marks; persistent chrome strip not yet shipped. | **G** (chrome strip) + this doc's §2 retirement list | parachute-hub |
+| 3 | CLI + SPA state words (`running`/`stopped`/`-`/`Active`/`Pending-OAuth`/`Disabled`) | Three vocabularies for the same supervisor state. | **F** | parachute-hub (CLI + SPA in one repo) |
+| 4 | OAuth flow copy (Authorize/Approve-and-continue/Sign-in-as-admin-to-approve) | Verb drift across the flow's six surfaces. | **I** | parachute-hub |
+| 5 | Loading / empty / error treatments (four spinners, four empty states, two banner naming conventions) | Shared components not pulled into a shared sheet. | **J** | parachute-hub (then propagated downstream) |
+
+Per the workspace migration discipline ([`migrations/README.md`](../migrations/README.md)), the shift this doc declares ships with its own migration file: [`migrations/2026-05-25-design-system.md`](../migrations/2026-05-25-design-system.md) (TODO — file in a follow-up PR once workstream B/C/F/G/I/J PRs start landing). The migration file is the propagation checklist; this doc is the canon.
+
+### `[DRAFT]` brand stubs — what happens to them
+
+The earlier brand stubs (`brand/palette.md`, `brand/typography.md`, `brand/tokens.css`, `brand/motifs.md`) are superseded by this doc. They aren't deleted in this PR — that's a separate cleanup. Options for the cleanup PR:
+
+1. **Delete the stubs** — this doc is the canon; the stubs are stale.
+2. **Replace with stubs that point here** — preserve any link-from-the-wild that targets `brand/palette.md`.
+3. **Reframe the stubs as the Daily-Flutter-side palette** — Daily uses Forest Green `#40695B` + Fraunces + Inter; the doc could be reframed as "Parachute Daily (mobile)" tokens, separate from the web canon. Whether to keep two palettes is a §10 open question.
+
+The cleanup is not in scope for this PR; flag it as a follow-up.
+
+### Audit script
+
+Run [`scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) after shifts to catch missed propagations. It currently checks for stale committed-core list references; extend it to grep for design-system canon (e.g. `--accent: #(?!4a7c59)`, `font-family.*JetBrains`, hardcoded `#1e6bb8`) as workstream B/F land.
 
 ## 10. Open questions for branding
 
