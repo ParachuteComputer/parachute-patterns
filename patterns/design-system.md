@@ -350,7 +350,86 @@ Examples:
 
 ## 6. State vocabulary
 
-TODO — pick canonical states, map old terms; workstream F adopts across surfaces.
+The 2026-05-25 audit (§2.7) found three different vocabularies for the same module-supervisor concept: CLI says `running` / `stopped` / `-`; admin SPA says `Active` / `Pending-OAuth` / `Disabled`; the supervisor's internal state model says `active` / `pending-oauth` / `disabled`. Adjacent concepts (health-probe result, token source) carry their own per-surface vocabularies on top of that. Workstream F unifies these.
+
+### Canonical states (module supervisor)
+
+Four lowercase states, in CSS class form `status-<state>`:
+
+| State | Meaning | Replaces | Color |
+|---|---|---|---|
+| `active` | Module is supervised, process is running, last health probe succeeded. | CLI `running`, SPA `Active`, supervisor `active` | `--success` / `--success-soft` |
+| `pending` | Module is supervised but needs operator action before it can run (OAuth not yet completed, config not yet supplied, etc.). | SPA `Pending-OAuth` (broaden — pending-config is the same concept), supervisor `pending-oauth` | `--warn` / `--warn-soft` |
+| `inactive` | Module is supervised but the operator has deliberately stopped it. | CLI `stopped`, SPA `Disabled`, supervisor `disabled` | `--fg-muted` / `--bg-soft` |
+| `failing` | Module is supervised, process is running OR restart-looping, last health probe failed. | CLI `running` + health `unhealthy` (currently two columns; collapse) | `--error` / `--error-soft` |
+
+**Why four, not three.** The audit recommended `active / inactive / failing` (three). Adding `pending` preserves the OAuth-pre-approval state that the SPA's `pending-oauth` color already captures — without `pending`, the SPA loses a meaningful "not your fault, but you need to do a thing" state that's distinct from "broken" (`failing`) and from "operator deliberately stopped it" (`inactive`). The four-state vocabulary maps cleanly to the four reasonable operator reactions: ignore (`active`), do a thing (`pending`), do nothing it's intentional (`inactive`), investigate (`failing`).
+
+### Mapping table
+
+| Old term | Surface | New canonical | Migration note |
+|---|---|---|---|
+| `running` | `parachute status` PROCESS column | `active` (when healthy) / `failing` (when unhealthy) | Collapse `PROCESS` + `HEALTH` columns into one `STATE` column. |
+| `stopped` | `parachute status` PROCESS column | `inactive` | Direct rename. |
+| `-` | `parachute status` PROCESS column when no pidfile | `inactive` | Same surface as deliberately stopped — both mean "not running and we're not trying." |
+| `Active` | SPA `/admin/modules` status badge | `active` | Lowercase. |
+| `Pending-OAuth` | SPA `/admin/modules` status badge | `pending` | Broadens; CSS class becomes `status-pending`. Old `status-pending-oauth` class redirects to `status-pending`. |
+| `Disabled` | SPA `/admin/modules` status badge | `inactive` | The word "disabled" overloads with HTML's button `:disabled` and is read as "broken" by some operators; `inactive` reads cleaner. |
+| `unhealthy` / `ok` | services.json + status probe | not user-facing — internal probe result | The user-facing rollup is `active` (healthy) / `failing` (unhealthy). |
+| `active` | supervisor internal state | `active` | Same. |
+| `pending-oauth` | supervisor internal state | `pending` | Rename. |
+| `disabled` | supervisor internal state | `inactive` | Rename. |
+| (new) | | `failing` | New state. Supervisor sets when health-probe failure crosses a threshold (definition is Workstream F's call — recommend "3 consecutive failures or restart-loop"). |
+
+### CSS classes + colors
+
+Workstream F renames the existing classes; the color tokens already exist (§3 palette). Today's `parachute-hub/web/ui/src/styles.css:807–829`:
+
+```css
+.status { background: var(--bg-soft); color: var(--fg-muted); ... }
+.status-active        { background: var(--success-soft); color: var(--success); }
+.status-pending-oauth { background: var(--warn-soft);    color: var(--warn); }
+.status-disabled      { background: var(--bg-soft);      color: var(--fg-dim); }
+```
+
+becomes:
+
+```css
+.status { background: var(--bg-soft); color: var(--fg-muted); ... }
+.status-active   { background: var(--success-soft); color: var(--success); }
+.status-pending  { background: var(--warn-soft);    color: var(--warn); }
+.status-inactive { background: var(--bg-soft);      color: var(--fg-dim); }
+.status-failing  { background: var(--error-soft);   color: var(--error); }
+/* Back-compat for one release window: */
+.status-pending-oauth { background: var(--warn-soft); color: var(--warn); }
+.status-disabled      { background: var(--bg-soft);   color: var(--fg-dim); }
+```
+
+The back-compat classes can retire one rc-chain after Workstream F lands.
+
+### What stays per-domain
+
+Some state vocabularies are domain-specific and don't roll up to the four canonical states:
+
+- **Token source** (`oauth` / `operator` / `cli`) — provenance of a minted token. Not a supervisor state; stays as the `.tag.source-<kind>` chip in `styles.css:325–360`.
+- **OAuth grant state** (`pending` / `approved` / `revoked`) — OAuth client lifecycle. `pending` collides with the new module state but the context (`/admin/permissions` row vs `/admin/modules` row) disambiguates; keep the OAuth-grant `pending` as-is.
+- **Process lifecycle** (`starting` / `restarting` / `stopping`) — transient supervisor states surfaced by `parachute logs` and the SPA's restart action. Optional addition; not required by Workstream F. If added, render as muted variants of `active` (in-progress) or `inactive` (winding down).
+
+### CLI `status` column shape
+
+The CLI's `parachute status` columns today:
+
+```
+SERVICE  PORT  VERSION  PROCESS  PID  UPTIME  HEALTH  LATENCY  SOURCE
+```
+
+After Workstream F:
+
+```
+SERVICE  PORT  VERSION  STATE   PID  UPTIME  LATENCY  SOURCE
+```
+
+`STATE` is one of `active` / `pending` / `inactive` / `failing` and replaces the `PROCESS` + `HEALTH` columns (which encoded the same information in two columns). `LATENCY` stays alongside; it's a measurement, not a state.
 
 ## 7. Components
 
