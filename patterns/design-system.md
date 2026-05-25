@@ -433,7 +433,355 @@ SERVICE  PORT  VERSION  STATE   PID  UPTIME  LATENCY  SOURCE
 
 ## 7. Components
 
-TODO — Loading / Empty / Error banner / Buttons (primary/secondary/destructive) / Brand-line / Persistent chrome strip (for Workstream G).
+Shared component shapes — HTML + CSS, framework-agnostic. Server-rendered surfaces drop the HTML in directly; React/Vue surfaces wrap the same DOM. All snippets assume the `--*` tokens from §3 are in scope.
+
+### Buttons
+
+Three variants. Most current surfaces already get this right; the spec exists to keep new surfaces from inventing a fourth.
+
+```css
+button, .btn {
+  font: inherit;
+  background: var(--accent);
+  color: white;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.55rem 1.1rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-decoration: none;
+  display: inline-block;
+}
+button:hover, .btn:hover { background: var(--accent-hover); }
+button:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+button.secondary, .btn.secondary {
+  background: white;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+button.secondary:hover, .btn.secondary:hover { background: var(--bg-soft); }
+
+button.destructive, .btn.destructive {
+  background: white;
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+button.destructive:hover, .btn.destructive:hover {
+  background: var(--error-soft);
+}
+```
+
+- **Primary** (default `button`): sage fill, white text. Use for the one most-likely action per form. Never more than one primary per visible area.
+- **Secondary** (`button.secondary`): white fill, ink text, border. Use for adjacent actions of equal weight (Cancel beside Save), or for any action when there's already a primary nearby.
+- **Destructive** (`button.destructive`): white fill, error-color text + border. Use for Delete / Revoke / Uninstall. Currently used in `parachute-hub/web/ui/src/styles.css:583–588` for module-config form's destructive actions (an existing convention; this codifies it).
+
+Source today: `parachute-hub/web/ui/src/styles.css:49–73` (primary + secondary), `:701–718` (`.btn` link variant), `:583–588` (destructive).
+
+### Brand-line (header chrome)
+
+The persistent mark + wordmark + optional context chip. Drop into the top-left of any surface that's not the public site (which has its own composition).
+
+```html
+<div class="brand">
+  <span class="brand-mark"><!-- SVG from §2 inlined here, 24×24 --></span>
+  <span class="brand-name">Parachute</span>
+  <span class="brand-chip">admin</span> <!-- optional -->
+</div>
+```
+
+```css
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--accent);
+  font-weight: 500;
+  font-size: 0.95rem;
+  font-family: var(--serif, var(--font-serif));
+}
+.brand .brand-mark { width: 24px; height: 24px; display: inline-flex; }
+.brand .brand-name {
+  font-family: var(--serif, var(--font-serif));
+  font-weight: 400;
+  font-size: 1.15rem;
+  color: var(--fg);
+  letter-spacing: 0.01em;
+}
+.brand .brand-chip {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  border: 1px solid var(--border-light);
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-family: var(--sans, var(--font-sans));
+}
+```
+
+Source today: `parachute-hub/src/admin-login-ui.ts:153–172` (the existing brand-line shape; this spec retires the `⌬` glyph and substitutes the SVG mark).
+
+### Loading
+
+One spinner across all surfaces. Today there are four distinct loading treatments (audit §2.6). One shape:
+
+```html
+<div class="loading" role="status" aria-live="polite">
+  <span class="loading-spinner" aria-hidden="true"></span>
+  <span class="loading-label">Loading…</span>
+</div>
+```
+
+```css
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem 1rem;
+  color: var(--fg-muted);
+  font-size: 0.92rem;
+}
+.loading-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: parachute-spin 0.7s linear infinite;
+}
+@keyframes parachute-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner { animation: none; opacity: 0.5; }
+}
+```
+
+- The label is always **Loading…** (one ellipsis character, not three dots). Per-surface qualifiers ("Loading vaults…", "Loading current configuration…") are allowed but optional — the spinner is what carries the meaning.
+- `role="status"` + `aria-live="polite"` so screen readers announce the loading state without preempting other speech.
+- Honor `prefers-reduced-motion`.
+
+### Empty state
+
+Two variants. The audit's "no shared empty-state shape" finding maps to merging today's `.empty` and `.empty-rich` into one component with a `--rich` modifier.
+
+```html
+<!-- Minimal empty (use in compact lists / sidebar widgets) -->
+<div class="empty">
+  No vaults yet.
+</div>
+
+<!-- Rich empty (use as the route-level "nothing to show" affordance) -->
+<div class="empty empty-rich">
+  <p class="empty-headline">No services with a UI declared yet.</p>
+  <p class="empty-body">
+    Install a module with <code>parachute install &lt;short&gt;</code>;
+    declared <code>uiUrl</code>s will appear here as tiles.
+  </p>
+</div>
+```
+
+```css
+.empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--fg-muted);
+  background: var(--bg-soft);
+  border-radius: 10px;
+  font-size: 0.95rem;
+}
+.empty.empty-rich {
+  text-align: left;
+  padding: 2rem 1.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+}
+.empty .empty-headline {
+  font-size: 1.05rem;
+  color: var(--fg);
+  margin: 0 0 0.5rem;
+  font-weight: 500;
+}
+.empty .empty-body {
+  margin: 0;
+  color: var(--fg-muted);
+}
+.empty code {
+  font-family: var(--mono, var(--font-mono));
+  background: var(--bg);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  color: var(--accent);
+}
+```
+
+Source today: `parachute-hub/web/ui/src/styles.css:276–294` (the minimal + rich variants — this spec just merges them into one selector with a modifier).
+
+### Banners (error / warn / success)
+
+```html
+<p class="banner banner-error">
+  Something went wrong. <code>500 Internal Server Error</code>.
+</p>
+<p class="banner banner-warn">
+  Your assigned vault has been removed. Contact your admin.
+</p>
+<p class="banner banner-success">
+  Token created. Copy it before leaving this page — it won't be shown again.
+</p>
+```
+
+```css
+.banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+}
+.banner-error   { background: var(--error-soft);   border-color: var(--error);   color: var(--error); }
+.banner-warn    { background: var(--warn-soft);    border-color: var(--warn);    color: var(--warn); }
+.banner-success { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+.banner code {
+  font-family: var(--mono, var(--font-mono));
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+```
+
+Source today: `parachute-hub/web/ui/src/styles.css:257–274` (`.error-banner` + `.warn-banner`) and `:590–611` (`.banner-success` + `.banner-error`). The spec unifies the two competing names (`.error-banner` vs `.banner-error`) on the `banner-<level>` form (the form already used by the module-config surfaces).
+
+Workstream F renames the existing `.error-banner` → `.banner-error` etc. with a one-release back-compat alias.
+
+### Status badge
+
+The state-vocabulary chip from §6, repeated here as a component spec for completeness:
+
+```html
+<span class="status status-active">active</span>
+<span class="status status-pending">pending</span>
+<span class="status status-inactive">inactive</span>
+<span class="status status-failing">failing</span>
+```
+
+CSS already specified in §6.
+
+### Persistent chrome strip (Workstream G)
+
+A 32px-tall top strip injected on every server-rendered + module-served surface that carries: `[mark + wordmark] · Home · [signed-in cluster]`. Modules opt in by serving from the hub-proxy path; hub middleware injects the strip.
+
+```html
+<header class="pc-chrome" role="banner">
+  <a href="/" class="pc-chrome-brand">
+    <span class="pc-chrome-mark"><!-- 16×16 SVG mark --></span>
+    <span class="pc-chrome-wordmark">Parachute</span>
+  </a>
+  <nav class="pc-chrome-nav" aria-label="primary">
+    <a href="/">Home</a>
+  </nav>
+  <div class="pc-chrome-auth">
+    <!-- One of: signed-in cluster (<span>Signed in as <strong>X</strong></span> <button>Sign out</button>) OR <a>Sign in</a> -->
+  </div>
+</header>
+```
+
+```css
+.pc-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1rem;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-family: var(--sans, var(--font-sans));
+}
+.pc-chrome-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 500;
+}
+.pc-chrome-brand .pc-chrome-wordmark {
+  font-family: var(--serif, var(--font-serif));
+  font-size: 0.95rem;
+}
+.pc-chrome-nav {
+  display: inline-flex;
+  gap: 0.85rem;
+  margin-left: 0.5rem;
+}
+.pc-chrome-nav a {
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+.pc-chrome-nav a:hover { color: var(--fg); }
+.pc-chrome-auth {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg-muted);
+}
+.pc-chrome-auth strong { color: var(--fg); font-weight: 600; }
+.pc-chrome-auth a, .pc-chrome-auth button {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+```
+
+**Where to inject:**
+
+- All hub-owned server-rendered surfaces (`/`, `/login`, `/logout`, `/oauth/*`, `/admin/setup`, generic admin errors).
+- All proxied module surfaces served under `/<short>/admin/*` and `/vault/<name>/admin/*` (hub injects via middleware on the proxy response).
+- All app-bundled UI surfaces under `/app/admin/*` (app's host injects).
+- All hub admin SPA routes (the SPA renders the strip at the top of `<App>`).
+
+**Where NOT to inject:**
+
+- The Notes PWA at `/app/notes/*`. Notes is a destination, not chrome — it owns its own header. (Audit §4: "the Notes PWA is the proof this can work: own application, looks distinctively Notes, reads as Parachute because the tokens are continuous.")
+- The discovery JSON / well-known JSON / OAuth metadata endpoints (machine-readable, no chrome).
+
+**Injection mechanism:** Workstream G's call. Options include a hub-middleware string-replace on `<body>` of any `text/html` proxy response, a hub-issued JS snippet that mounts a top-of-page element, or a module-side convention where each module imports a shared HTML fragment. The CSS + DOM shape above is the contract; the injection mechanism is implementation detail.
+
+### Form actions cluster
+
+```html
+<div class="form-actions">
+  <button type="submit" class="btn">Save</button>
+  <button type="button" class="btn secondary">Cancel</button>
+</div>
+```
+
+```css
+.form-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+.form-actions .btn.destructive {
+  margin-left: auto;
+}
+```
+
+Primary on the left, secondary beside, destructive pushed to the far right (the visual distance discourages accidental clicks). Source: `parachute-hub/web/ui/src/styles.css:415–420`, `:576–588`.
 
 ## 8. Where this applies
 
