@@ -263,7 +263,90 @@ Don't introduce new sizes ad-hoc. If a surface needs a size not in this scale, p
 
 ## 5. Verb vocabulary
 
-TODO — kill Authorize/Allow/Grant duplication; settle on Sign in / Sign out / Approve / Deny / Continue. Per-domain table.
+The 2026-05-25 audit (§2.3) found the OAuth flow alone using six interchangeable verbs (Approve / Authorize / Allow / Grant / Sign in / Deny) plus `<title>` strings that drift between "Authorize <client>" and "App not yet approved." This section pins one verb per concept across every surface. Workstream I rewrites the existing copy to match.
+
+### Canonical verbs
+
+| Concept | Canonical verb | Use everywhere |
+|---|---|---|
+| Establish a session | **Sign in** | Pre-auth → post-auth. Button text, link text, `<title>`. |
+| End a session | **Sign out** | Post-auth → pre-auth. Button text, link text. |
+| Grant an OAuth client the permissions it asked for | **Approve** | OAuth consent screen primary button. |
+| Reject an OAuth client's request | **Deny** | OAuth consent screen secondary button. |
+| Admin flags a not-yet-trusted client as trusted | **Approve** | Inline pending-client form + the SPA approve-client surface. (Same verb as consent — they are the same concept at different scope.) |
+| Move forward from a non-terminal screen (wizard step, optional review) | **Continue** | Setup wizard advance, multi-step forms. |
+| Persist edits to a config / settings form | **Save** | Module-config forms, hub settings. |
+| Discard edits without persisting | **Cancel** | Modal close, form-row close. |
+| Remove a row / revoke a token / uninstall a module | **Delete** for rows, **Revoke** for tokens, **Uninstall** for modules | Per-domain; see below. |
+| Restart a running module | **Restart** | Module row action. |
+| Upgrade a module to a newer published version | **Upgrade** | Module row action. |
+| Open a hosted UI in the operator's browser | **Open** | Module row action when `uiUrl` declared. |
+
+### Retired verbs
+
+| Verb | Where it appears today | Replace with |
+|---|---|---|
+| **Authorize** | `<title>Authorize <client>?</title>` (`oauth-ui.ts:351`, `:376`), the `/oauth/authorize` route name | Keep the route name (it's the RFC 6749 path; not user-facing). Title becomes `Approve <client>` (page H1 already says "Approve / Deny"). |
+| **Allow** | Occasional informal use in copy | **Approve** when the user is consenting; **Save** when the user is editing a permission. |
+| **Grant** | "OAuth grants by client" SPA copy + `/api/grants` route | Keep `/api/grants` (data shape — RFC 6749's "grant" is the noun for what was issued). User-facing copy uses **Approve** for the verb, **approval** for the noun. |
+| **Approve and continue** | Inline pending-client form button (`oauth-ui.ts:508`) | **Approve** — the "and continue" is implied (every Approve action moves forward; explicit-continue is verbose). |
+| **Sign in as admin to approve** | Unauth approval CTA (`oauth-ui.ts:592`) | **Sign in to approve** — every operator on this hub is an admin in some sense; the role qualifier is redundant. |
+| **Connect** | Not currently in committed-core, but tempting for OAuth flows | Don't introduce. Use **Sign in** (for auth) or **Approve** (for consent). |
+
+### Per-domain verb tables
+
+Three domains where the audit found the most drift. Implementers updating copy in Workstream I should diff their existing strings against these tables.
+
+**OAuth flow (`/oauth/*`, `/login`, `/logout`):**
+
+| Surface | Today | Canonical |
+|---|---|---|
+| Login form submit (`/login`, `/oauth/authorize` login leg) | `Sign in` | `Sign in` (no change) |
+| Consent primary button | `Approve` | `Approve` (no change) |
+| Consent secondary button | `Deny` | `Deny` (no change) |
+| Pending-client inline submit | `Approve and continue` | `Approve` |
+| Pending-client unauth primary CTA | `Sign in as admin to approve` | `Sign in to approve` |
+| Page `<title>` on `/oauth/authorize` consent | `Authorize <client>` | `Approve <client>` |
+| Page `<title>` on `/oauth/authorize` pending | `App not yet approved` | `Approve <client>?` |
+| Sign-out form | `Sign out` | `Sign out` (no change) |
+
+**Module + vault management (admin SPA, `/admin/*`):**
+
+| Surface | Today | Canonical |
+|---|---|---|
+| `/admin/modules` row actions | `Restart`, `Upgrade`, `Configure`, `Uninstall` | unchanged |
+| `/admin/modules` install button | `Install` | unchanged |
+| `/admin/vaults` create form | `Create vault` | unchanged |
+| `/admin/tokens` mint | `Mint token` | unchanged |
+| `/admin/tokens` row action | `Revoke` | unchanged |
+| `/admin/permissions` row action | `Revoke` (the grant) | unchanged |
+| `/admin/users` row actions | `Delete`, `Demote`, `Promote` | unchanged |
+| `/admin/settings` form | `Save` (+ `Reset to default`) | unchanged |
+| `/admin/approve-client/<id>` primary | `Approve` (already correct) | unchanged |
+
+The admin SPA is mostly in good shape — the rewrite work is concentrated on the OAuth flow.
+
+**Discovery + module surfaces (`/`, hosted UI rows):**
+
+| Surface | Today | Canonical |
+|---|---|---|
+| Hub-discovery tile CTA | per-tile (`Open Vault`, `Browse Vault`, `Open Notes`) | **Open** (consistent verb across all tiles). The noun follows from the tile's title. |
+| Module-row hosted-UI sub-unit link | (varies) | **Open** |
+| Setup-wizard step advance | (varies) | **Continue** |
+| Setup-wizard final step | `Finish` (or similar) | **Continue** → on the final step swap to **Open Parachute** (the post-setup landing affordance) |
+
+### Title strings
+
+Page `<title>` follows the format `<Verb> <object> · Parachute` for action surfaces, `<noun> · Parachute` for management surfaces, plain `Parachute` for `/`.
+
+Examples:
+
+- `/login` → `Sign in · Parachute`
+- `/oauth/authorize` (consent) → `Approve <client> · Parachute`
+- `/oauth/authorize` (pending-client) → `Approve <client>? · Parachute`
+- `/admin/vaults` → `Vaults · Parachute`
+- `/admin/approve-client/<id>` → `Approve <client> · Parachute`
+- `/` → `Parachute`
 
 ## 6. State vocabulary
 
