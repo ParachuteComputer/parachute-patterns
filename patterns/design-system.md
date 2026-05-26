@@ -697,11 +697,11 @@ A 32px-tall top strip injected on every server-rendered + module-served surface 
      declared tokens) or a non-conforming surface (vars resolve to
      these hex defaults). Update the hex literals in lockstep with
      §3's canonical palette if the palette ever shifts. */
-  --pc-chrome-bg-soft: var(--bg-soft, #f5efe0);
-  --pc-chrome-fg: var(--fg, #2a2723);
-  --pc-chrome-fg-muted: var(--fg-muted, #5c574d);
-  --pc-chrome-border: var(--border, #d8cfb8);
-  --pc-chrome-accent: var(--accent, #6b8f5e);
+  --pc-chrome-bg-soft: var(--bg-soft, #f3f0ea);
+  --pc-chrome-fg: var(--fg, #2c2a26);
+  --pc-chrome-fg-muted: var(--fg-muted, #6b6860);
+  --pc-chrome-border: var(--border, #e4e0d8);
+  --pc-chrome-accent: var(--accent, #4a7c59);
 
   box-sizing: border-box;
   position: sticky;
