@@ -108,6 +108,52 @@ echo "(should be \`name: manifest.manifestName\` or \`name: ROW_NAME\` per servi
 done
 echo ""
 
+# --- Workstream I: non-canonical verb vocabulary -----------------------
+# design-system.md §5 settled the operator-facing verbs. Surfaces using
+# retired alternatives (Authorize/Allow/Grant/Connect/Approve-and-
+# continue) drift the visual vocabulary and confuse operators flowing
+# through the OAuth + module-management surfaces.
+
+echo "--- Non-canonical OAuth verbs (Authorize / Allow / Grant / Connect / Approve-and-continue) ---"
+echo "(design-system.md §5 — canonical: Sign in / Sign out / Approve / Deny / Continue)"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=patterns \
+    --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' \
+    -E ">[[:space:]]*(Authorize|Allow|Grant|Connect|Approve and continue)[[:space:]]*<|aria-label=\"(Authorize|Allow|Grant|Connect|Approve and continue)\"|\"(Authorize|Allow|Grant|Connect|Approve and continue)\"" \
+    "$WORKSPACE" 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | head -30
+} || true
+echo ""
+
+echo "--- Non-canonical module-action verbs (Remove instead of Uninstall) ---"
+echo "(design-system.md §5 + Workstream B app#35 — module-row destructive action is 'Uninstall')"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=patterns \
+    --include='*.tsx' --include='*.ts' --include='*.njk' \
+    -E ">[[:space:]]*Remove[[:space:]]*<|aria-label=\"Remove\"" \
+    "$WORKSPACE"/parachute-app "$WORKSPACE"/parachute-hub 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | head -20
+} || true
+echo ""
+
+echo "--- Legacy state vocabulary in user-facing copy (Pending-OAuth / Disabled) ---"
+echo "(design-system.md §6 + Workstream F — canonical: active / pending / inactive / failing. CSS aliases retained for one rc-chain, so flagged uses are in HTML/JSX/copy strings, NOT CSS class names.)"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=patterns \
+    --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' \
+    -E "\"Pending-OAuth\"|\"Disabled\"|>Pending-OAuth<|>Disabled<" \
+    "$WORKSPACE"/parachute-hub "$WORKSPACE"/parachute-app "$WORKSPACE"/parachute-vault "$WORKSPACE"/parachute-scribe 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | grep -v "\.status-disabled\|\.status-pending-oauth" \
+    | head -20
+} || true
+echo ""
+
 echo "=== Done. Review findings; cross-check against migrations/*.md. ==="
 echo ""
 echo "Notes:"
