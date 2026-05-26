@@ -687,8 +687,23 @@ A 32px-tall top strip injected on every server-rendered + module-served surface 
 </header>
 ```
 
+**Token-fallback shim — load-bearing.** The strip is injected into surfaces that *may not have declared the canonical palette tokens at the document root* (e.g. a module SPA whose `:root` block predates this doc, or a future third-party module that doesn't yet conform). Without a fallback chain the strip renders invisible white-on-white or unstyled. The chrome's `<style>` block opens with a local-scope shim that defaults the chrome's own tokens to hex values matching the canonical palette, then references the document's `--bg-soft`/`--fg`/`--accent` etc. when present:
+
 ```css
 .pc-chrome {
+  /* Local shim — falls back to canonical hex when the host page
+     hasn't declared the design-system tokens at :root. The chrome
+     renders identically on a conforming surface (vars resolve to the
+     declared tokens) or a non-conforming surface (vars resolve to
+     these hex defaults). Update the hex literals in lockstep with
+     §3's canonical palette if the palette ever shifts. */
+  --pc-chrome-bg-soft: var(--bg-soft, #f3f0ea);
+  --pc-chrome-fg: var(--fg, #2c2a26);
+  --pc-chrome-fg-muted: var(--fg-muted, #6b6860);
+  --pc-chrome-border: var(--border, #e4e0d8);
+  --pc-chrome-accent: var(--accent, #4a7c59);
+
+  box-sizing: border-box;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -697,16 +712,19 @@ A 32px-tall top strip injected on every server-rendered + module-served surface 
   align-items: center;
   gap: 1rem;
   padding: 0 1rem;
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--border);
+  background: var(--pc-chrome-bg-soft);
+  border-bottom: 1px solid var(--pc-chrome-border);
   font-size: 0.85rem;
   font-family: var(--sans, var(--font-sans));
+}
+.pc-chrome *, .pc-chrome *::before, .pc-chrome *::after {
+  box-sizing: border-box;
 }
 .pc-chrome-brand {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  color: var(--fg);
+  color: var(--pc-chrome-fg);
   text-decoration: none;
   font-weight: 500;
 }
@@ -720,22 +738,22 @@ A 32px-tall top strip injected on every server-rendered + module-served surface 
   margin-left: 0.5rem;
 }
 .pc-chrome-nav a {
-  color: var(--fg-muted);
+  color: var(--pc-chrome-fg-muted);
   text-decoration: none;
 }
-.pc-chrome-nav a:hover { color: var(--fg); }
+.pc-chrome-nav a:hover { color: var(--pc-chrome-fg); }
 .pc-chrome-auth {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  color: var(--fg-muted);
+  color: var(--pc-chrome-fg-muted);
 }
-.pc-chrome-auth strong { color: var(--fg); font-weight: 600; }
+.pc-chrome-auth strong { color: var(--pc-chrome-fg); font-weight: 600; }
 .pc-chrome-auth a, .pc-chrome-auth button {
   background: none;
   border: 0;
-  color: var(--accent);
+  color: var(--pc-chrome-accent);
   padding: 0;
   cursor: pointer;
   font: inherit;
