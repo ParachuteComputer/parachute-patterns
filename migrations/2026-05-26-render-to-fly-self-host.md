@@ -30,13 +30,14 @@ A friend can fork `parachute-hub` + run `./scripts/deploy-to-fly.sh` + install v
 
 ### parachute-hub
 
-- [ ] `fly.toml` — new file at repo root, alongside the existing `render.yaml`. Pinned to shared-cpu-1x 512MB / iad / 1GB volume at `/parachute`. Tracked-by: (pending PR)
-- [ ] `src/hub-server.ts` — `resolveIssuer` (the function reading `RENDER_EXTERNAL_URL`) gains a `FLY_APP_NAME` peer branch (compose `https://${FLY_APP_NAME}.fly.dev` when set). Tracked-by: (pending PR)
-- [ ] `src/hub-server.ts` — `platformOrigin` field in the admin-SPA setup-status response also needs a `FLY_APP_NAME`-derived value when on Fly (currently only reads `RENDER_EXTERNAL_URL`). Tracked-by: (pending PR)
-- [ ] `src/setup-wizard.ts` — `detectAutoExposeMode` recognizes Fly the same way it recognizes Render (platform routes URL publicly without operator action). The existing comment "Add more platforms here when we encounter them — e.g. Fly.io" calls out the exact slot. Tracked-by: (pending PR)
-- [ ] `src/api-hub.ts` — `buildInfo` block exposes Fly equivalents alongside `RENDER_GIT_COMMIT` / `RENDER_GIT_BRANCH`. Fly sets `FLY_RELEASE_COMMAND` + `FLY_REGION` (different shape — decide what the admin "build info" panel actually surfaces). Tracked-by: (pending PR)
-- [ ] `scripts/deploy-to-fly.sh` — new wrapper that detects `flyctl`, installs if missing, runs `fly launch --copy-config --yes`, prints the URL. Tracked-by: (pending PR)
-- [ ] `README.md` — Deploy section gains a Fly walkthrough as a peer to the Render one. Both presented as equally supported. Tracked-by: (pending PR)
+- [x] `fly.toml` — new file at repo root, alongside the existing `render.yaml`. Pinned to shared-cpu-1x 512MB / iad / 1GB volume at `/parachute`. **No hardcoded `app =`** so each operator's `fly launch` generates a unique slug. Tracked-by: [hub#420](https://github.com/ParachuteComputer/parachute-hub/pull/420)
+- [x] `src/hub-server.ts` — `parseArgs` reads `FLY_APP_NAME` and composes `https://${FLY_APP_NAME}.fly.dev` as peer fallback alongside `RENDER_EXTERNAL_URL` (new `flyDefaultOrigin` helper). Tracked-by: [hub#420](https://github.com/ParachuteComputer/parachute-hub/pull/420)
+- [x] `src/hub-server.ts` — `platformOrigin` in the bound-origins resolver reads the Fly value so browser POSTs with `<app>.fly.dev` Origin are trusted. Tracked-by: [hub#420](https://github.com/ParachuteComputer/parachute-hub/pull/420)
+- [x] `src/commands/serve.ts` — `resolveStartupIssuer` also extended with the Fly branch. Critical because this is the function that injects `PARACHUTE_HUB_ORIGIN` into every supervised module's env; without this, vault/scribe would get `undefined` issuer on Fly and reject every hub-minted token with iss-mismatch. (Reviewer catch on hub#420.) Tracked-by: [hub#420](https://github.com/ParachuteComputer/parachute-hub/pull/420)
+- [x] `src/setup-wizard.ts` — `detectAutoExposeMode` recognizes `FLY_APP_NAME` the same way it recognizes Render. Validates slug shape (no slashes — defensive). Tracked-by: [hub#420](https://github.com/ParachuteComputer/parachute-hub/pull/420)
+- [ ] `src/api-hub.ts` — `buildInfo` block exposes Fly equivalents alongside `RENDER_GIT_COMMIT` / `RENDER_GIT_BRANCH`. Fly sets `FLY_RELEASE_COMMAND` + `FLY_REGION` (different shape — decide what the admin "build info" panel actually surfaces). Deferred from hub#420 — safe to ship Phase 1 without it; admin SPA renders but shows blank build-info fields for Fly operators. Tracked-by: (pending PR)
+- [x] `scripts/deploy-to-fly.sh` — flyctl install + `fly launch --copy-config --yes` wrapper. Idempotent: detects existing `app = "..."` in fly.toml on re-run and branches to `fly deploy`. Tracked-by: [hub#420](https://github.com/ParachuteComputer/parachute-hub/pull/420)
+- [x] `README.md` — restructured "Hosted self-deploy" section: both Render and Fly as equally-supported peers. Tracked-by: [hub#420](https://github.com/ParachuteComputer/parachute-hub/pull/420)
 
 ### parachute.computer
 
