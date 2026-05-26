@@ -108,6 +108,78 @@ echo "(should be \`name: manifest.manifestName\` or \`name: ROW_NAME\` per servi
 done
 echo ""
 
+# --- Workstream I: non-canonical verb vocabulary -----------------------
+# design-system.md §5 settled the operator-facing verbs for the OAuth
+# approval flow + module-management. Surfaces using retired alternatives
+# (Authorize / Allow / Grant / Approve-and-continue) drift the visual
+# vocabulary and confuse operators flowing through the OAuth + module-
+# management surfaces.
+#
+# Scoping decisions (per patterns#99 reviewer):
+#   - `Connect` is NOT included in the verb-drift set. The audit caught
+#     legitimate "Connect" usage in install.njk + the VaultPopover button
+#     label — those describe vault-connection actions, not OAuth flow
+#     verbs. design-system.md §5 doesn't claim authority over every
+#     "connect" word in the product.
+#   - parachute-agent (retired) + parachute-notes (archiving) excluded
+#     so retired-repo hits don't permanently noise the audit.
+#   - Test files (`*.test.ts*`) excluded — assertions like
+#     `expect(html).toContain("Authorize")` are pinning surface copy,
+#     not driving drift. Cleanup of the surface flips the test
+#     simultaneously.
+#   - The match anchors are `>...<` (JSX/HTML text node), `aria-label=`,
+#     and JSX `title=`/page-title constructions. Bare-quoted strings
+#     are NOT matched — too many false positives from variable
+#     assignments and intermediate constants. Result: catches user-
+#     facing copy, misses internal symbol noise.
+
+echo "--- Non-canonical OAuth verbs (Authorize / Allow / Grant / Approve-and-continue) ---"
+echo "(design-system.md §5 — canonical: Sign in / Sign out / Approve / Deny / Continue)"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=patterns \
+    --exclude-dir=parachute-agent \
+    --exclude-dir=parachute-notes \
+    --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' \
+    --exclude='*.test.ts*' \
+    -E ">[[:space:]]*(Authorize|Allow|Grant|Approve and continue)[[:space:]]*<|aria-label=\"(Authorize|Allow|Grant|Approve and continue)\"|title=\"(Authorize|Allow|Grant|Approve and continue)" \
+    "$WORKSPACE" 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | head -30
+} || true
+echo ""
+
+echo "--- Non-canonical module-action verbs (Remove instead of Uninstall) ---"
+echo "(design-system.md §5 + Workstream B app#35 — module-row destructive action is 'Uninstall')"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=patterns \
+    --include='*.tsx' --include='*.ts' --include='*.njk' \
+    --exclude='*.test.ts*' \
+    -E ">[[:space:]]*Remove[[:space:]]*<|aria-label=\"Remove\"" \
+    "$WORKSPACE"/parachute-app "$WORKSPACE"/parachute-hub 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | head -20
+} || true
+echo ""
+
+echo "--- Legacy state vocabulary in user-facing copy (Pending-OAuth / Disabled) ---"
+echo "(design-system.md §6 + Workstream F — canonical: active / pending / inactive / failing.)"
+echo "(CSS class aliases .status-disabled / .status-pending-oauth retained for one rc-chain; the block excludes those + scopes to capitalized user-facing labels in HTML/JSX text nodes. Lowercase status-enum string literals (status === \"disabled\") are intentionally NOT matched — those are wire-shape values, separate from the user-facing label vocabulary.)"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=patterns \
+    --exclude-dir=parachute-agent \
+    --exclude-dir=parachute-notes \
+    --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' \
+    --exclude='*.test.ts*' \
+    -E ">Pending-OAuth<|>Disabled<" \
+    "$WORKSPACE"/parachute-hub "$WORKSPACE"/parachute-app "$WORKSPACE"/parachute-vault "$WORKSPACE"/parachute-scribe 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | head -20
+} || true
+echo ""
+
 echo "=== Done. Review findings; cross-check against migrations/*.md. ==="
 echo ""
 echo "Notes:"
