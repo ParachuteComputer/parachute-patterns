@@ -59,13 +59,14 @@ Confidence to do it clean: nobody is on it except Aaron's local install + his Re
 
 ### parachute-patterns
 
-- [ ] `patterns/canonical-ports.md`: row name + commentary. Tracked-by: (pending — this PR)
-- [ ] `patterns/module-self-registration.md`: examples that name `parachute-app`. Tracked-by: (pending)
-- [ ] `patterns/governance.md`: committed-core list. Tracked-by: (pending)
-- [ ] `patterns/services-json-row-conventions.md`: six `parachute-app` references including examples table + row-name bug narrative + app#13 link. Tracked-by: (pending)
-- [ ] `patterns/bootstrap-on-first-boot.md`: multiple `parachute-app` GitHub links + `parachute-app add` command examples. Tracked-by: (pending)
-- [ ] `patterns/app-bundle-shape.md`: entire framing references `parachute-app` as host module. **Also rename the file** to `surface-bundle-shape.md` — the current filename bakes in the stale term. Tracked-by: (pending)
-- [ ] `guides/multi-writer-workspace.md`: `parachute-app` references. Tracked-by: (pending)
+- [x] `patterns/canonical-ports.md`: row name + commentary. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
+- [x] `patterns/module-self-registration.md`: verified — no `parachute-app` refs needed sweeping. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
+- [x] `patterns/governance.md`: committed-core list. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
+- [x] `patterns/services-json-row-conventions.md`: six `parachute-app` references including examples table + row-name bug narrative + app#13 link. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
+- [x] `patterns/bootstrap-on-first-boot.md`: multiple `parachute-app` GitHub links + `parachute-app add` command examples. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
+- [x] `patterns/app-bundle-shape.md` → `patterns/surface-bundle-shape.md`: file renamed via `git mv`; entire framing swept to surface vocabulary. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
+- [x] `guides/multi-writer-workspace.md`: `parachute-app` references. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
+- [x] Additionally: `adoption/migration-notes.md`, `patterns/design-system.md`, `patterns/dev-mode-sse-live-reload.md`, `patterns/module-surfaces.md`, `patterns/module-ui-declaration.md`, `patterns/mount-path-convention.md`, `patterns/release-ci.md`, `patterns/runtime-tenancy-contract.md`, `scripts/audit-canonical-refs.sh`, `scripts/README.md` — all swept in the same PR. Tracked-by: [patterns#103](https://github.com/ParachuteComputer/parachute-patterns/pull/103)
 
 ## Doc references
 
