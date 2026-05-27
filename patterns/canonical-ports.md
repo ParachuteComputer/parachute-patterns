@@ -25,19 +25,19 @@ this doc's reservations get enforced through.
 |---|---|---|---|---|
 | 1939 | `parachute-hub` | committed core | assigned | CLI-managed; static + reverse-proxy front door, fronts every service for `parachute expose`. |
 | 1940 | `parachute-vault` | committed core | assigned | REST + MCP at `/vault/<name>/`. |
-| 1942 | `parachute-notes` | committed core | deprecating (Phase 2 — see notes#154) | Static server over the PWA bundle. Standalone notes-daemon is deprecating; Notes ships as the canonical first app under `parachute-app` (1946) going forward. |
+| 1942 | `parachute-notes` | committed core | deprecating (Phase 2 — see notes#154) | Static server over the PWA bundle. Standalone notes-daemon is deprecating; Notes ships as the canonical first app under `parachute-surface` (1946) going forward. |
 | 1943 | `parachute-scribe` | committed core | assigned | Whisper-compatible transcription API at root. |
 | 1944 | `parachute-agent` | committed core | retired | Web UI + agent runtime. Retired 2026-05-20 (see `parachute-agent/DEPRECATED.md`); slot held for historical reference. |
 | 1941 | `parachute-channel` | working module | assigned | Daemon. Exploratory; may retire — not part of the committed ecosystem. |
 | 1945 | `parachute-runner` | exploration | assigned | Background job runner; spawns `claude -p` against vault jobs. Phase 1 complete; exploration-tier (not committed-core). |
-| 1946 | `parachute-app` | committed core | assigned | UI host module; ships Notes as canonical first app. |
+| 1946 | `parachute-surface` | committed core | assigned | UI host module; ships Notes as canonical first app. |
 | 1947 | unassigned | — | reserved | |
 | 1948 | unassigned | — | reserved | |
 | 1949 | unassigned | — | reserved | |
 
 The **committed core** is the set of modules the Parachute ecosystem
 commits to maintaining: hub, vault, app, scribe. (The standalone
-notes-daemon is deprecating into `parachute-app`; `parachute-agent`
+notes-daemon is deprecating into `parachute-surface`; `parachute-agent`
 retired 2026-05-20.) **Working modules** like channel exist and run,
 but the ecosystem does not commit to them as long-term first-party
 citizens. **Exploration-tier** modules like `parachute-runner` claim

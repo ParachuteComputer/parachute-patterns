@@ -76,7 +76,7 @@ The committed-core that this guide leans on:
 | **parachute-hub** | The portal + Authorization Server. Token issuance, identity, service catalog. |
 | **parachute-scribe** | Transcription daemon. Picks up audio attachments + writes transcripts back. |
 | **parachute-runner** | (Optional) Background job runner; spawns `claude -p` against vault jobs. |
-| **parachute-app** | (Optional) UI host module; ships Notes as canonical first app. |
+| **parachute-surface** | (Optional) UI host module; ships Notes as canonical first app. |
 
 Each is its own repo with its own conventions. Vault is the one this guide is centered on; the others appear where they matter.
 
@@ -501,7 +501,7 @@ await fetch(`${VAULT_URL}/api/notes/${note.id}/attachments`, {
 // 3. Done. Scribe takes over. The note's content updates async when transcription lands.
 ```
 
-Scribe is vault-level, not app-UI-level — configure scribe once against the vault and every client (Telegram bot, the Notes app under parachute-app, future custom apps and agents) gets transcripts as a free service. None of the consuming UIs needs to know transcription is configured; that's vault's concern.
+Scribe is vault-level, not app-UI-level — configure scribe once against the vault and every client (Telegram bot, the Notes app under parachute-surface, future custom apps and agents) gets transcripts as a free service. None of the consuming UIs needs to know transcription is configured; that's vault's concern.
 
 ---
 

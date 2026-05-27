@@ -37,7 +37,7 @@ being affected):
 
 2. **Inject script — browser side.** When dev mode is on AND the
    response body is HTML for that UI, the host parses the HTML and
-   injects a `<script id="parachute-app-dev-reload">` just before
+   injects a `<script id="parachute-surface-dev-reload">` just before
    `</head>`. The script opens an `EventSource` against the relative
    endpoint, listens for `reload` events, and calls
    `window.location.reload()` (200ms grace to coalesce duplicate
@@ -98,22 +98,22 @@ override:
 
 ## Reference implementation
 
-In [`parachute-app`](https://github.com/ParachuteComputer/parachute-app):
+In [`parachute-surface`](https://github.com/ParachuteComputer/parachute-surface):
 
-- [`dev-mode.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/dev-mode.ts)
+- [`dev-mode.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/dev-mode.ts)
   — per-UI state (`Map<name, DevModeState>` + `Map<name,
   Set<subscriber>>`). `enableDevMode` / `disableDevMode` /
   `broadcastReload` / `addSubscriber` / `removeSubscriber`.
-- [`dev-watcher.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/dev-watcher.ts)
+- [`dev-watcher.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/dev-watcher.ts)
   — `fs.watch(..., { recursive: true })` per UI; debounce + ignore
   `dist/` + `node_modules/` + `.git/`; optional build via `Bun.spawn`
   with `AbortController` timeout; single-flight + rerun-pending guard.
-- [`dev-injection.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/dev-injection.ts)
+- [`dev-injection.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/dev-injection.ts)
   — regex-based HTML insertion before `</head>` (fallbacks: before
   first `<script>`, after `<body>`, append). Idempotent via
-  `id="parachute-app-dev-reload"` marker check. Deliberately NOT
+  `id="parachute-surface-dev-reload"` marker check. Deliberately NOT
   cheerio — a 500KB HTML-parser dep for one insertion is wrong-shaped.
-- [`dev-routes.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/dev-routes.ts)
+- [`dev-routes.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/dev-routes.ts)
   — `GET /_dev/reload` SSE; `POST /dev/enable`, `/dev/disable`,
   `/dev/trigger`; `GET /dev/list`, `GET /dev`.
 
@@ -177,9 +177,9 @@ Per-module knobs in the module config:
 ## Cross-references
 
 - Shipped in
-  [parachute-app#3](https://github.com/ParachuteComputer/parachute-app/pull/3)
+  [parachute-surface#3](https://github.com/ParachuteComputer/parachute-surface/pull/3)
   (Phase 1.3 — dev mode + SSE + inject) and
-  [parachute-app#8](https://github.com/ParachuteComputer/parachute-app/pull/8)
+  [parachute-surface#8](https://github.com/ParachuteComputer/parachute-surface/pull/8)
   (Phase 3.0 — file watcher + auto-rebuild) on 2026-05-22.
 - Closes the iteration friction tracked in
   [parachute-notes#151](https://github.com/ParachuteComputer/parachute-notes/issues/151)

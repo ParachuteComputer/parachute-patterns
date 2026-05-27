@@ -39,7 +39,7 @@ a brand surface, it deserves a discovery tile.
   to prefix vault's declared `uiUrl` with the per-instance mount
   path; delete the hardcoded "Browse Vault" tile from
   `renderGetStarted` (src/hub.ts:493-511). One PR.
-- `parachute-notes` and `parachute-app` already declare `uiUrl` —
+- `parachute-notes` and `parachute-surface` already declare `uiUrl` —
   no change.
 
 **Status:** in flight. Tracked across patterns + vault + scribe + hub

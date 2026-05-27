@@ -171,7 +171,7 @@ don't conflict.
 - **`parachute-notes`** — declares `uiUrl: "/notes"`. The Notes PWA is
   the module's UI. Hub discovery renders a Notes tile. No
   `managementUrl` (admin and use are the same surface).
-- **`parachute-app`** — declares `uiUrl: "/app/admin/"` for the
+- **`parachute-surface`** — declares `uiUrl: "/surface/admin/"` for the
   app-admin SPA (managing bundled UIs); the PWA apps like Notes are
   separately surfaced via their own modules' `uiUrl`.
 - **`parachute-scribe`** — declares `uiUrl: "/scribe/admin"`. The
@@ -217,7 +217,7 @@ Standard parallel-cross-repo shape (see
 1. **Patterns** — define the convention (this doc).
 2. **Module `module.json` updates (one PR per module)** —
    `parachute-notes` declares `uiUrl: "/notes"`,
-   `parachute-app` declares `uiUrl: "/app/admin/"`,
+   `parachute-surface` declares `uiUrl: "/surface/admin/"`,
    `parachute-scribe` declares `uiUrl: "/scribe/admin"`,
    `parachute-vault` declares `uiUrl: "/admin/"` (multi-instance form).
    Each module ships its updated `module.json` inside its npm artifact.
@@ -264,7 +264,7 @@ order.
 
 - **Today (committed-core):**
   - `parachute-notes` — `uiUrl: "/notes"`.
-  - `parachute-app` — `uiUrl: "/app/admin/"`.
+  - `parachute-surface` — `uiUrl: "/surface/admin/"`.
   - `parachute-scribe` — `uiUrl: "/scribe/admin"` (workstream C).
   - `parachute-vault` — `uiUrl: "/admin/"` (workstream C, multi-instance form).
 - **Later:** any first- or third-party module that ships a UI under

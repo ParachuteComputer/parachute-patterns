@@ -10,7 +10,7 @@ open PRs and report status; team-lead reviews and writes a verification
 summary; the repo owner (currently Aaron) clicks merge.
 
 - All Parachute repos with code or content (`parachute-hub`, `parachute-vault`,
-  `parachute-app`, `parachute-notes`, `parachute-runner`, `parachute-scribe`,
+  `parachute-surface`, `parachute-notes`, `parachute-runner`, `parachute-scribe`,
   `parachute-agent` (retired), `parachute.computer`, `parachute-patterns`)
   have **branch protection on `main`**: no force-push, no branch deletion,
   PR-required for changes. `parachute-agent` joined this set on its

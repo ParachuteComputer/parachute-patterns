@@ -89,7 +89,7 @@ the operator would see without the bootstrap feature at all.
 
 ## Reference implementation
 
-[`parachute-app/packages/app-host/src/bootstrap.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/bootstrap.ts):
+[`parachute-surface/packages/app-host/src/bootstrap.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/bootstrap.ts):
 
 ```ts
 export type BootstrapOpts = {
@@ -126,7 +126,7 @@ Three load-bearing properties:
   shape supports tests asserting on the post-bootstrap state without
   having to read the filesystem.
 
-Wired in [`index.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/index.ts)
+Wired in [`index.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/index.ts)
 under `serve()` *after* HTTP starts listening and self-register has
 stamped its row — bootstrap is fire-and-forget; daemon serves whatever
 exists today while the bootstrap installs whatever should exist
@@ -144,7 +144,7 @@ migrate. The behavior is the same on every cold start.
 ## Failure modes
 
 **Note**: `<things>` in the table below is the array key for the
-module's default units, e.g. `apps` for parachute-app, `jobs` for
+module's default units, e.g. `apps` for parachute-surface, `jobs` for
 a future parachute-jobs.
 
 | Condition | Behavior |
@@ -158,14 +158,14 @@ a future parachute-jobs.
 
 The visible symptom of a fully-failed bootstrap is "I see an empty
 dashboard on first boot." The operator's recovery is the explicit
-admin verb (`parachute-app add @openparachute/notes-ui` or the SPA
+admin verb (`parachute-surface add @openparachute/notes-ui` or the SPA
 "add" button) — same code path the bootstrap was trying to run, so
 the manual retry surfaces the same error in the operator's terminal.
 
 ## Cross-references
 
 - Shipped in
-  [parachute-app#7](https://github.com/ParachuteComputer/parachute-app/pull/7)
+  [parachute-surface#7](https://github.com/ParachuteComputer/parachute-surface/pull/7)
   (Phase 2.1) on 2026-05-22, alongside the auto-provision-schema work
   that makes Notes' DCR-required schema appear in the vault on the
   same first boot.

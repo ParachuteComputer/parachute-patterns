@@ -33,7 +33,7 @@ that actually shipped:
   self-register yes. So what "kind" is it?
 - **scribe** — API yes, admin (config endpoints) yes, MCP yes
   (scribe#48), health yes, self-register yes. Same set.
-- **app** — API yes, admin SPA at `/app/admin` yes, MCP no
+- **app** — API yes, admin SPA at `/surface/admin` yes, MCP no
   (placeholder issue), health yes, self-register yes.
 - **runner** — API yes, admin endpoints (Phase 1.2) yes, MCP no
   (placeholder issue), health yes, self-register yes.
@@ -66,7 +66,7 @@ Aaron's framing (2026-05-22):
 |---|---|---|---|---|---|
 | vault | yes | yes (`/vault/<name>/admin/`, per hub#172 migration) | yes | yes | yes |
 | scribe | yes | yes (config endpoints + schema) | yes (scribe#48) | yes | yes |
-| app | yes | yes (SPA at `/app/admin/`) | no — [parachute-app#15](https://github.com/ParachuteComputer/parachute-app/issues/15) | yes | yes |
+| app | yes | yes (SPA at `/surface/admin/`) | no — [parachute-surface#15](https://github.com/ParachuteComputer/parachute-surface/issues/15) | yes | yes |
 | runner | yes | yes (admin endpoints, Phase 1.2) | no — [parachute-runner#5](https://github.com/ParachuteComputer/parachute-runner/issues/5) | yes | yes |
 | hub | yes | yes (the admin SPA itself) | no — [parachute-hub#328](https://github.com/ParachuteComputer/parachute-hub/issues/328) | yes | N/A (hub is the supervisor; doesn't register itself) |
 
@@ -95,7 +95,7 @@ axes. Two specific things the taxonomy got wrong:
 
 - **`kind: "frontend"`** was originally for "hub static-serves this
   module's dist." Today only the deprecating notes-daemon used it.
-  Since parachute-app handles user UIs via its own HTTP server,
+  Since parachute-surface handles user UIs via its own HTTP server,
   hub-side static-serving for a `frontend` kind has no remaining
   consumer. If we ever need hub-side static-serving again, a
   per-module `staticServe: boolean` (or a `paths` entry that hub
@@ -107,7 +107,7 @@ axes. Two specific things the taxonomy got wrong:
 
 hub#327 (2026-05-22) dropped `kind` validation in hub's manifest
 parser — the field is now pass-through, retained only so existing
-manifests stay valid. parachute-app#14 corrected app from
+manifests stay valid. parachute-surface#14 corrected app from
 `kind: "frontend"` to `kind: "api"` for back-compat. The retirement
 of the field from module manifests proceeds in
 [hub#301](https://github.com/ParachuteComputer/parachute-hub/issues/301)
@@ -120,11 +120,11 @@ Phase B/C/D.
 - **Exploration-tier modules** (e.g., runner today, channel) —
   optional. If the module gets promoted to committed-core, expect
   these surfaces to land at or before promotion.
-- **Apps (UI bundles inside parachute-app)** — different shape. Apps
+- **Apps (UI bundles inside parachute-surface)** — different shape. Apps
   are the *opposite* of backend modules: they're consumers of vault +
   other backend modules. Apps don't expose API/MCP/admin themselves;
   they consume those from the modules they integrate with. The
-  parachute-app host module exposes the canonical surfaces *on behalf
+  parachute-surface host module exposes the canonical surfaces *on behalf
   of* the apps it serves.
 
 ## Migration path
@@ -133,7 +133,7 @@ We don't need to add MCP to every module right away. The pattern doc
 captures the direction. Implementation tracks via issues, each landing
 when its module's roadmap reaches it:
 
-- [parachute-app#15](https://github.com/ParachuteComputer/parachute-app/issues/15) — add MCP server
+- [parachute-surface#15](https://github.com/ParachuteComputer/parachute-surface/issues/15) — add MCP server
 - [parachute-runner#5](https://github.com/ParachuteComputer/parachute-runner/issues/5) — add MCP server
 - [parachute-hub#328](https://github.com/ParachuteComputer/parachute-hub/issues/328) — add MCP server for hub's own operations
 - [parachute-hub#301](https://github.com/ParachuteComputer/parachute-hub/issues/301) Phase B/C/D — drop `kind` from manifests + retire remaining hub-side references
@@ -165,17 +165,17 @@ lighthouse — modules know which way they're heading.
 - [`runtime-tenancy-contract.md`](./runtime-tenancy-contract.md) — the
   third side of the contract triad: what hosts inject into tenants at
   runtime, mirroring this doc (what modules expose) and
-  [`app-bundle-shape.md`](./app-bundle-shape.md) (what apps ship).
+  [`surface-bundle-shape.md`](./surface-bundle-shape.md) (what apps ship).
 
 ## History
 
 - **2026-04-20** — original module-architecture design doc shipped
   with `kind: "api" | "frontend" | "tool"` taxonomy. See
   [`parachute.computer/design/2026-04-20-module-architecture.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md).
-- **2026-05-21** — parachute-app design redrew committed-core;
+- **2026-05-21** — parachute-surface design redrew committed-core;
   revealed kind-as-taxonomy was the wrong shape for app (had to pick
   `frontend`, then realized it should be `api`). See
-  [`parachute.computer/design/2026-05-21-parachute-apps-design.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-05-21-parachute-apps-design.md).
+  [`parachute.computer/design/2026-05-21-parachute-surfaces-design.md`](https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-05-21-parachute-surfaces-design.md).
 - **2026-05-22** — Aaron explicitly named the framing ("all modules
   should be quite interoperable and have some underlying patterns; I'm
   not sure that how we're organizing them via kind is right");

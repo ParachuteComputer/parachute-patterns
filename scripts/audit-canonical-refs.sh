@@ -55,7 +55,7 @@ echo "(should be 'install App' per Notes-as-app migration 2026-05-21)"
 echo ""
 
 echo "--- 'four committed-core' / 'five committed-core' ---"
-echo "(post-Notes-as-app: four — vault/app/scribe/hub. Anything saying 'five' is stale)"
+echo "(post-Notes-as-app: four — vault/surface/scribe/hub. Anything saying 'five' is stale)"
 { grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.njk' \
     -E "four committed.core|five committed.core" \
@@ -63,7 +63,7 @@ echo "(post-Notes-as-app: four — vault/app/scribe/hub. Anything saying 'five' 
 echo ""
 
 echo "--- 'Notes — frontend PWA' / 'Notes PWA backed by' (legacy framing) ---"
-echo "(Notes is hosted by parachute-app now; 'Notes — frontend PWA' wording is stale)"
+echo "(Notes is hosted by parachute-surface now; 'Notes — frontend PWA' wording is stale)"
 { grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
     -E "Notes — frontend PWA|Notes PWA backed by" \
@@ -71,7 +71,7 @@ echo "(Notes is hosted by parachute-app now; 'Notes — frontend PWA' wording is
 echo ""
 
 echo "--- hardcoded port 1942 outside parachute-notes ---"
-echo "(1942 is the deprecating notes-daemon port; new operator-facing copy should point at /app/notes via hub)"
+echo "(1942 is the deprecating notes-daemon port; new operator-facing copy should point at /surface/notes via hub)"
 { grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
     -E ":1942|port: 1942|port=1942" \
@@ -157,7 +157,7 @@ echo "(design-system.md §5 + Workstream B app#35 — module-row destructive act
     --include='*.tsx' --include='*.ts' --include='*.njk' \
     --exclude='*.test.ts*' \
     -E ">[[:space:]]*Remove[[:space:]]*<|aria-label=\"Remove\"" \
-    "$WORKSPACE"/parachute-app "$WORKSPACE"/parachute-hub 2>/dev/null \
+    "$WORKSPACE"/parachute-surface "$WORKSPACE"/parachute-hub 2>/dev/null \
     | grep -v "$LINE_EXCLUDES" \
     | head -20
 } || true
@@ -174,7 +174,7 @@ echo "(CSS class aliases .status-disabled / .status-pending-oauth retained for o
     --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' \
     --exclude='*.test.ts*' \
     -E ">Pending-OAuth<|>Disabled<" \
-    "$WORKSPACE"/parachute-hub "$WORKSPACE"/parachute-app "$WORKSPACE"/parachute-vault "$WORKSPACE"/parachute-scribe 2>/dev/null \
+    "$WORKSPACE"/parachute-hub "$WORKSPACE"/parachute-surface "$WORKSPACE"/parachute-vault "$WORKSPACE"/parachute-scribe 2>/dev/null \
     | grep -v "$LINE_EXCLUDES" \
     | head -20
 } || true

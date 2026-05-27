@@ -94,7 +94,7 @@ The wordmark is the word **Parachute** set in the canonical serif (Instrument Se
 
 - Mark on the left, wordmark on the right, baseline-aligned.
 - Optional context chip after the wordmark for sub-surfaces (e.g. `admin`, `vault`, `setup`). Chip is `0.7rem` uppercase, `letter-spacing: 0.06em`, muted color, `999px` radius, 1px border — the shape currently used on `/login` (`admin-login-ui.ts:164–172`).
-- Do not lowercase + hyphenate the wordmark (`parachute-app · admin` — the app-admin SPA's current header — is the canonical violation. It reads as a package name, not a product. Workstream B replaces it with `Parachute · app`).
+- Do not lowercase + hyphenate the wordmark (`parachute-surface · admin` — the app-admin SPA's current header — is the canonical violation. It reads as a package name, not a product. Workstream B replaces it with `Parachute · app`).
 
 ### Tagline
 
@@ -114,7 +114,7 @@ The tagline is open to future refinement with the branding team (see §10), but 
 | `parachute-hub/src/oauth-ui.ts` brand-line (lines 260, 348, 515, 686, 798 — same shape, five surfaces) | `⌬ Parachute` | Swap to mark + wordmark. Workstream G. |
 | `parachute-hub/src/admin-login-ui.ts:67–69` brand-line | `⌬ Parachute admin` (across `brand-mark` + `brand-name` + `brand-tag` spans) | Swap to mark + wordmark + `admin` chip. Workstream G. |
 | `parachute-hub/web/ui/src/App.tsx` brand-line | `Parachute Admin` (with route-derived subtitle) | Swap to mark + wordmark + `admin` chip. Workstream G. |
-| `parachute-app/web/admin/` brand-line | `parachute-app · admin` | Swap to mark + wordmark + `app` chip. Workstream B. |
+| `parachute-surface/web/admin/` brand-line | `parachute-surface · admin` | Swap to mark + wordmark + `app` chip. Workstream B. |
 | `parachute-scribe/src/admin-ui.ts` brand-line | `S Scribe · configuration` | Swap to mark + wordmark + `scribe` chip. Workstream G. |
 | `parachute.computer` (public site) | bespoke SVG (canonical) | Keep — this IS the source-of-truth. |
 | Notes PWA | own mark + chrome | Keep — Notes is a destination, not chrome (see §8). |
@@ -252,7 +252,7 @@ Don't introduce new sizes ad-hoc. If a surface needs a size not in this scale, p
 
 ### Things to avoid
 
-- **`#1e6bb8` blue + 15px body size + square-cornered buttons on app-admin** (`parachute-app/web/admin/src/styles.css:16` body size, `:21` accent text, `:121, :123` button fill + border, `:275` accent text). The font stack on app-admin is system-UI (`-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` at `:12`) — same family as the privacy-safe stack — so the typographic outlier is the *size scale*, not the font family. Workstream B brings the palette + size + radii into conformance.
+- **`#1e6bb8` blue + 15px body size + square-cornered buttons on app-admin** (`parachute-surface/web/admin/src/styles.css:16` body size, `:21` accent text, `:121, :123` button fill + border, `:275` accent text). The font stack on app-admin is system-UI (`-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` at `:12`) — same family as the privacy-safe stack — so the typographic outlier is the *size scale*, not the font family. Workstream B brings the palette + size + radii into conformance.
 - **Cramming custom font-faces into auth surfaces.** Don't add an `@font-face` rule or Google Fonts link to any privacy-safe surface (per §3). System fonts only.
 - **Using the brand serif for body copy.** Instrument Serif is for headings, hero, brand wordmark. Body is always sans.
 - **Bumping serif weight above 400.** Instrument Serif ships at weight 400 only; bolding it pulls a synthetic-bold from the browser and looks broken. If a heading needs more weight, scale it up rather than bolding it.
@@ -766,12 +766,12 @@ A 32px-tall top strip injected on every server-rendered + module-served surface 
 
 - All hub-owned server-rendered surfaces (`/`, `/login`, `/logout`, `/oauth/*`, `/admin/setup`, generic admin errors).
 - All proxied module surfaces served under `/<short>/admin/*` and `/vault/<name>/admin/*` (hub injects via middleware on the proxy response).
-- All app-bundled UI surfaces under `/app/admin/*` (app's host injects).
+- All app-bundled UI surfaces under `/surface/admin/*` (app's host injects).
 - All hub admin SPA routes (the SPA renders the strip at the top of `<App>`).
 
 **Where NOT to inject:**
 
-- The Notes PWA at `/app/notes/*`. Notes is a destination, not chrome — it owns its own header. (Audit §4: "the Notes PWA is the proof this can work: own application, looks distinctively Notes, reads as Parachute because the tokens are continuous.")
+- The Notes PWA at `/surface/notes/*`. Notes is a destination, not chrome — it owns its own header. (Audit §4: "the Notes PWA is the proof this can work: own application, looks distinctively Notes, reads as Parachute because the tokens are continuous.")
 - The discovery JSON / well-known JSON / OAuth metadata endpoints (machine-readable, no chrome).
 
 **Injection mechanism:** Workstream G's call. Options include a hub-middleware string-replace on `<body>` of any `text/html` proxy response, a hub-issued JS snippet that mounts a top-of-page element, or a module-side convention where each module imports a shared HTML fragment. The CSS + DOM shape above is the contract; the injection mechanism is implementation detail.
@@ -811,7 +811,7 @@ Every surface in this ring uses the canonical mark (§2), canonical palette (§3
 |---|---|
 | `parachute-hub` | `/`, `/hub.html`, `/login`, `/logout`, `/account/change-password`, `/oauth/*`, `/admin/setup`, `/admin/*` (the SPA), all generic error pages |
 | `parachute-vault` | `/vault/<name>/admin/*` (the per-vault SPA mounted via hub proxy), the standalone vault admin SPA at `/admin/` (when reachable; Workstream E is retiring the standalone OAuth surface separately — see §10) |
-| `parachute-app` | `/app/admin/*` (the app-admin SPA — currently the largest outlier; Workstream B brings it into conformance) |
+| `parachute-surface` | `/surface/admin/*` (the app-admin SPA — currently the largest outlier; Workstream B brings it into conformance) |
 | `parachute-scribe` | `/scribe/admin` (the server-rendered admin) |
 
 These surfaces share an operator audience and an auth posture (post-session-cookie, mostly). Visual continuity here is what makes Parachute read as "one product, several rooms" instead of "four cousins."
@@ -822,9 +822,9 @@ Apps that the host module bundles inherit the palette + mark + type stack but co
 
 | Module | Surfaces in scope |
 |---|---|
-| `parachute-app` packages | `/app/notes/*` (Notes PWA — the canonical example of inherit-tokens-own-composition), future `/app/<ui>/*` apps as they ship |
+| `parachute-surface` packages | `/surface/notes/*` (Notes PWA — the canonical example of inherit-tokens-own-composition), future `/surface/<ui>/*` apps as they ship |
 
-Notes already does this well (audit §4): "own application, looks distinctively Notes, reads as Parachute because the tokens are continuous." Future apps under `parachute-app/packages/` are expected to clear the same bar — adopt the tokens, then compose freely.
+Notes already does this well (audit §4): "own application, looks distinctively Notes, reads as Parachute because the tokens are continuous." Future apps under `parachute-surface/packages/` are expected to clear the same bar — adopt the tokens, then compose freely.
 
 ### Circle 3 — brand-mark source of truth (separate composition entirely)
 
@@ -872,7 +872,7 @@ The five committed-core surfaces ranked by gap, biggest first. Each is owned by 
 
 | Rank | Surface | Gap | Workstream | Owner module |
 |---|---|---|---|---|
-| 1 | `parachute-app/web/admin/` (app-admin SPA) | Bespoke `#1e6bb8` blue palette + `15px` body size + square-cornered buttons + uppercase table headers + lowercase-hyphenated `parachute-app · admin` brand-line. The type stack is the same `-apple-system, …` system-UI cascade as the privacy-safe surfaces (`web/admin/src/styles.css:12`); the outlier is the palette + sizing + radii, not the font family. **The single largest visual outlier in the ecosystem** (audit §2.4). | **B** | parachute-app |
+| 1 | `parachute-surface/web/admin/` (app-admin SPA) | Bespoke `#1e6bb8` blue palette + `15px` body size + square-cornered buttons + uppercase table headers + lowercase-hyphenated `parachute-surface · admin` brand-line. The type stack is the same `-apple-system, …` system-UI cascade as the privacy-safe surfaces (`web/admin/src/styles.css:12`); the outlier is the palette + sizing + radii, not the font family. **The single largest visual outlier in the ecosystem** (audit §2.4). | **B** | parachute-surface |
 | 2 | `parachute-hub` brand-marks (`🪂` favicon + `⌬` OAuth + `Parachute Admin` SPA + various per-route headers) | Three competing brand-marks; persistent chrome strip not yet shipped. | **G** (chrome strip) + this doc's §2 retirement list | parachute-hub |
 | 3 | CLI + SPA state words (`running`/`stopped`/`-`/`Active`/`Pending-OAuth`/`Disabled`) | Three vocabularies for the same supervisor state. | **F** | parachute-hub (CLI + SPA in one repo) |
 | 4 | OAuth flow copy (Authorize/Approve-and-continue/Sign-in-as-admin-to-approve) | Verb drift across the flow's six surfaces. | **I** | parachute-hub |
