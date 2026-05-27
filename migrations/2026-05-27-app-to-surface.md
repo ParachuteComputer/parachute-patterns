@@ -62,6 +62,10 @@ Confidence to do it clean: nobody is on it except Aaron's local install + his Re
 - [ ] `patterns/canonical-ports.md`: row name + commentary. Tracked-by: (pending — this PR)
 - [ ] `patterns/module-self-registration.md`: examples that name `parachute-app`. Tracked-by: (pending)
 - [ ] `patterns/governance.md`: committed-core list. Tracked-by: (pending)
+- [ ] `patterns/services-json-row-conventions.md`: six `parachute-app` references including examples table + row-name bug narrative + app#13 link. Tracked-by: (pending)
+- [ ] `patterns/bootstrap-on-first-boot.md`: multiple `parachute-app` GitHub links + `parachute-app add` command examples. Tracked-by: (pending)
+- [ ] `patterns/app-bundle-shape.md`: entire framing references `parachute-app` as host module. **Also rename the file** to `surface-bundle-shape.md` — the current filename bakes in the stale term. Tracked-by: (pending)
+- [ ] `guides/multi-writer-workspace.md`: `parachute-app` references. Tracked-by: (pending)
 
 ## Doc references
 
