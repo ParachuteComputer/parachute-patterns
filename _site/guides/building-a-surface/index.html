@@ -1,0 +1,754 @@
+<h1>Building a surface over parachute-vault</h1>
+<blockquote>
+<p>A reference for builders shipping a web app, dashboard, capture tool, or any other UI that reads + writes parachute-vault. Captures the patterns parachute-notes worked out in its first year so the next surface doesn't reinvent them.</p>
+</blockquote>
+<h2>Who this is for</h2>
+<p>You're building a thing that talks to one or more parachute vaults from a browser, a server-side app, a mobile shell, a desktop client — anything that needs to authenticate as a writer, discover the operator's vault catalog, read notes, write notes, and stay sane across reconnects, offline windows, and concurrent edits.</p>
+<p>Sibling reference: <a href="./multi-writer-workspace.md"><code>guides/multi-writer-workspace.md</code></a> covers conventions for <em>how the vault accumulates surfaces</em> (tag roles, scoped tokens, multi-writer auth, MCP basics, the operator's perspective). This guide is the <em>builder's</em> counterpart — same conventions, viewed from inside the surface code that connects to the vault.</p>
+<p>Cite <a href="https://github.com/ParachuteComputer/parachute-notes"><code>parachute-notes</code></a> as the working prototype throughout: every pattern here is implemented at <code>src/lib/vault/</code> and tested. When in doubt about a corner case, read Notes' source. It's the spec until parachute-surface (the abstract SDK research direction, <a href="../research/parachute-surface-direction.md"><code>research/parachute-surface-direction.md</code></a>) lands.</p>
+<h2>How to read this</h2>
+<ol>
+<li><strong>Mental model</strong> — vault / hub / surface. Twelve lines.</li>
+<li><strong>Authentication</strong> — DCR + OAuth code-flow + PKCE + refresh rotation + scoped tokens.</li>
+<li><strong>Vault discovery</strong> — <code>/.well-known/parachute.json</code>, services catalog, multi-vault hubs.</li>
+<li><strong>Reading the vault</strong> — REST + MCP, query operators, cost knobs.</li>
+<li><strong>Writing the vault</strong> — OC precondition, atomic append/prepend, <code>content_edit</code>, batch, <code>validation_status</code>.</li>
+<li><strong>Surface-declares-schema</strong> — the patterns#57 pattern, with Notes' code.</li>
+<li><strong>Cross-cutting concerns</strong> — reachability, retry-with-backoff, auth-halt, offline, cross-tab sync.</li>
+<li><strong>Reference worked examples</strong> — minimal read-only dashboard, write with OC + autosave, schema-ensure on connect, offline-queued capture.</li>
+<li><strong>Pointers to canonical references</strong>.</li>
+</ol>
+<p>You can read top-to-bottom or jump to whichever chapter matches the question in front of you. Cross-links keep the map together.</p>
+<hr>
+<h2>1. The mental model</h2>
+<p>Three layers. Each has one job:</p>
+<ul>
+<li><strong>Vault</strong> (<a href="https://github.com/ParachuteComputer/parachute-vault"><code>parachute-vault</code></a>) — the data + content substrate. Notes, tags, links, schemas, indexed metadata. Stable shape; speaks REST and MCP.</li>
+<li><strong>Hub</strong> (<a href="https://github.com/ParachuteComputer/parachute-hub"><code>parachute-hub</code></a>) — the portal + Authorization Server + service catalog. Hub-as-issuer mints the JWTs surfaces present to vault; hub-as-portal lets operators discover which vaults exist and which surfaces are available. The user-visible &quot;front door&quot; of a Parachute install.</li>
+<li><strong>Surface</strong> — your code. Talks to vault for data and to hub for auth + discovery. Renders for humans.</li>
+</ul>
+<p>Conventional flow when a new user opens your surface:</p>
+<pre><code>user clicks &quot;Connect&quot; →
+  surface discovers AS via /.well-known/oauth-authorization-server →
+  surface registers as an OAuth client (DCR; one-shot per browser per issuer) →
+  surface redirects to hub authorize endpoint with PKCE →
+  user consents on hub →
+  hub redirects back with code →
+  surface exchanges code for { access_token, refresh_token, vault, services } →
+  surface saves token; uses access_token as Bearer on every vault call →
+  401? exchange refresh_token for a new pair; retry once →
+  refresh fails? surface marks vault auth-halted; user must re-consent
+</code></pre>
+<p>Surface code never talks to a &quot;Parachute API&quot; — it talks to vault and to hub, two different services that hub-as-issuer ties together at the auth boundary.</p>
+<hr>
+<h2>2. Authentication</h2>
+<h3>The OAuth 2.1 + PKCE + DCR shape</h3>
+<p>Three RFCs compose:</p>
+<ol>
+<li><strong>OAuth 2.0 Authorization Server Metadata</strong> (RFC 8414) — discover the AS endpoints. Hub serves <code>/.well-known/oauth-authorization-server</code>.</li>
+<li><strong>Dynamic Client Registration</strong> (RFC 7591) — register your surface as a client at <code>registration_endpoint</code>. One-shot per (issuer, redirect_uri) per browser; cache the resulting <code>client_id</code>. Notes caches in localStorage keyed by <code>(issuer, redirect_uri)</code> — see <a href="https://github.com/ParachuteComputer/parachute-notes/blob/main/src/lib/vault/oauth.ts"><code>oauth.ts:68-77</code></a>.</li>
+<li><strong>OAuth 2.1 + PKCE</strong> (RFC 7636 S256) — the actual code flow. No client secret; PKCE is the proof-of-possession.</li>
+</ol>
+<p>Refresh-token rotation per RFC 6749 §6: every successful refresh returns a new <code>refresh_token</code> that supersedes the prior one. Your surface must persist the rotated value or the next refresh will 400.</p>
+<h3>Worked code: starting the flow</h3>
+<pre><code class="language-ts">// surface/auth/begin.ts — adapted from parachute-notes/src/lib/vault/oauth.ts
+
+const REDIRECT_PATH = &quot;/oauth/callback&quot;;
+const DEFAULT_SCOPE = &quot;vault:read vault:write&quot;;
+
+async function discoverAuthServer(issuerUrl: string) {
+  const url = `${issuerUrl.replace(/\/$/, &quot;&quot;)}/.well-known/oauth-authorization-server`;
+  const res = await fetch(url, { headers: { Accept: &quot;application/json&quot; } });
+  if (!res.ok) throw new Error(`Discovery failed: ${res.status}`);
+  const meta = await res.json();
+  // Required fields per RFC 8414 — fail loud if the AS is missing any.
+  for (const k of [&quot;issuer&quot;, &quot;authorization_endpoint&quot;, &quot;token_endpoint&quot;, &quot;registration_endpoint&quot;]) {
+    if (!meta[k]) throw new Error(`AS metadata missing ${k}`);
+  }
+  if (!meta.code_challenge_methods_supported?.includes(&quot;S256&quot;)) {
+    throw new Error(&quot;AS does not advertise S256 PKCE&quot;);
+  }
+  return meta;
+}
+
+async function registerClient(registrationEndpoint: string, redirectUri: string) {
+  const res = await fetch(registrationEndpoint, {
+    method: &quot;POST&quot;,
+    headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
+    // `credentials: &quot;include&quot;` enables same-origin auto-approve (hub#199).
+    credentials: &quot;include&quot;,
+    body: JSON.stringify({
+      client_name: &quot;My Surface&quot;,
+      redirect_uris: [redirectUri],
+      grant_types: [&quot;authorization_code&quot;, &quot;refresh_token&quot;],
+      response_types: [&quot;code&quot;],
+      token_endpoint_auth_method: &quot;none&quot;,
+    }),
+  });
+  if (!res.ok) throw new Error(`Registration failed: ${res.status}`);
+  return (await res.json()) as { client_id: string };
+}
+
+async function generatePkce() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const verifier = base64UrlEncode(bytes);
+  const hash = await crypto.subtle.digest(&quot;SHA-256&quot;, new TextEncoder().encode(verifier));
+  const challenge = base64UrlEncode(new Uint8Array(hash));
+  return { verifier, challenge };
+}
+
+export async function beginOAuth(issuerUrl: string) {
+  const redirectUri = `${location.origin}${REDIRECT_PATH}`;
+  const meta = await discoverAuthServer(issuerUrl);
+
+  // Cache the client_id per (issuer, redirect_uri). DCR runs at most once.
+  const cacheKey = `dcr:${meta.issuer}:${redirectUri}`;
+  let clientId = localStorage.getItem(cacheKey);
+  if (!clientId) {
+    const reg = await registerClient(meta.registration_endpoint, redirectUri);
+    clientId = reg.client_id;
+    localStorage.setItem(cacheKey, clientId);
+  }
+
+  const { verifier, challenge } = await generatePkce();
+  const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
+
+  // Stash everything the callback handler will need in sessionStorage.
+  sessionStorage.setItem(&quot;pendingOAuth&quot;, JSON.stringify({
+    issuer: meta.issuer,
+    tokenEndpoint: meta.token_endpoint,
+    clientId,
+    redirectUri,
+    codeVerifier: verifier,
+    state,
+  }));
+
+  const url = new URL(meta.authorization_endpoint);
+  url.searchParams.set(&quot;response_type&quot;, &quot;code&quot;);
+  url.searchParams.set(&quot;client_id&quot;, clientId);
+  url.searchParams.set(&quot;redirect_uri&quot;, redirectUri);
+  url.searchParams.set(&quot;code_challenge&quot;, challenge);
+  url.searchParams.set(&quot;code_challenge_method&quot;, &quot;S256&quot;);
+  url.searchParams.set(&quot;state&quot;, state);
+  url.searchParams.set(&quot;scope&quot;, DEFAULT_SCOPE);
+  location.href = url.toString();
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let s = &quot;&quot;; for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, &quot;-&quot;).replace(/\//g, &quot;_&quot;).replace(/=+$/, &quot;&quot;);
+}
+</code></pre>
+<h3>Worked code: completing the flow</h3>
+<p>Your callback route handles the redirect-back from hub:</p>
+<pre><code class="language-ts">// surface/routes/oauth-callback.ts — adapted from completeOAuth in oauth.ts:188
+
+export async function handleCallback(searchParams: URLSearchParams) {
+  const pending = JSON.parse(sessionStorage.getItem(&quot;pendingOAuth&quot;) ?? &quot;null&quot;);
+  if (!pending) throw new Error(&quot;No pending flow — start from the connect page&quot;);
+
+  const code = searchParams.get(&quot;code&quot;);
+  const state = searchParams.get(&quot;state&quot;);
+  if (state !== pending.state) throw new Error(&quot;OAuth state mismatch&quot;);
+
+  const body = new URLSearchParams({
+    grant_type: &quot;authorization_code&quot;,
+    code: code!,
+    code_verifier: pending.codeVerifier,
+    client_id: pending.clientId,
+    redirect_uri: pending.redirectUri,
+  });
+
+  const res = await fetch(pending.tokenEndpoint, {
+    method: &quot;POST&quot;,
+    headers: { &quot;Content-Type&quot;: &quot;application/x-www-form-urlencoded&quot; },
+    body: body.toString(),
+  });
+  if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`);
+
+  const token = await res.json() as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    vault?: string;        // Hub-issued JWTs include the vault name claim.
+    services?: Record&lt;string, { url: string }&gt;; // Service catalog — §3.
+  };
+
+  // Persist the access token, refresh token, and the per-vault metadata you
+  // got back. You'll need pending.tokenEndpoint + pending.clientId again for
+  // refresh, so save those too.
+  saveToken(token.vault!, {
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token,
+    expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
+    services: token.services,
+    tokenEndpoint: pending.tokenEndpoint,
+    clientId: pending.clientId,
+  });
+
+  sessionStorage.removeItem(&quot;pendingOAuth&quot;);
+  return token;
+}
+</code></pre>
+<h3>Worked code: refresh-token rotation</h3>
+<p>When a vault call returns 401, exchange the refresh token for a fresh pair. Dedupe concurrent refreshes — refresh-token rotation means a second concurrent refresh would 400.</p>
+<pre><code class="language-ts">// surface/auth/refresh.ts — adapted from parachute-notes/src/lib/vault/refresh.ts
+
+const inflight = new Map&lt;string, Promise&lt;string | null&gt;&gt;();
+
+export async function forceRefresh(vaultId: string): Promise&lt;string | null&gt; {
+  const existing = inflight.get(vaultId);
+  if (existing) return existing;
+
+  const promise = doRefresh(vaultId).finally(() =&gt; inflight.delete(vaultId));
+  inflight.set(vaultId, promise);
+  return promise;
+}
+
+async function doRefresh(vaultId: string): Promise&lt;string | null&gt; {
+  const stored = loadToken(vaultId);
+  if (!stored?.refreshToken) return null;
+
+  const body = new URLSearchParams({
+    grant_type: &quot;refresh_token&quot;,
+    refresh_token: stored.refreshToken,
+    client_id: stored.clientId,
+  });
+
+  const res = await fetch(stored.tokenEndpoint, {
+    method: &quot;POST&quot;,
+    headers: { &quot;Content-Type&quot;: &quot;application/x-www-form-urlencoded&quot; },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    // 4xx → hub decided the token is bad. Mark auth-halted; the user must
+    // reconnect. 5xx / network → transient; let the next call try again.
+    if (res.status &gt;= 400 &amp;&amp; res.status &lt; 500) {
+      markAuthHalted(vaultId, &quot;Vault session expired. Reconnect to resume syncing.&quot;);
+    }
+    return null;
+  }
+
+  const token = await res.json();
+  saveToken(vaultId, {
+    ...stored,
+    accessToken: token.access_token,
+    // CRITICAL: persist the rotated refresh_token. The old one is now invalid.
+    refreshToken: token.refresh_token ?? stored.refreshToken,
+    expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
+  });
+  return token.access_token;
+}
+</code></pre>
+<h3>Scope vocabulary</h3>
+<p>Per <a href="../patterns/oauth-scopes.md"><code>patterns/oauth-scopes.md</code></a>, the verb hierarchy is <code>vault:&lt;name&gt;:admin ⊇ vault:&lt;name&gt;:write ⊇ vault:&lt;name&gt;:read</code>. Hub-issued JWTs carry these on the <code>scope</code> claim.</p>
+<p>Most read-only surfaces (dashboards) want <code>vault:&lt;name&gt;:read</code>. Capture surfaces (Notes, custom write tools) want <code>vault:&lt;name&gt;:read vault:&lt;name&gt;:write</code>. Admin tooling (token management, schema editors) wants <code>vault:&lt;name&gt;:admin</code>.</p>
+<h3>Per-tag scoping (<code>scoped_tags</code>)</h3>
+<p>Orthogonal to the OAuth scope: a token can carry a <code>scoped_tags</code> allowlist that narrows the token to notes carrying allowlisted tags (or their sub-tags via <code>tags.parent_names</code> hierarchy). Full details in <a href="../patterns/tag-scoped-tokens.md"><code>patterns/tag-scoped-tokens.md</code></a>. Useful when your surface should only operate on one slice of a vault — e.g., a donor-pipeline-only dashboard gets a token with <code>scoped_tags: [&quot;donor-pipeline&quot;]</code> and can't accidentally read other notes.</p>
+<p>Today <code>scoped_tags</code> is set at mint time via vault's <code>/admin/tokens</code> UI — your surface doesn't issue these itself, it just receives a token that's already been narrowed. The contract: out-of-scope reads return <code>404</code>, out-of-scope writes return <code>403</code>. Code the same recovery paths regardless of why a read 404'd.</p>
+<hr>
+<h2>3. Vault discovery</h2>
+<p>After authentication, your surface knows about <em>one</em> vault — the one whose name arrived on the <code>vault</code> claim. To support <strong>multiple vaults from one hub</strong> (the standard install), fetch <code>/.well-known/parachute.json</code> from the hub origin.</p>
+<h3>Worked code: vault catalog</h3>
+<pre><code class="language-ts">// surface/discovery/hub-vaults.ts — adapted from hub-discovery.ts:50
+
+export interface HubVaultEntry {
+  name: string;
+  url: string;
+  version: string;
+  managementUrl?: string;
+}
+
+export async function fetchHubVaults(hubOrigin: string): Promise&lt;HubVaultEntry[] | null&gt; {
+  const url = `${hubOrigin.replace(/\/$/, &quot;&quot;)}/.well-known/parachute.json`;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Accept: &quot;application/json&quot; } });
+  } catch {
+    return null; // Network failure → caller treats as &quot;no list.&quot;
+  }
+  if (!res.ok) return null;
+
+  const parsed = await res.json().catch(() =&gt; null);
+  if (!parsed || !Array.isArray(parsed.vaults)) return null;
+
+  return parsed.vaults.filter((v: any) =&gt;
+    typeof v.name === &quot;string&quot; &amp;&amp; typeof v.url === &quot;string&quot; &amp;&amp; typeof v.version === &quot;string&quot;
+  );
+}
+</code></pre>
+<h3>Services catalog on the token</h3>
+<p>Hub-issued JWTs also include a per-vault <code>services</code> object on the token response:</p>
+<pre><code class="language-json">{
+  &quot;access_token&quot;: &quot;...&quot;,
+  &quot;vault&quot;: &quot;team&quot;,
+  &quot;services&quot;: {
+    &quot;vault:team&quot;: { &quot;url&quot;: &quot;https://hub.example/vaults/team&quot; },
+    &quot;scribe&quot;:     { &quot;url&quot;: &quot;https://hub.example/scribe&quot; }
+  }
+}
+</code></pre>
+<p>Per <code>hub#247</code> (the per-vault catalog keys work), each vault gets a distinct <code>vault:&lt;name&gt;</code> key so multi-vault hubs don't collide. Read [<code>vault:${vault}</code>] when the token's <code>vault</code> claim names a specific vault; fall back to the collapsed <code>vault</code> entry on legacy hubs.</p>
+<p>The services catalog is a one-shot — captured at OAuth completion, persisted alongside the token, used as the source of truth for which URL to hit. Don't re-derive it from the hub origin on every request.</p>
+<hr>
+<h2>4. Reading the vault</h2>
+<h3>REST + MCP — two surfaces, one substrate</h3>
+<p>Vault exposes both REST and MCP. REST is the bread-and-butter surface for browsers and scripts; MCP is the surface AI agents and MCP-aware clients connect to. The data model and verbs are identical — REST returns JSON; MCP returns the same shape via <code>tools/call</code>.</p>
+<p>Notes uses REST exclusively (browsers don't speak MCP natively). A server-side surface that wants to host AI agents typically uses MCP. Pick whichever fits your runtime.</p>
+<h3>Worked code: a minimal read client</h3>
+<pre><code class="language-ts">// surface/vault/client.ts — adapted from parachute-notes/src/lib/vault/client.ts
+
+interface ClientOptions {
+  vaultUrl: string;
+  accessToken: string;
+  onAuthError?: () =&gt; Promise&lt;string | null&gt;;
+  onReachability?: (signal: &quot;healthy&quot; | &quot;unreachable&quot;, reason?: string) =&gt; void;
+}
+
+export class VaultClient {
+  private token: string;
+
+  constructor(private opts: ClientOptions) {
+    this.token = opts.accessToken;
+  }
+
+  async request&lt;T&gt;(path: string, init: RequestInit = {}): Promise&lt;T&gt; {
+    return this.requestWithRetry&lt;T&gt;(path, init, true);
+  }
+
+  private async requestWithRetry&lt;T&gt;(path: string, init: RequestInit, allowRetry: boolean): Promise&lt;T&gt; {
+    const headers = new Headers(init.headers);
+    headers.set(&quot;Authorization&quot;, `Bearer ${this.token}`);
+    headers.set(&quot;Accept&quot;, &quot;application/json&quot;);
+    if (init.body &amp;&amp; !headers.has(&quot;Content-Type&quot;)) headers.set(&quot;Content-Type&quot;, &quot;application/json&quot;);
+
+    let res: Response;
+    try {
+      res = await fetch(`${this.opts.vaultUrl}${path}`, { ...init, headers });
+    } catch (err) {
+      // Network-level failure: ECONNREFUSED, DNS, CORS pre-flight reject.
+      this.opts.onReachability?.(&quot;unreachable&quot;, String(err));
+      throw new VaultUnreachableError(0);
+    }
+
+    // 5xx = upstream is talking but unhealthy (vault restarting, proxy down).
+    if (res.status &gt;= 500) {
+      this.opts.onReachability?.(&quot;unreachable&quot;, `HTTP ${res.status}`);
+      throw new VaultUnreachableError(res.status);
+    }
+
+    // Any non-5xx means the vault answered. Reset reachability hysteresis.
+    this.opts.onReachability?.(&quot;healthy&quot;);
+
+    if ((res.status === 401 || res.status === 403) &amp;&amp; allowRetry &amp;&amp; this.opts.onAuthError) {
+      const fresh = await this.opts.onAuthError();
+      if (fresh) {
+        this.token = fresh;
+        return this.requestWithRetry&lt;T&gt;(path, init, false);
+      }
+      throw new VaultAuthError();
+    }
+
+    if (res.status === 409 || res.status === 428) {
+      // 409 = baseline mismatch; 428 = baseline missing. Both recover via
+      // refetch + retry — collapse into one error class. See §5 for OC.
+      const body = await res.json().catch(() =&gt; ({}));
+      throw new VaultConflictError(body);
+    }
+
+    if (!res.ok) throw new Error(`${init.method ?? &quot;GET&quot;} ${path} → ${res.status}`);
+    if (res.status === 204) return undefined as T;
+    return res.json();
+  }
+
+  queryNotes(params: URLSearchParams) {
+    return this.request&lt;Note[]&gt;(`/api/notes?${params}`);
+  }
+
+  getNote(idOrPath: string, opts: { includeLinks?: boolean; includeAttachments?: boolean } = {}) {
+    const p = new URLSearchParams({ id: idOrPath, include_content: &quot;true&quot; });
+    if (opts.includeLinks) p.set(&quot;include_links&quot;, &quot;true&quot;);
+    if (opts.includeAttachments) p.set(&quot;include_attachments&quot;, &quot;true&quot;);
+    return this.request&lt;Note&gt;(`/api/notes?${p}`);
+  }
+}
+
+export class VaultUnreachableError extends Error { constructor(public status: number) { super(); this.name = &quot;VaultUnreachableError&quot;; } }
+export class VaultAuthError extends Error { constructor() { super(); this.name = &quot;VaultAuthError&quot;; } }
+export class VaultConflictError extends Error {
+  constructor(public body: { current_updated_at?: string; expected_updated_at?: string; message?: string }) {
+    super(body.message ?? &quot;Note was edited elsewhere&quot;);
+    this.name = &quot;VaultConflictError&quot;;
+  }
+}
+</code></pre>
+<h3>Query operators</h3>
+<p><code>GET /api/notes</code> accepts (matching the MCP <code>query-notes</code> tool surface, <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/mcp.ts"><code>core/src/mcp.ts:81</code></a>):</p>
+<ul>
+<li><code>tag</code> (or <code>tag[]=</code> for multiple) + <code>tag_match=any|all</code>.</li>
+<li><code>exclude_tags</code>, <code>has_tags</code>, <code>has_links</code>.</li>
+<li><code>path</code> (exact) / <code>path_prefix</code>.</li>
+<li><code>search</code> — full-text.</li>
+<li><code>metadata</code> — operator object on indexed fields: <code>?metadata[state][eq]=drafted&amp;metadata[priority][gte]=5</code>. Operators: <code>eq | ne | gt | gte | lt | lte | in | not_in | exists</code>.</li>
+<li><code>near</code> — graph neighborhood: <code>?near[note_id]=01J...&amp;near[depth]=2</code>.</li>
+<li><code>date_from</code> / <code>date_to</code> (filter on <code>created_at</code>); generalized <code>date_filter[field]=updated_at&amp;date_filter[to]=...</code> for filtering on <code>updated_at</code> or any indexed metadata date field.</li>
+<li><code>order_by</code> — bare indexed-field name (<code>priority</code>, not <code>metadata.priority</code>). Requires the field declared <code>indexed: true</code> on at least one tag the queried notes carry. Vault refuses non-indexed sorts.</li>
+<li><code>sort=asc|desc</code>, <code>limit</code>, <code>offset</code>.</li>
+</ul>
+<h3>Cost knobs</h3>
+<p>Three response shapes are cost-tunable per call:</p>
+<ul>
+<li><code>include_content</code> — default <code>true</code> for single-note reads, <code>false</code> for list reads. Set <code>false</code> on list reads + frequent small edits to large notes (atomic <code>append</code> on a 50k-token transcript) — <code>byteSize</code> + <code>preview</code> are returned in place of full content.</li>
+<li><code>include_links</code> — default <code>false</code>. Hydrates inbound + outbound links per note.</li>
+<li><code>include_attachments</code> — default <code>false</code>. Includes attachment records.</li>
+</ul>
+<p>The defaults are tuned for the common case (browser list, agent appending). Override deliberately when you need more or less.</p>
+<hr>
+<h2>5. Writing the vault</h2>
+<h3>Optimistic concurrency is the contract</h3>
+<p><code>PATCH /api/notes/:idOrPath</code> requires either <code>if_updated_at</code> (the <code>updated_at</code> value you last read) or <code>force: true</code>. There is no &quot;just write&quot; path. See <a href="../patterns/optimistic-concurrency.md"><code>patterns/optimistic-concurrency.md</code></a> for the full convention.</p>
+<p>Two error shapes you must handle:</p>
+<ul>
+<li><strong><code>409 Conflict</code></strong> — you sent <code>if_updated_at</code> but it doesn't match live state. Re-read, reconcile, retry. Body: <code>{ error_type, current_updated_at, your_updated_at, note_id, path, message }</code>.</li>
+<li><strong><code>428 Precondition Required</code></strong> — you sent neither <code>if_updated_at</code> nor <code>force</code>. Almost always a bug-in-your-code. Body: <code>{ error_type, note_id, path, message }</code>.</li>
+</ul>
+<p>Distinguish them: <code>428</code> says <em>you didn't try</em>; <code>409</code> says <em>you tried and lost the race</em>. A 428 means fix your code; a 409 means refetch and retry.</p>
+<h3>Worked code: OC with autosave + reconcile</h3>
+<pre><code class="language-ts">// surface/edit/save.ts
+
+async function saveNote(client: VaultClient, noteId: string, draftContent: string) {
+  // 1. Read the current note — get the baseline timestamp.
+  const current = await client.getNote(noteId);
+
+  // 2. PATCH with the baseline. The vault throws VaultConflictError if a
+  //    concurrent write landed since we read.
+  try {
+    await client.request(`/api/notes/${encodeURIComponent(noteId)}`, {
+      method: &quot;PATCH&quot;,
+      body: JSON.stringify({
+        content: draftContent,
+        if_updated_at: current.updated_at,
+      }),
+    });
+  } catch (err) {
+    if (err instanceof VaultConflictError) {
+      // The note moved under us. Re-fetch + decide:
+      // - For autosave on top of a stable doc: re-merge our diff into the
+      //   fresh content, re-issue the PATCH. See Notes' editor code for the
+      //   prose-merge logic (out of scope for vault).
+      // - For human-confirmed save: surface the conflict to the user;
+      //   they pick &quot;overwrite&quot; (re-PATCH with force: true) or &quot;discard.&quot;
+      throw err;
+    }
+    throw err;
+  }
+}
+</code></pre>
+<h3>Atomic <code>append</code> / <code>prepend</code></h3>
+<p>For collaborative growth — every writer adds to one note — use <code>append</code> / <code>prepend</code> instead of <code>content</code>. They run as <code>content = content || ?</code> at SQL layer. Two concurrent appends both land; neither overwrites. <strong>No <code>if_updated_at</code> required</strong> for append-only / prepend-only updates (<a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/notes.ts"><code>core/src/notes.ts:295-322</code></a>).</p>
+<pre><code class="language-ts">// Every team member contributes to a daily roll-up — no conflict possible.
+await client.request(`/api/notes/${encodeURIComponent(noteId)}`, {
+  method: &quot;PATCH&quot;,
+  body: JSON.stringify({ append: &quot;\n- [Alice 14:32] Pricing question from prospect X.&quot; }),
+});
+</code></pre>
+<p><code>prepend</code> is frontmatter-aware: if the note opens with a <code>---\n...\n---\n</code> YAML block, the prepend lands <em>after</em> the closing fence so parsers expecting frontmatter at byte 0 still find it.</p>
+<h3><code>content_edit</code> — surgical find-and-replace</h3>
+<p>Mutually exclusive with <code>content</code> / <code>append</code> / <code>prepend</code>. Pass <code>{ content_edit: { old_text, new_text } }</code>. Errors if <code>old_text</code> is not found, or matches multiple times — add surrounding context to disambiguate. Useful when an agent wants to update a specific section of a long note without re-sending the whole body.</p>
+<h3>Batch writes</h3>
+<p>Both <code>POST /api/notes</code> (create) and <code>PATCH /api/notes/:id</code> accept a batch shape: <code>{ notes: [...] }</code>. The whole batch runs in one SQLite transaction with BEGIN/COMMIT/ROLLBACK — mid-batch error rolls every prior insert back. Per-call cap: <strong><code>MAX_BATCH_SIZE = 500</code></strong> (<a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/notes.ts"><code>core/src/notes.ts:150-157</code></a>). For seeding a vault with hundreds of notes (a one-shot import, a nightly sync), batch is the right shape — single-call writes for 500 notes complete in seconds.</p>
+<h3><code>validation_status</code> on the response</h3>
+<p>When you write a note tagged with a tag that declares schema fields (via <code>update-tag</code>), vault evaluates the write against the schema and attaches a <code>validation_status</code> field to the response. The status carries <code>errors</code>, <code>warnings</code>, and <code>schema_conflicts</code> arrays. Today validation is <strong>advisory</strong> — writes violating an enum or missing a required field succeed but ship a warning; opt-in strict mode is on the roadmap (vault#299).</p>
+<p>Surface this in your UI when present. Notes surfaces validation_status via toast / inline indicator on save. Your dashboard should at minimum log it; ignoring <code>validation_status</code> is how multi-writer tag drift accumulates silently.</p>
+<blockquote>
+<p>Caveat: at time of writing the REST <code>PATCH /api/notes/:id</code> doesn't attach <code>validation_status</code> symmetrically with the MCP <code>update-note</code> tool — tracked at <a href="https://github.com/ParachuteComputer/parachute-vault/issues/287"><code>vault#287</code></a>. Defensive code: check for both presence and absence.</p>
+</blockquote>
+<hr>
+<h2>6. The surface-declares-schema pattern (patterns#57)</h2>
+<blockquote>
+<p>Vault is generic. Surfaces declare what they need.</p>
+</blockquote>
+<p>Each surface that requires specific tags to function (i.e., your code queries <code>tag: &quot;capture/text&quot;</code> somewhere) should:</p>
+<ol>
+<li><strong>Declare</strong> its required schema in its own code — the declaration is the contract.</li>
+<li><strong>Ensure idempotently</strong> on first connect / first relevant action — call <code>update-tag</code> with the declarations; idempotent for already-correct rows.</li>
+<li><strong>Expose an audit UI</strong> comparing current vault state to declared state, with one-click fix.</li>
+</ol>
+<p>This lets multiple surfaces coexist non-destructively on one vault. Notes is the first instance. See <a href="https://github.com/ParachuteComputer/parachute-patterns/issues/57"><code>patterns#57</code></a> for the full pattern; here's the implementation shape.</p>
+<h3>Worked code: declaring + ensuring</h3>
+<pre><code class="language-ts">// surface/schema/declaration.ts — adapted from parachute-notes/src/lib/vault/schema.ts
+
+export interface RequiredTagDecl {
+  name: string;
+  description: string;
+  parent_names?: string[];
+}
+
+export const MY_SURFACE_REQUIRED_SCHEMA = {
+  tags: [
+    { name: &quot;capture&quot;, description: &quot;Notes captured directly by the user.&quot; },
+    { name: &quot;capture/text&quot;,  parent_names: [&quot;capture&quot;], description: &quot;Text capture.&quot; },
+    { name: &quot;capture/voice&quot;, parent_names: [&quot;capture&quot;], description: &quot;Voice capture.&quot; },
+  ] as const,
+};
+</code></pre>
+<pre><code class="language-ts">// surface/schema/ensure.ts — adapted from schema-ensure.ts:24
+
+// Per-session guard. The `update-tag` calls are idempotent on the vault
+// side (already-correct rows are no-op writes), but no need to round-trip
+// if we already ensured this vault's schema in this session.
+const ensuredVaults = new Set&lt;string&gt;();
+
+export async function ensureMySchema(vaultId: string, client: VaultClient): Promise&lt;void&gt; {
+  if (ensuredVaults.has(vaultId)) return;
+  // Mark before async so concurrent invocations don't race into a double-fire.
+  ensuredVaults.add(vaultId);
+
+  try {
+    // Sequential, not Promise.all — parents first so children resolve
+    // `parent_names`. Vault PUT is permissive about ordering, but ordered
+    // calls make failure modes clearer in logs.
+    for (const decl of MY_SURFACE_REQUIRED_SCHEMA.tags) {
+      await client.request(`/api/tags/${encodeURIComponent(decl.name)}`, {
+        method: &quot;PUT&quot;,
+        body: JSON.stringify({
+          description: decl.description,
+          ...(decl.parent_names ? { parent_names: decl.parent_names } : {}),
+        }),
+      });
+    }
+  } catch (err) {
+    // Roll back guard so a future call can retry. Schema-ensure is plumbing,
+    // not user-actionable; don't rethrow. Log + continue.
+    ensuredVaults.delete(vaultId);
+    console.warn(`[schema-ensure] failed for vault ${vaultId}:`, err);
+  }
+}
+</code></pre>
+<h3>When to call <code>ensureMySchema</code></h3>
+<p>Call it on the first vault-touching action that needs the schema in place — Notes calls it on first capture (the save path), not on app load. Two reasons:</p>
+<ul>
+<li><strong>Lazy.</strong> A read-only session never needs to write tag schemas; deferring keeps the network footprint small.</li>
+<li><strong>Recoverable.</strong> If schema-ensure fails (transient 5xx), the next capture retries.</li>
+</ul>
+<p>For a write-heavy surface (a dashboard that always writes on user action), calling <code>ensureMySchema</code> once at app load is fine. The guard makes both shapes safe.</p>
+<h3>Audit UI</h3>
+<p>The third leg of patterns#57: an audit screen that fetches <code>list-tags</code>, compares to the declaration, and offers one-click fix-up for missing rows. Notes hasn't shipped this yet (tracked at notes#129); for a Gitcoin-style dashboard, an audit panel in your settings view is a natural home. The audit query is just a <code>GET /api/tags</code> and a client-side diff against <code>MY_SURFACE_REQUIRED_SCHEMA</code>.</p>
+<hr>
+<h2>7. Cross-cutting concerns</h2>
+<p>The hard parts of surface-building Notes worked out from scratch. Capturing them here is the goal of this guide.</p>
+<h3>Reachability — three-state machine</h3>
+<p>Vault unreachability has hysteresis. A single dropped packet shouldn't flip the banner to &quot;down.&quot; Three states:</p>
+<pre><code>healthy → retrying → down
+              ↘ (3rd consecutive failure)
+healthy ← retrying  ← (any 2xx/4xx response)
+healthy ← down      ← (any 2xx/4xx response)
+</code></pre>
+<p>Notes implements this as a Zustand store with an in-flight signal from the client (<a href="https://github.com/ParachuteComputer/parachute-notes/blob/main/src/lib/vault/reachability-store.ts"><code>reachability-store.ts:79-123</code></a>). The client passes every fetch outcome through <code>onReachability(&quot;healthy&quot; | &quot;unreachable&quot;, reason?)</code>:</p>
+<ul>
+<li><code>2xx</code>, <code>4xx</code> → <code>healthy</code> (auth failure / not-found / conflict are still &quot;vault answered&quot;).</li>
+<li><code>5xx</code>, network failure → <code>unreachable</code>.</li>
+</ul>
+<p>The store promotes through <code>healthy → retrying → down</code> on the 3rd consecutive failure. Recovery on any non-5xx response. Exponential backoff <code>[1s, 2s, 4s, 8s, 16s, 30s]</code> between probe attempts.</p>
+<p><strong>Don't persist reachability state.</strong> Reload should re-probe from scratch — a stale &quot;down&quot; verdict across sessions is a worse UX than a 200ms re-probe.</p>
+<h3>Auth halt — distinct axis from reachability</h3>
+<p>When the refresh-token exchange returns 4xx (<code>invalid_grant</code>, revoked client, etc.), the user <em>must reconnect</em>. No probe schedule helps. Mark the vault auth-halted; surface a &quot;Reconnect&quot; banner; pause auto-retries until the user reconnects.</p>
+<p>Notes uses a separate Zustand store (<code>auth-halt-store.ts</code>) that <em>is</em> persisted (the user's next session shouldn't silently retry a known-dead token). Reachability is transient; auth-halt is durable. Different stores, different semantics.</p>
+<h3>Retry-with-backoff (and when not to retry)</h3>
+<p>React Query's default retry behavior — 3 retries with exponential backoff — is the wrong default for vault calls. The reasons:</p>
+<ul>
+<li><strong>Auth failures</strong> (401/403) shouldn't retry once refresh is attempted and failed.</li>
+<li><strong>Conflicts</strong> (409/428) shouldn't retry blindly — they need refetch-and-reconcile.</li>
+<li><strong>Reachability &quot;down&quot;</strong> shouldn't burn retries while we know the vault is gone — wait for the probe to flip the state back.</li>
+</ul>
+<p>Pattern: configure your data layer (React Query, SWR, manual) to honor your error classes:</p>
+<pre><code class="language-ts">// surface/queries/config.ts
+queryClient.setDefaultOptions({
+  queries: {
+    retry: (failureCount, err) =&gt; {
+      if (err instanceof VaultAuthError) return false;
+      if (err instanceof VaultConflictError) return false;
+      // VaultUnreachableError → let the reachability store decide.
+      // Use a small cap; the store's recovery probe is the real loop.
+      return failureCount &lt; 1;
+    },
+    retryDelay: (attempt) =&gt; Math.min(1000 * 2 ** attempt, 4000),
+  },
+});
+</code></pre>
+<h3>Offline-first</h3>
+<p>Notes treats every write as a write-back: optimistically apply to local state, queue the network call, drain on reconnect. The queue lives in IndexedDB (via Dexie); the drain runs on a tick + on reachability <code>healthy</code> transitions.</p>
+<p>The patterns here aren't vault-specific (any offline-first app has this shape), but two things matter for vault:</p>
+<ul>
+<li><strong>Use <code>force: true</code> on drain-time writes that have grown stale.</strong> A queued PATCH from an hour ago wouldn't pass an OC check; rather than force the user to reconcile every offline edit, drain with <code>force: true</code> and accept that offline writes win over concurrent edits that landed while you were offline. Different orgs may want different policies — the API supports both shapes.</li>
+<li><strong><code>append</code> is your friend.</strong> Queued captures (Telegram bot, voice memo, mobile sync) are perfect for <code>append</code> — no concurrency check needed, drain order doesn't matter for correctness.</li>
+</ul>
+<h3>Cross-tab sync</h3>
+<p>If your surface runs in multiple tabs at once (Notes' PWA does), use the <code>storage</code> event on <code>window</code> to sync per-vault state that lives in <code>localStorage</code>. The <code>storage</code> event fires across same-origin tabs but <em>not</em> in the tab that wrote the change — so a listener can call <code>setState</code> directly without looping. Notes mirrors three keys this way (<a href="https://github.com/ParachuteComputer/parachute-notes/blob/main/src/lib/vault/cross-tab-sync.ts"><code>cross-tab-sync.ts:20-50</code></a>):</p>
+<ul>
+<li>The full vault list.</li>
+<li>The active vault id (vault-switch-aware components re-render via existing hooks).</li>
+<li>Per-vault auth-halt flags (so a halt set in tab A shows the reconnect banner in tab B).</li>
+</ul>
+<p>The implementation pattern:</p>
+<pre><code class="language-ts">// surface/cross-tab-sync.ts — adapted from cross-tab-sync.ts
+export function useCrossTabSync() {
+  useEffect(() =&gt; {
+    function onStorage(e: StorageEvent) {
+      // `e.key === null` means localStorage.clear() — refresh everything we mirror.
+      if (e.key === null) { reloadAllStateFromStorage(); return; }
+      if (e.key === ACTIVE_VAULT_KEY) { reloadActiveVault(); return; }
+      if (e.key === VAULTS_KEY)       { reloadVaultList();   return; }
+      if (e.key.startsWith(AUTH_HALT_PREFIX)) { reloadAuthHalts(); return; }
+    }
+    window.addEventListener(&quot;storage&quot;, onStorage);
+    return () =&gt; window.removeEventListener(&quot;storage&quot;, onStorage);
+  }, []);
+}
+</code></pre>
+<p>Two things to notice:</p>
+<ul>
+<li><strong>Mirror state, never re-run actions.</strong> The setters (<code>setActive</code>, <code>markHalt</code>, etc.) write to <code>localStorage</code> themselves — calling them in the storage handler would write again and cause a redundant save. Just refresh the in-memory state.</li>
+<li><strong>No broadcast is needed.</strong> A localStorage write in tab A <em>implicitly</em> fires <code>storage</code> in every other same-origin tab. You're not publishing; you're listening to the storage layer itself.</li>
+</ul>
+<p>For state that doesn't live in <code>localStorage</code> (in-memory React Query caches, transient UI state), you'd reach for <code>BroadcastChannel</code> instead — but Notes hasn't needed that yet because the load-bearing cross-tab axes (active vault, vault list, auth halts) all flow through localStorage already. Pick the simpler tool first.</p>
+<h3>Error UX — be specific</h3>
+<p>Your surface UI should distinguish the failure modes:</p>
+<ul>
+<li><strong><code>VaultUnreachableError</code></strong> → &quot;Can't reach your vault right now. Retrying...&quot; Banner + retry-now button. Don't say &quot;Sign in&quot; — auth isn't the problem.</li>
+<li><strong><code>VaultAuthError</code> (post-refresh-failed)</strong> → &quot;Your vault session expired. Reconnect.&quot; Big, blocking. Refresh-token rotation drift; admin revoke. Manual reauth is the only path.</li>
+<li><strong><code>VaultConflictError</code></strong> → &quot;This note was edited elsewhere — refresh to see the latest.&quot; Inline near the affected note, not a global banner.</li>
+<li><strong><code>VaultNotFoundError</code></strong> → &quot;This note doesn't exist (anymore?).&quot; Sometimes a genuine 404; sometimes a scoped-token out-of-scope read (vault returns 404 not 403 for these on purpose, to prevent existence-leak across the scope boundary — see <a href="../patterns/tag-scoped-tokens.md"><code>patterns/tag-scoped-tokens.md</code></a> §Semantics).</li>
+</ul>
+<hr>
+<h2>8. Reference worked examples</h2>
+<h3>Minimal read-only dashboard</h3>
+<p>Read a list of notes by tag, render. ~25 lines.</p>
+<pre><code class="language-ts">// dashboard/page.ts
+const token = loadToken(&quot;team&quot;);
+const services = token.services;
+const vaultUrl = services[&quot;vault:team&quot;]?.url ?? services.vault?.url; // per-vault key + collapsed fallback
+
+const client = new VaultClient({
+  vaultUrl,
+  accessToken: token.accessToken,
+  onAuthError: () =&gt; forceRefresh(&quot;team&quot;),
+  onReachability: (s, r) =&gt; reportSignal(&quot;team&quot;, s, r),
+});
+
+const drafts = await client.queryNotes(new URLSearchParams({
+  tag: &quot;concept-seed&quot;,
+  &quot;metadata[state][eq]&quot;: &quot;drafted&quot;,
+  order_by: &quot;priority&quot;,
+  sort: &quot;desc&quot;,
+  limit: &quot;20&quot;,
+}));
+
+renderDrafts(drafts);
+</code></pre>
+<h3>Write-flow with OC + autosave</h3>
+<p>The autosave loop on a single editable note.</p>
+<pre><code class="language-ts">// editor/autosave.ts
+let lastSavedAt = note.updated_at; // From initial fetch
+
+async function autosave(draftContent: string) {
+  try {
+    const updated = await client.request&lt;Note&gt;(`/api/notes/${encodeURIComponent(note.id)}`, {
+      method: &quot;PATCH&quot;,
+      body: JSON.stringify({ content: draftContent, if_updated_at: lastSavedAt }),
+    });
+    lastSavedAt = updated.updated_at;
+  } catch (err) {
+    if (err instanceof VaultConflictError) {
+      // Concurrent write landed. Surface to user; offer &quot;see latest&quot; / &quot;force overwrite.&quot;
+      showConflictBanner({ current_updated_at: err.body.current_updated_at });
+      return;
+    }
+    throw err;
+  }
+}
+
+// Debounced trigger
+let timer: ReturnType&lt;typeof setTimeout&gt;;
+function onEdit(content: string) {
+  clearTimeout(timer);
+  timer = setTimeout(() =&gt; autosave(content), 1500);
+}
+</code></pre>
+<h3>Schema-ensure on connect</h3>
+<p>Already covered in §6 — call <code>ensureMySchema(vaultId, client)</code> once per session, lazily on first write.</p>
+<h3>Offline-queued capture</h3>
+<p>Skeleton: a write that queues to IndexedDB when offline, drains when reachability flips healthy.</p>
+<pre><code class="language-ts">// capture/queue.ts
+async function captureNote(content: string, tags: string[]) {
+  const draft = { id: ulid(), content, tags, metadata: {}, queuedAt: Date.now() };
+
+  // Optimistic local insert.
+  await queueDb.put(draft);
+  invalidateLocalQueries();
+
+  // Try immediate send; queue continues if it fails.
+  void drainQueue();
+}
+
+async function drainQueue() {
+  const pending = await queueDb.toArray();
+  for (const draft of pending) {
+    try {
+      await client.request(&quot;/api/notes&quot;, {
+        method: &quot;POST&quot;,
+        body: JSON.stringify({ content: draft.content, tags: draft.tags, metadata: draft.metadata }),
+      });
+      await queueDb.delete(draft.id);
+    } catch (err) {
+      if (err instanceof VaultUnreachableError || err instanceof VaultAuthError) return; // Wait for state change.
+      // Permanent failure — surface to user, leave in queue for manual retry.
+      console.error(&quot;[queue] permanent failure&quot;, err);
+    }
+  }
+  invalidateLocalQueries();
+}
+
+// Drain on reachability healthy transition.
+// NOTE: this skeleton assumes one queue + one client (single-vault). A
+// multi-vault surface should key the queue by vaultId and drain per-vault
+// — draining everything when *any* vault flips healthy can hand a write
+// to the wrong client. Keep the queue, drain function, and reachability
+// subscription scoped per vault.
+useVaultReachabilityStore.subscribe((s) =&gt; {
+  if (Object.keys(s.byVault).length === 0) void drainQueue();
+});
+</code></pre>
+<hr>
+<h2>9. Pointers to canonical references</h2>
+<p>When this guide leaves a question open, these are the authorities:</p>
+<ul>
+<li><strong><a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/docs/HTTP_API.md"><code>parachute-vault/docs/HTTP_API.md</code></a></strong> — the REST surface, endpoint by endpoint. Note: as of 2026-05-12 this doc has stale sections; vault is tracking a refresh at vault#315. When in doubt, <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routes.ts"><code>parachute-vault/src/routes.ts</code></a> is the spec.</li>
+<li><strong><a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/mcp.ts"><code>parachute-vault/core/src/mcp.ts</code></a></strong> — the MCP tool schemas. Same data model, MCP shape.</li>
+<li><strong><a href="./multi-writer-workspace.md"><code>guides/multi-writer-workspace.md</code></a></strong> — operator's-side companion guide. Covers tag schemas, scoped tokens, multi-writer auth, the worked workspace setup.</li>
+<li><strong><a href="../patterns/tag-scoped-tokens.md"><code>patterns/tag-scoped-tokens.md</code></a></strong> — the per-tag-scope contract. How vault evaluates allowlists, what 403/404 means.</li>
+<li><strong><a href="../patterns/optimistic-concurrency.md"><code>patterns/optimistic-concurrency.md</code></a></strong> — the OC convention. Same shape on HTTP and MCP.</li>
+<li><strong><a href="../patterns/hub-as-issuer.md"><code>patterns/hub-as-issuer.md</code></a></strong> — the OAuth issuer architecture. Why your tokens carry the hub origin in their <code>iss</code> claim.</li>
+<li><strong><a href="../patterns/oauth-scopes.md"><code>patterns/oauth-scopes.md</code></a></strong> — the scope vocabulary (<code>vault:&lt;name&gt;:read|write|admin</code>).</li>
+<li><strong><a href="../research/parachute-surface-direction.md"><code>research/parachute-surface-direction.md</code></a></strong> — where this is going. A first-party abstract surface layer is research, not shipped; today, every surface implements its own auth/discovery/state-management. Read this when you want to know what's coming.</li>
+<li><strong><a href="https://github.com/ParachuteComputer/parachute-notes/tree/main/src/lib/vault"><code>parachute-notes/src/lib/vault/</code></a></strong> — the working prototype. When this guide leaves a corner ambiguous, read Notes' code.</li>
+</ul>
+<h2>Honest caveats</h2>
+<ul>
+<li><strong>No abstract surface SDK yet.</strong> Today every surface implements its own auth client, query client, reachability state machine, schema-ensure path. Notes is the prototype; parachute-surface (the SDK direction) is research. If your team has bandwidth, the patterns above are stable enough to crib directly from Notes and adapt to your stack.</li>
+<li><strong>The HTTP_API.md doc has stale sections</strong> as of this guide's writing. Vault's source is authoritative; the doc refresh is tracked.</li>
+<li><strong><code>validation_status</code> parity</strong> between REST and MCP is a known gap (vault#287). Code defensively.</li>
+<li><strong>Cross-origin DCR auto-approve</strong> doesn't work yet (hub#201). Same-origin (surface served from hub's origin under a sub-path) works; truly cross-origin requires manual approve. Mostly invisible if your surface ships from a hub-served path.</li>
+</ul>
+<h2>Feedback loop</h2>
+<p>If you build a surface and hit friction:</p>
+<ul>
+<li>Vault-substrate friction → file against <a href="https://github.com/ParachuteComputer/parachute-vault"><code>parachute-vault</code></a>.</li>
+<li>Hub / auth / discovery friction → file against <a href="https://github.com/ParachuteComputer/parachute-hub"><code>parachute-hub</code></a>.</li>
+<li>Cross-cutting convention questions → file against <a href="https://github.com/ParachuteComputer/parachute-patterns"><code>parachute-patterns</code></a>.</li>
+<li>Cite the workflow, the writer (which role), why it matters. Real friction with a real use case attached moves items up priority lists.</li>
+</ul>
+<p>When patterns emerge that should be folded into surface-direction or this guide, file against patterns — your surface's hard-won learnings become the next surface's documented shortcut.</p>

@@ -1,0 +1,35 @@
+<h1>Package names</h1>
+<h2>Convention</h2>
+<p>All publishable Parachute packages live under the <code>@openparachute</code> npm scope.</p>
+<pre><code>@openparachute/&lt;module&gt;
+</code></pre>
+<p>Examples:</p>
+<ul>
+<li><code>@openparachute/vault</code> — parachute-vault</li>
+<li><code>@openparachute/agent</code> — parachute-agents (singular on the package side)</li>
+<li><code>@openparachute/cli</code> — the umbrella dispatcher</li>
+<li><code>@openparachute/scribe</code>, <code>@openparachute/narrate</code> — when/if published</li>
+</ul>
+<h2>Why</h2>
+<ul>
+<li>One scope means one audit surface and one set of owners on npm.</li>
+<li><code>openparachute</code> (not <code>parachute</code>) avoids collision with unrelated packages
+that were already squatting on bare <code>parachute-*</code> names, while keeping
+<code>parachute</code> available as a display word across the ecosystem.</li>
+<li>Singular package names (<code>agent</code>, not <code>agents</code>) match the import shape
+(<code>import { ... } from &quot;@openparachute/agent&quot;</code>). The repo can stay plural
+where that reads better — see <code>naming/repos.md</code>.</li>
+</ul>
+<h2>Rules</h2>
+<ul>
+<li>Package name: <strong>singular</strong>, lowercase, no hyphens inside the module slug.</li>
+<li>Scope: always <code>@openparachute</code>, never <code>@parachute</code>.</li>
+<li>Bin names exposed by a package follow <code>naming/bins.md</code>, not the package
+name. They are separate surfaces.</li>
+<li>A package that isn't yet published still picks its name up front and
+records it in <code>package.json</code> so cross-repo references don't churn.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li>None currently.</li>
+</ul>

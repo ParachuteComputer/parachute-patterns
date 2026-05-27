@@ -1,0 +1,142 @@
+<h1>Module protocol</h1>
+<h2>Convention</h2>
+<p>Every Parachute module plugs into the ecosystem by implementing the same
+small set of contracts. The hub (and any other consumer) can discover,
+identify, configure, and route to any module — first-party or third-party —
+without hub-side code changes. &quot;Module&quot; is the primary noun; the hub is a
+module that happens to also orchestrate.</p>
+<p>The protocol has three layers:</p>
+<h3>1. Storage — <code>~/.parachute/services.json</code></h3>
+<p>The installed-module registry. One entry per module, written at install
+time by <code>parachute install</code>. Canonical source of truth for which modules
+exist on this machine and how to reach them.</p>
+<pre><code class="language-json">{
+  &quot;name&quot;: &quot;parachute-vault&quot;,
+  &quot;port&quot;: 1940,
+  &quot;paths&quot;: [&quot;/vault/default&quot;],
+  &quot;health&quot;: &quot;/vault/default/health&quot;,
+  &quot;version&quot;: &quot;0.3.0&quot;,
+  &quot;displayName&quot;: &quot;Vault&quot;,
+  &quot;tagline&quot;: &quot;Agent-native knowledge graph …&quot;,
+  &quot;kind&quot;: &quot;api&quot;
+}
+</code></pre>
+<p>Canonical shape: <a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/services-manifest.ts"><code>parachute-hub/src/services-manifest.ts</code></a>.</p>
+<h3>2. Runtime — <code>/.parachute/*</code> endpoints</h3>
+<p>Every module serves these under its own mount path. No auth for <code>info</code> /
+<code>icon.svg</code> / <code>config/schema</code>; reads/writes to <code>config</code> are scope-gated once
+Phase 2+ lands.</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+<th>Auth</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /.parachute/info</code></td>
+<td>identity + version + <code>kind</code> + capabilities</td>
+<td>none (CORS <code>*</code>)</td>
+</tr>
+<tr>
+<td><code>GET /.parachute/icon.svg</code></td>
+<td>small inline SVG, <code>image/svg+xml</code> + <code>nosniff</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>GET /.parachute/config/schema</code></td>
+<td>JSON Schema for configuration</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>GET /.parachute/config</code></td>
+<td>current config values</td>
+<td><code>&lt;module&gt;:admin</code> (Phase 2)</td>
+</tr>
+<tr>
+<td><code>PUT /.parachute/config</code></td>
+<td>write config, validated against schema</td>
+<td><code>&lt;module&gt;:admin</code> (Phase 3)</td>
+</tr>
+</tbody>
+</table>
+<p><code>kind</code> is one of <code>&quot;api&quot; | &quot;frontend&quot; | &quot;tool&quot;</code>. Reference implementation
+dispatches these in
+<a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routing.ts"><code>parachute-vault/src/routing.ts</code></a>
+(<code>/.parachute/info</code>, <code>/.parachute/icon.svg</code>, <code>/.parachute/config/schema</code>,
+<code>/.parachute/config</code>).</p>
+<h3>3. Discovery — <code>/.well-known/parachute.json</code></h3>
+<p>The hub aggregates every installed service's storage entry into a single
+document at <code>/.well-known/parachute.json</code> on the ecosystem origin. Clients
+(the hub page, third-party integrations, future agents) fetch this once and
+iterate, then fan out to each service's <code>/.parachute/info</code> for live
+metadata.</p>
+<p>Shape (see
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/well-known.ts"><code>parachute-hub/src/well-known.ts</code></a>):</p>
+<pre><code class="language-json">{
+  &quot;vaults&quot;:   [{ &quot;name&quot;: &quot;default&quot;, &quot;url&quot;: &quot;…&quot;, &quot;version&quot;: &quot;…&quot; }],
+  &quot;services&quot;: [{ &quot;name&quot;: &quot;…&quot;, &quot;url&quot;: &quot;…&quot;, &quot;path&quot;: &quot;…&quot;, &quot;version&quot;: &quot;…&quot;, &quot;infoUrl&quot;: &quot;…/.parachute/info&quot; }],
+  &quot;&lt;shortName&gt;&quot;: { &quot;url&quot;: &quot;…&quot;, &quot;version&quot;: &quot;…&quot; }   // back-compat, one per service
+}
+</code></pre>
+<p>Served by
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub-server.ts"><code>parachute-hub/src/hub-server.ts</code></a>;
+the hub page fetch lives in
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub.ts"><code>parachute-hub/src/hub.ts</code></a>.</p>
+<h2>Why</h2>
+<ul>
+<li><strong>Open by construction.</strong> The protocol is the standard, not the package
+names. A module called <code>my-cool-thing</code> that ships the four required
+contracts is a first-class Parachute module — no <code>@openparachute/</code> scope
+or <code>parachute-*</code> prefix required. See
+<a href="./module-json-extensibility.md"><code>module-json-extensibility.md</code></a> when
+that pattern lands.</li>
+<li><strong>Hub stays thin.</strong> <code>services.json</code> + <code>/.well-known/parachute.json</code> +
+<code>/.parachute/info</code> on each module is everything the hub needs. No
+per-module special-casing in hub code.</li>
+<li><strong>Same shape local and remote.</strong> A loopback vault on port 1940 and a
+cloud-hosted vault at <code>vault.example.com</code> speak the same protocol. Cloud
+is a hosting option, not a separate product.</li>
+<li><strong>Additive evolution.</strong> New keys in the well-known doc and new
+<code>/.parachute/*</code> endpoints are optional. Old clients keep working; the
+<code>services[]</code> array was added alongside the original flat-shortName keys
+for exactly this reason.</li>
+</ul>
+<h2>Rules</h2>
+<ul>
+<li><strong>Mount at <code>/.parachute/*</code> literally.</strong> Not <code>/api/parachute/*</code>, not
+<code>/v1/.parachute/*</code>. Keeps cross-module URL construction uniform.</li>
+<li><strong><code>info</code> + <code>icon.svg</code> are unauthenticated and CORS-open.</strong> The hub page
+loads them from the browser with <code>credentials: 'omit'</code>.</li>
+<li><strong><code>kind</code> is required.</strong> Hubs decide how to render the card (link vs.
+iframe vs. tool launcher) from this field.</li>
+<li><strong>Every service gets one <code>services.json</code> entry.</strong> Multi-tenant modules
+(e.g. multiple vaults) write one entry per instance with distinct <code>name</code>
+<ul>
+<li><code>paths</code>.</li>
+</ul>
+</li>
+<li><strong>Pick a port in the reserved range when you can.</strong> See
+<a href="./canonical-ports.md"><code>canonical-ports.md</code></a>. Third parties should stay
+out of 1939–1949.</li>
+</ul>
+<h2>What's out of scope here</h2>
+<ul>
+<li>OAuth issuer location and scope format — see
+<a href="./hub-as-issuer.md"><code>hub-as-issuer.md</code></a> and
+<a href="./oauth-scopes.md"><code>oauth-scopes.md</code></a>.</li>
+<li>Third-party module manifest (<code>.parachute/module.json</code>) shape — see
+<a href="./module-json-extensibility.md"><code>module-json-extensibility.md</code></a>.</li>
+<li>Well-known metadata for OAuth (RFC 8414 / RFC 9728) — see
+<a href="./well-known-discovery-rfc.md"><code>well-known-discovery-rfc.md</code></a>.</li>
+</ul>
+<h2>Status</h2>
+<p>Live. Phase 0 (launch, 2026-04-23) ships <code>services.json</code>,
+<code>/.parachute/info</code>, <code>/.parachute/icon.svg</code>, <code>/.well-known/parachute.json</code>
+across vault + notes + scribe + channel + hub. Phase 2 adds
+<code>/.parachute/config/schema</code> + <code>GET /.parachute/config</code>; Phase 3 adds
+<code>PUT /.parachute/config</code> and the auto-wiring story. Track the full phasing
+in
+<a href="https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md"><code>parachute.computer/design/2026-04-20-module-architecture.md</code></a>.</p>

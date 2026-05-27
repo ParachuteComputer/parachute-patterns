@@ -1,0 +1,321 @@
+<h1>Tana — deep dive</h1>
+<p><strong>Status:</strong> research input for Parachute Vault architecture review
+<strong>Date:</strong> 2026-05-02
+<strong>Companion to:</strong> <code>research/knowledge-tool-data-models.md</code> (Tana entry §2.7), <code>research/parachute-data-model-shape.md</code>
+<strong>Brief:</strong> Aaron flagged Tana as the design reference for &quot;tags-as-type&quot; semantics, in contrast to Obsidian's &quot;tags-as-category.&quot; This dives in: data model, supertag UX, AI integration, and what Parachute could borrow vs reject.</p>
+<p>Sources are cited inline by URL. Where public docs are silent or contradictory, that is called out in-line.</p>
+<hr>
+<h2>1. TL;DR</h2>
+<ol>
+<li><strong>The supertag is the load-bearing primitive.</strong> Everything in Tana is a node (<a href="https://outliner.tana.inc/docs/nodes-and-references">Tana — Nodes &amp; references</a>); a supertag is a <em>node that defines a type</em> — apply it and the target node gains the supertag's fields and child-node template. The phrase the docs return to: &quot;<em>when you tag something, the content <strong>is</strong> the tag.</em>&quot; Use the &quot;is a&quot; test (<a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>).</li>
+<li><strong>Fields are universal in identity, scoped by display.</strong> A field is created inside a supertag template by default, but &quot;discoverable&quot; promotes the definition into Schema where it can be reused across many supertags (<a href="https://outliner.tana.inc/docs/fields">Tana — Fields</a>). The same <code>Status</code> field can sit on <code>#task</code>, <code>#project</code>, and <code>#post</code> and mean the same thing.</li>
+<li><strong>Supertags inherit via <code>Extends</code>.</strong> A <code>#design-task</code> extends <code>#task</code> and gets <code>#task</code>'s fields automatically; queries on <code>#task</code> return all descendants (<a href="https://www.cortexfutura.com/supertag-basics-tana-fundamentals/">Cortex Futura — Supertag basics</a>). This is real type inheritance, not slash-string convention.</li>
+<li><strong>Search nodes are the materialised view.</strong> Clicking a supertag navigates to its Supertag Page — a default table of every node carrying that supertag, customisable as cards, calendar, or kanban. Queries pivot on supertag + field predicates (<a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>).</li>
+<li><strong>AI is schema-aware, not schema-agnostic.</strong> Tana AI's pitch is exactly: &quot;add information to help AI understand what content means and how it's connected, through Supertags and fields&quot; (<a href="https://outliner.tana.inc/docs/tana-ai">Tana — Tana AI</a>). Voice-memo + supertag triggers automatic field population; AI commands like Autotag receive a curated set of supertag candidates and pick which to apply.</li>
+<li><strong>AI fields and command nodes are the agent surface.</strong> AI-enhanced fields auto-fill from node context. Command nodes (Autotag, Autofill, Text processing agent, custom Ask-AI) are configured with prompt templates and parameter slots, triggered manually or by supertag events (&quot;on added&quot;) (<a href="https://outliner.tana.inc/docs/ai-command-nodes">Tana — AI Command Nodes</a>). This is how Tana makes &quot;agents&quot; without code.</li>
+<li><strong>Top-down supertag creation is dominant; bottom-up promotion exists.</strong> You can <code>#newname</code> to create a supertag inline, or <code>Convert to supertag</code> lifts an existing node-with-children into a definition (<a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>). New supertags auto-register in Schema.</li>
+<li><strong>Power users converge on small supertag counts with deep <code>Extends</code> chains.</strong> Bri Ballard's published structure is <strong>6 base supertags with extensions</strong>, organised as input/task/objective trees (<a href="https://medium.com/@bri-ballard/my-tana-super-tag-structure-for-task-management-objective-centered-productivity-c893abc68090">Bri Ballard — Tana supertag structure</a>). The recurring counsel is &quot;few base tags, lean on Extends,&quot; not &quot;one supertag per concept.&quot;</li>
+<li><strong>The pain points are real and consistent.</strong> Reviews land on three: steep learning curve, no offline / no end-to-end encryption, and outliner-shape unfit for long-form prose (<a href="https://www.xda-developers.com/tana-supertags-review/">XDA — Tana supertags review</a>, <a href="https://markmcelroy.com/tana-my-honest-initial-impressions/">Mark McElroy — honest impressions</a>, <a href="https://fourhourfreedom.substack.com/p/i-left-tana-for-obsidian-after-recent">fourhourfreedom — left Tana for Obsidian</a>). Not &quot;supertag-explosion&quot;; the dominant complexity story is <em>getting started</em>, not <em>scaling out</em>.</li>
+<li><strong>For Parachute: the Supertag-as-typed-node model is the closest peer to <code>_tags/&lt;name&gt;</code> config notes</strong>, but Tana's tighter coupling of search, view, AI, and schema buys ergonomics that Parachute's MCP-first surface can replicate without copying the outliner shape.</li>
+</ol>
+<hr>
+<h2>2. Tana's data model</h2>
+<h3>2.1 Node — the universal primitive</h3>
+<p>Every piece of structure in Tana is a node: bullets, fields, views, commands, settings, workspaces, daily pages — <em>everything</em> (<a href="https://outliner.tana.inc/articles/intro-to-nodes-fields-and-supertags">Tana — Intro</a>). The block-vs-page distinction is intentionally absent; <em>&quot;Tana sets these metaphors aside in favor of the node&quot;</em>.</p>
+<p><strong>Identity.</strong> Every node receives a unique nodeID on creation; IDs appear in URLs as <code>nodeid=XXX</code>. Two nodes can share text but be different entities. Renaming changes content; identity and references survive.</p>
+<p><strong>Hierarchy.</strong> A node has <strong>one owner</strong> (canonical parent in the outline) and <strong>any number of parents</strong> (display contexts via references — &quot;mirror copies&quot;). Editing any reference updates the original and all mirrors. Structure is graph-with-canonical-spine; no path string.</p>
+<p><strong>No path, no folder.</strong> Location is &quot;where in the outline tree (owner chain), plus which other nodes reference it.&quot; Sharp departure from Obsidian's filesystem-bound model and from Logseq's flat title namespace.</p>
+<h3>2.2 Supertag — a node that types other nodes</h3>
+<p>A supertag is a node whose function is to attach a type to other nodes. The supertag <em>itself</em> lives somewhere — typically under Schema — and stores: a name, a list of fields, a template of default child nodes, AI configuration, view configuration, and (optionally) an Extends pointer to a parent supertag.</p>
+<p>Applying a supertag does three things:</p>
+<ol>
+<li><strong>Records membership</strong> — the target node now <code>#has</code> this supertag and shows up in queries.</li>
+<li><strong>Instantiates the field template</strong> — every field defined on the supertag appears under the target node, pre-populated with defaults if configured.</li>
+<li><strong>Instantiates the child-node template</strong> — any child nodes declared in the supertag's template (e.g. a <code>Summary</code> heading, a <code>Quotes</code> section) get inserted under the target node (<a href="https://www.cortexfutura.com/supertag-basics-tana-fundamentals/">Cortex Futura — Supertag basics</a>).</li>
+</ol>
+<p>Multiple supertags can apply to one node — <em>&quot;a node can appear in different databases at the same time&quot;</em> (<a href="https://www.unlocktana.com/blog/supertags-vs-tags">Unlock Tana — supertags vs tags</a>).</p>
+<p>Tana also supports <strong>base types</strong> — 13 predefined object types (Meeting, Task, Organization, Person, Location, Project, Topic, Event, Article, Memo, Reflection, Day, Week) that a custom supertag can claim. Claiming a base type unlocks platform-specific behaviour: meeting transcription, calendar sync, etc. (<a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>).</p>
+<h3>2.3 Field — typed metadata, &quot;has a&quot;</h3>
+<p>The conceptual frame: a node <em>has a</em> field. A book <em>has an</em> author. A task <em>has a</em> due date. (<a href="https://outliner.tana.inc/articles/intro-to-nodes-fields-and-supertags">Tana — Intro</a>)</p>
+<p><strong>Field types</strong> (<a href="https://outliner.tana.inc/docs/fields">Tana — Fields</a>): <strong>Plain</strong> (freeform), <strong>Options</strong> (hand-authored dropdown), <strong>Options from supertag</strong> (formerly &quot;Instance&quot; — dropdown of all nodes with a chosen supertag, e.g. Owner field of <code>#person</code> nodes), <strong>Date</strong>, <strong>Number</strong>, <strong>Tana user</strong>, <strong>URL</strong>, <strong>Email</strong>, <strong>Checkbox</strong>.</p>
+<p><strong>Scope: universal in identity, local in declaration.</strong> The first place a field is created becomes its &quot;primary instance&quot; carrying the definition. Marking it <strong>discoverable</strong> (formerly &quot;Move to Schema&quot;) lifts the definition into Schema for reuse — <em>&quot;field definitions owned by the schema have priority&quot;</em>. A discoverable <code>Status</code> is the same field on <code>#task</code>, <code>#project</code>, <code>#post</code>.</p>
+<p><strong>Auto-initialisation.</strong> A field can derive its initial value from: same-named field on an ancestor, current date or ancestor day's date, current user, a random/ancestor node carrying a chosen supertag. Caveat: <em>&quot;Initialization expressions are convenience functions, but are not live updating.&quot;</em></p>
+<p><strong>AI-enhanced field.</strong> Toggle on the config; AI fills the field from <em>&quot;the name, description and contents of the parent node&quot;</em> — i.e. local context, not global graph.</p>
+<p><strong>Pinned / required / optional.</strong> Pinned shows prominently in views and queries; required is visual-only (warns, doesn't block); optional is surfaced via slash-command rather than instantiated by default.</p>
+<h3>2.4 Relations — references, not link-strings</h3>
+<p>Wikilink-style references in Tana are <strong>stable-ID pointers</strong>. The display text follows the current node title; renames are free. References are first-class — <em>&quot;a node cannot be referenced more than once as a child within the same list&quot;</em> (<a href="https://outliner.tana.inc/docs/nodes-and-references">Tana — Nodes &amp; references</a>). The &quot;Options from supertag&quot; field type creates a typed pointer: a field on <code>#meeting</code> of type &quot;Options from supertag #person&quot; returns a typed list of person references.</p>
+<p>There is no analog of Obsidian's <code>[[X]]</code> resolution-by-shortest-name. References are by ID at write time.</p>
+<h3>2.5 Path / hierarchy — graph-shaped, with one canonical spine</h3>
+<p>There is no folder, no file, no path string. Each node has one owner (canonical parent) and any number of reference parents (display contexts). Schema sits as a top-level outliner node where supertags and discoverable fields live as children — but Schema-as-location is a convention, not a structural requirement; the docs note <em>&quot;the schema node ... is a bit of a legacy node at this point, and the conventions for how to use this are currently in flux&quot;</em> (per the schema-overhaul search results).</p>
+<hr>
+<h2>3. The supertag UX</h2>
+<h3>3.1 Creating a supertag — top-down or bottom-up</h3>
+<p><strong>Top-down (declare type up front).</strong> Type <code>#</code> on any node, then a name that doesn't exist. The new supertag appears as the top option in the menu and is auto-registered to Schema (<a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>). Configure fields, template children, AI behaviour, and views via the supertag's config node.</p>
+<p><strong>Bottom-up (promote a node to a type).</strong> Use the Command Line (Cmd/Ctrl+K), select <strong>Convert to supertag</strong>. The node's children become the template; fields detected on the node become the supertag's fields. The original node is now a supertag definition.</p>
+<h3>3.2 Applying a supertag</h3>
+<p>In the editor, type <code>#</code> and the supertag name in any node, hit Enter. The supertag attaches to the <strong>whole node</strong>, not partial content. The UI immediately:</p>
+<ul>
+<li>Inserts the field template under the node (filled where defaults / auto-init expressions resolve)</li>
+<li>Inserts any template child nodes</li>
+<li>Adds the node to the supertag's Search Node (the materialised query)</li>
+<li>Triggers any &quot;on added&quot; AI commands configured on that supertag</li>
+</ul>
+<p><strong>Bulk apply.</strong> Select multiple nodes; type <code>#</code> or use <strong>Add tag</strong>; supertag applies to all simultaneously. Same flow for <strong>Remove tag</strong> (<a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>).</p>
+<p>The XDA review describes the practical experience: <em>&quot;During client calls, typing naturally, then tagging nodes with #client causes relevant fields to appear automatically&quot;</em> (<a href="https://www.xda-developers.com/tana-supertags-review/">XDA — Tana supertags review</a>). The structure-vs-spontaneity divide that motivates supertags: <em>&quot;Tana let information exist as both simultaneously&quot;</em> — the same thought is freeform note <strong>and</strong> structured row, not duplicated.</p>
+<h3>3.3 Supertag inheritance (<code>Extends</code>)</h3>
+<p>A supertag can extend another. The extending tag inherits the parent's full template and is treated by queries as &quot;is-a&quot; the parent.</p>
+<p>Concretely (from <a href="https://www.cortexfutura.com/supertag-basics-tana-fundamentals/">Cortex Futura</a> and <a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>):</p>
+<ul>
+<li><code>#design-task</code> extends <code>#task</code> → inherits <code>Due Date</code>, <code>Project</code> fields; can add <code>&gt;Reno team</code> field</li>
+<li>Inherited content cannot be deleted/moved on the child; defaults can be overridden</li>
+<li>Searching <code>#task</code> returns <code>#task</code> plus all descendants (<code>#design-task</code>, <code>#dev-task</code>, ...)</li>
+</ul>
+<p>This is genuine type inheritance with covariant query semantics, not slash-prefix display hierarchy. <strong>Important distinction from Logseq/Obsidian:</strong> those tools have hierarchical tag display (<code>#health/food</code> is &quot;under&quot; <code>#health</code> for UI purposes only); Tana's <code>Extends</code> is structural — the child supertag actually carries the parent's schema.</p>
+<h3>3.4 Querying — search nodes are the central UI</h3>
+<p>Every supertag has an associated Supertag Page that shows a default Search Node returning all nodes with that supertag. The page is customisable: tabs view, table / cards / calendar / kanban / list, filter and sort by any field, group by any field, scoped to subtrees.</p>
+<p>Search nodes themselves are nodes. They can be embedded anywhere (e.g. inside a <code>#project</code> template, a search node that returns &quot;all <code>#task</code> whose Project field equals this project&quot; — a per-instance contextual query). The search-node language uses supertag predicates and field comparisons; Tana provides a builder UI rather than requiring users to write a query DSL (<a href="https://www.unlocktana.com/blog/tana-vs-logseq">Unlock Tana — vs Logseq</a>).</p>
+<p>There is also full-text freeform search across the graph; supertag-filtered search is the default workflow for typed retrieval.</p>
+<h3>3.5 Title expressions — derived display</h3>
+<p>A supertag can declare a <strong>title expression</strong> that builds the node's displayed title from its field values: <code>${meeting-with} - ${date|10}</code>. System fields (<code>${sys:owner}</code>, <code>${sys:doneTime}</code>, <code>${sys:nodeId}</code>) are available (<a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a>).</p>
+<p>This is a clean inversion of the Obsidian/Notion pattern where title is hand-written; Tana lets the schema <em>generate</em> the title.</p>
+<hr>
+<h2>4. AI integration</h2>
+<p>This is the most consequential section for Parachute. Tana's AI strategy is built around the typed model — AI is not a freeform chatbot bolted onto a freeform graph, it is a set of <em>commands</em> and <em>fields</em> whose context is the supertag schema.</p>
+<h3>4.1 Two surfaces: AI-enhanced fields + Command Nodes</h3>
+<p><strong>AI-enhanced fields</strong> — a toggle on a field config. When enabled, the field auto-fills from the parent node's context (children, other fields, description). The system bundles that context into a prompt with the task &quot;Decide a value for the field&quot; and writes the response back (<a href="https://outliner.tana.inc/docs/fields">Tana — Fields</a>).</p>
+<p><strong>Command Nodes</strong> — a node-type defining an AI command (or chain). Parameters: prompt template, model, temperature, target node, output strategy, node filter, batch context, field dependencies. Triggered by manual invocation, button on a node, keyboard shortcut, or <strong>supertag event</strong> (&quot;on added&quot; / &quot;on removed&quot;) (<a href="https://outliner.tana.inc/docs/ai-command-nodes">Tana — AI Command Nodes</a>).</p>
+<h3>4.2 Named commands</h3>
+<p>Canonical, with custom variants composed in the Prompt Workbench:</p>
+<ul>
+<li><strong>Autotag</strong> — given candidates, AI picks which supertags apply</li>
+<li><strong>Autofill</strong> / <strong>Run AI fields</strong> — fills/re-evaluates AI-enhanced fields</li>
+<li><strong>Ask AI</strong> (streaming and non-) — freeform prompt → target</li>
+<li><strong>Transcribe audio</strong> — Whisper</li>
+<li><strong>Text processing agent</strong> — extracts summary, action items, entities from text; routes each output to a configured supertag + target (e.g. action items → <code>#task</code> → inbox)</li>
+<li><strong>Make API request</strong> — outbound HTTP</li>
+<li><strong>Generate image(s)</strong> — Gemini Nano / DALL-E</li>
+<li><strong>Add meeting bot</strong> / <strong>AI meeting notetaker</strong></li>
+</ul>
+<h3>4.3 Schema-aware prompt expressions</h3>
+<p>Prompt variables resolve against the typed graph at run time:</p>
+<ul>
+<li><code>${name}</code> — node title</li>
+<li><code>${field label}</code> — specific field value</li>
+<li><code>${sys:context}</code> — full node context (fields, children, description, supertags)</li>
+<li><code>${sys:tags}</code> — supertags on the node</li>
+<li><code>${sys:content}</code> — children only</li>
+<li><code>${sys:nodeId}</code>, <code>${sys:nodeURL}</code>, <code>${sys:currentDate}</code>, etc.</li>
+</ul>
+<p>The AI's context is a <strong>structured projection of the typed graph</strong>, not raw text. When Autotag runs on <code>${sys:context}</code>, the prompt the model sees already includes the node's existing fields and supertags. Schema-awareness manifests at the prompt layer because variable substitution puts it there.</p>
+<p>Sharp limitation: <em>&quot;Prompt variables only resolve in plain nodes, not within references&quot;</em> — agents must operate on canonical owner-chain nodes, not mirrors.</p>
+<h3>4.4 Does AI create or only apply?</h3>
+<p>Published behaviour is <strong>only-apply</strong>:</p>
+<ul>
+<li>Autotag takes a <code>Tag candidates</code> parameter — a curated supertag list</li>
+<li>AI selects from the list; it does not invent supertags</li>
+<li>Supertag creation is a human action (<code>#newname</code> or Convert to supertag)</li>
+</ul>
+<p>XDA, Cortex Futura, and Tana's own docs are consistent. AI-enhanced fields auto-fill values, but the field definition must already exist — AI is a value-decider, not a schema-author.</p>
+<p>The nearest AI-schema-authoring signal: <em>&quot;If you use AI in Tana, fields will be automagically suggested for any new supertag you create.&quot;</em> That's a suggestion at supertag-creation time; the human accepts or edits.</p>
+<h3>4.5 Curation, scoping, and what's missing</h3>
+<p><strong>No explicit confirmation gate.</strong> Autotag/Autofill execute and write. Mitigations: 60-second loop-detection that disables the event system on rapid recursion; Status-field gating for downstream commands; prompt preview during authoring (not on every execution). Reasonable for solo-operator-supervises-own-graph; thinner for multi-tenant agent settings.</p>
+<p><strong>Supertag-scoped agents.</strong> Two documented patterns:</p>
+<ol>
+<li>Command node with <strong>Node filter:</strong> <code>&gt;has tag #person</code></li>
+<li>Command on the supertag itself with <strong>trigger:</strong> &quot;On added&quot;</li>
+</ol>
+<p>The Text Processing Agent's parameters include &quot;Tags to use for entities&quot; and &quot;Tags to use for action items&quot; — making it a <strong>typed router</strong> that maps extracted content to supertags.</p>
+<p><strong>What public docs don't answer.</strong> Whether Tana AI Chat sees the <em>full</em> schema at reasoning time or only local context (docs only specify local bundling for AI-enhanced fields). Whether agents can author new supertags (almost certainly no, but not stated). Internal model selection and how tokens scale with schema size.</p>
+<hr>
+<h2>5. Tana vs Obsidian — the two &quot;what's a tag for&quot; paradigms</h2>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Obsidian</th>
+<th>Tana</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tag identity</td>
+<td>String. No ID.</td>
+<td>Stable-ID node; name is mutable display.</td>
+</tr>
+<tr>
+<td>Schema</td>
+<td>None native; YAML frontmatter is per-file; Dataview indexes; Bases plugin (v1.9.0) narrows the gap.</td>
+<td>First-class — supertag <em>is</em> a schema container.</td>
+</tr>
+<tr>
+<td>Hierarchy</td>
+<td>Slash-as-string display convention only.</td>
+<td><code>Extends</code> — real inheritance, covariant queries.</td>
+</tr>
+<tr>
+<td>Apply operation</td>
+<td>Inline <code>#tag</code> or YAML. No structural side-effect.</td>
+<td>Inserts field + child template, triggers events, joins search node.</td>
+</tr>
+<tr>
+<td>AI relationship</td>
+<td>None native; plugin-driven.</td>
+<td>Schema-aware via <code>${sys:tags}</code>/<code>${sys:context}</code>; commands take supertag candidates.</td>
+</tr>
+<tr>
+<td>Rename safety</td>
+<td>Vault-wide find-and-replace.</td>
+<td>ID-stable; rename changes display only.</td>
+</tr>
+<tr>
+<td>Storage</td>
+<td>Plain markdown on disk.</td>
+<td>Proprietary cloud; no offline, no E2EE (<a href="https://markmcelroy.com/tana-my-honest-initial-impressions/">Mark McElroy</a>).</td>
+</tr>
+<tr>
+<td>Long-form prose</td>
+<td>First-class.</td>
+<td>Outliner-shaped; <em>&quot;unsuitable for prose composition&quot;</em> (<a href="https://medium.com/@bri-ballard/from-an-avid-obsidian-user-why-i-came-to-love-tana-45ee9edf5ec8">Bri Ballard</a>).</td>
+</tr>
+</tbody>
+</table>
+<p>The recurring summary: Obsidian is the better app for <em>writing and thinking</em>, Tana is the better tool for <em>organising and operating</em> (<a href="https://medium.com/personal-knowledge-management-deep-dive/obsidian-vs-tana-how-they-compare-c5086127bcad">Yalcin Arsan</a>).</p>
+<hr>
+<h2>6. Tana vs Roam vs Logseq — block-graph variants</h2>
+<p>All three are stable-ID block-based outliners with bidirectional links. The fork is on what schema gets.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Roam</th>
+<th>Logseq</th>
+<th>Tana</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Storage</td>
+<td>Datomic, cloud</td>
+<td>Datascript, local-first (markdown/org files; DB mode)</td>
+<td>Proprietary cloud</td>
+</tr>
+<tr>
+<td>Page = block</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes — <em>&quot;everything is a node&quot;</em></td>
+</tr>
+<tr>
+<td>Tag = page</td>
+<td><code>#foo</code> ≡ <code>[[foo]]</code> edge</td>
+<td>Same in classic; DB mode adds class entities via <code>:block/tags</code></td>
+<td>Supertag links target to a typed node</td>
+</tr>
+<tr>
+<td>Schema</td>
+<td>None; <code>Status::</code> attributes by convention</td>
+<td>DB v1+ classes with Malli-validated property schemas (<a href="https://deepwiki.com/logseq/logseq/3.2-property-management">DeepWiki</a>)</td>
+<td>Supertags carry fields + child template + AI config + view config</td>
+</tr>
+<tr>
+<td>Type inheritance</td>
+<td>None</td>
+<td>Class inheritance (DB mode)</td>
+<td><code>Extends</code> — first-class</td>
+</tr>
+<tr>
+<td>Materialised view per type</td>
+<td>Hand-built queries</td>
+<td>Hand-built queries; class page lists members</td>
+<td>Auto-generated, customisable Supertag Page</td>
+</tr>
+<tr>
+<td>AI integration</td>
+<td>Plugins</td>
+<td>Plugins</td>
+<td>Native, schema-aware Command Nodes + AI-enhanced fields</td>
+</tr>
+<tr>
+<td>Portability</td>
+<td>Closed</td>
+<td>Open source, markdown-portable</td>
+<td>Closed, no typed export</td>
+</tr>
+</tbody>
+</table>
+<p>Tana's structural delta is two-pointed: <strong>schema is a node, edited in the same surface as content</strong>, and <strong>the AI layer is wired to that schema</strong> rather than to raw text. Logseq DB v1 is the closest peer; its AI story is plugin-driven rather than built-in. The Logseq forum's own framing: <em>&quot;Tana is basically a Relational Database visualized in different ways like Notion&quot;</em> — think Notion-with-outliner more than Roam-with-types (<a href="https://discuss.logseq.com/t/what-are-the-biggest-differences-between-tana-and-logeq/13579">Logseq forum</a>).</p>
+<hr>
+<h2>7. Pain points + critique</h2>
+<p><strong>Learning curve is the dominant complaint.</strong> The cultural moment is the <em>&quot;Tana makes me feel dumb&quot;</em> phase (<a href="https://outliner.tana.inc/articles/tana-makes-me-feel-dumb">Tana</a>) — Tana's own response was hundreds of one-on-one onboarding sessions and simplified terminology. The narrative pattern: <em>&quot;Many users download Tana, spend hours watching tutorials about Supertags and schema design, build an elaborate system they don't understand, and then abandon it within a week.&quot;</em></p>
+<p><strong>Storage, privacy, offline.</strong> Cloud-only, no offline mode, no end-to-end encryption (<a href="https://markmcelroy.com/tana-my-honest-initial-impressions/">Mark McElroy</a>, <a href="https://fourhourfreedom.substack.com/p/i-left-tana-for-obsidian-after-recent">fourhourfreedom</a>). Hard differentiator from Logseq (markdown files), Obsidian (filesystem + community E2EE), Anytype (encrypted spaces).</p>
+<p><strong>Outliner shape unfit for prose.</strong> Universal across reviews. Migration pattern is <strong>hybrid</strong> — Obsidian for writing, Tana for organising.</p>
+<p><strong>Supertag-explosion is <em>not</em> the dominant pain.</strong> Searches for &quot;supertag explosion&quot; return few results. Power-user testimony runs the other way: Bri Ballard's published structure is <strong>6 base supertags + extensions</strong>, organised as input/task/objective trees (<a href="https://medium.com/@bri-ballard/my-tana-super-tag-structure-for-task-management-objective-centered-productivity-c893abc68090">Bri Ballard</a>). Cultural counsel is <em>&quot;few base tags, lean on Extends&quot;</em>. Schema-rigidity is rarely complained about because schema is mutable in-place — adding a field propagates to every existing instance.</p>
+<p><strong>Schema is &quot;in flux.&quot;</strong> Tana's own docs admit <em>&quot;the schema node ... is a bit of a legacy node at this point, and the conventions for how to use this are currently in flux.&quot;</em> The Instance field type was renamed to &quot;Options from Supertag&quot; in Feb 2024. The right shape for schema-as-data is not yet settled even in the system that pioneered it.</p>
+<p><strong>AI loops and cost.</strong> The AI Command Nodes doc names recursion as a real concern; a safety mechanism disables the event system if similar events trigger within 60 seconds. Paid plans gate AI commands; the Prompt Workbench's credit monitor exists because users <em>do</em> burn credits on prompt iteration.</p>
+<p><strong>Schema design is a separate skill.</strong> Even Tana's own positioning concedes the load — there's an XDA piece on &quot;<em>organize your life in Tana without touching supertags</em>&quot; (<a href="https://www.xda-developers.com/tana-no-supertags/">XDA</a>). Casual users want the outliner without the type system.</p>
+<hr>
+<h2>8. What Parachute could borrow vs reject</h2>
+<p>Mapped against Parachute's current state (<a href="./parachute-data-model-shape.md"><code>parachute-data-model-shape.md</code></a>): notes have <code>id</code> PKs and optional unique paths; tags use <code>name TEXT PRIMARY KEY</code> (name <em>is</em> identity); <code>tag_schemas</code> carries optional fields-JSON; conventions are the <code>_tags/&lt;name&gt;</code> config-note and slash-prefix hierarchy.</p>
+<h3>8.1 Borrow</h3>
+<p><strong>(a) <code>Extends</code> for tag inheritance.</strong> Structural inheritance with covariant query semantics — strictly better than slash-prefix display convention. A <code>parent_tag_id</code> column (post-stable-ID) gets it; querying <code>health</code> returns descendants. Small fix once tags have IDs.</p>
+<p><strong>(b) Discoverable fields shared across tags.</strong> A field is defined under a supertag, then promoted to Schema for reuse across many. Avoids declare-every-field-globally and avoids every-field-private. Implementation: a <code>field_defs</code> table; <code>tag_schemas.fields</code> references field-def rows by ID; multiple tag schemas reference the same field-def.</p>
+<p><strong>(c) Auto-init expressions on fields.</strong> &quot;Current date,&quot; &quot;current operator,&quot; &quot;value from ancestor tag&quot; patterns ship a lot of value with little code. Reduces friction when a tag is applied via MCP.</p>
+<p><strong>(d) Title expressions.</strong> A <code>tag_schemas.title_template</code> with <code>${field}</code> substitution lets clients render display titles for nodes whose identity <em>is</em> their field values (meeting, reflection, recipe). Big UX, small machinery. Opt-in per tag.</p>
+<p><strong>(e) Persisted named queries (search nodes).</strong> Tana's Supertag Page is a query that lives in the graph. Parachute's <code>query-notes</code> MCP tool returns ad-hoc results; the missing primitive is a <em>named query node</em> — a view that an agent can call by name. Map onto a <code>_views/&lt;name&gt;</code> config-note convention paralleling <code>_tags/&lt;name&gt;</code>.</p>
+<p><strong>(f) AI Command Nodes as configurable surface.</strong> The deepest borrow. A command is: prompt template + parameter slots + node filter + trigger + output strategy, stored as data. Maps onto a <code>_commands/&lt;name&gt;</code> config-note convention. Operator authors; MCP exposes; agents trigger. Supertag's &quot;on added&quot; event maps to a tag-application hook.</p>
+<p><strong>(g) Schema-aware prompt expressions.</strong> <code>${sys:context}</code> / <code>${sys:tags}</code> / <code>${field name}</code> substitution is the right primitive for handing an agent a typed projection of a note rather than a markdown blob. Lean in.</p>
+<h3>8.2 Reject</h3>
+<p><strong>(a) Outliner-only edit surface.</strong> Tana's everything-as-node-in-outline forecloses long-form prose. Parachute keeps markdown notes primary; layers typed metadata on top.</p>
+<p><strong>(b) Cloud-only, no-export storage.</strong> Tana's biggest community wound. Parachute's SQLite + readable markdown bodies are not worth trading away.</p>
+<p><strong>(c) &quot;Everything is a node, including schema definitions.&quot;</strong> Elegant but produces the &quot;feel-dumb&quot; phase because every primitive is in front of every user. Parachute's <code>_tags/&lt;name&gt;</code> <em>path-prefix convention</em> keeps schema opt-in rather than structurally adjacent to content.</p>
+<p><strong>(d) Reference-as-mirror semantics.</strong> &quot;Edit any reference, all update&quot; is powerful but heavy. Parachute's links as typed pointers (source_id → target_id, not mirrors) is the right shape.</p>
+<p><strong>(e) Tag applies to whole node, all-or-nothing.</strong> Markdown notes have regions (frontmatter, body, headings); inline tag mentions inside content shouldn't be forced to apply note-wide. Keep note-level tags canonical and allow inline mentions.</p>
+<p><strong>(f) AI fields that auto-write without confirmation.</strong> Tana's fire-and-forget writeback fits solo-operator-supervising-their-own-graph. Parachute's MCP surface (Claude, third-party models, external services) needs propose-then-confirm via tool-calls.</p>
+<p><strong>(g) Title-template as the <em>only</em> title.</strong> Useful when opt-in; bad when forced. Manual titles primary, templates per-tag opt-in.</p>
+<h3>8.3 Open questions</h3>
+<p>Public Tana docs do not answer these; Parachute should decide explicitly:</p>
+<ol>
+<li><strong>Does AI see full schema or only local context?</strong> Tana docs only specify local-context bundling. Cost implications either way.</li>
+<li><strong>Is tag-creation an AI-permitted action?</strong> Tana keeps it human-only. Parachute should default to the same; opt-in for tag-creation MCP tools.</li>
+<li><strong>Where does schema live structurally?</strong> Top-level Schema-folder (Tana), <code>_tags/&lt;name&gt;</code> config notes (current Parachute), or a separate non-note table? Tana's &quot;in flux&quot; admission is a warning the right shape isn't industry-settled.</li>
+<li><strong>Do tags get stable IDs?</strong> Tana answered yes. Parachute's <code>name TEXT PRIMARY KEY</code> is the load-bearing decision; Tana's experience is one vote toward stable IDs.</li>
+</ol>
+<hr>
+<h2>Sources</h2>
+<p>Official Tana docs (all on <code>outliner.tana.inc</code>, the canonical content host):</p>
+<ul>
+<li><a href="https://outliner.tana.inc/docs/supertags">Tana — Supertags</a></li>
+<li><a href="https://outliner.tana.inc/docs/fields">Tana — Fields</a></li>
+<li><a href="https://outliner.tana.inc/docs/nodes-and-references">Tana — Nodes and references</a></li>
+<li><a href="https://outliner.tana.inc/docs/tana-ai">Tana — Tana AI</a></li>
+<li><a href="https://outliner.tana.inc/docs/ai-command-nodes">Tana — AI Command Nodes</a></li>
+<li><a href="https://outliner.tana.inc/docs/ai-for-builders">Tana — AI for Builders</a></li>
+<li><a href="https://outliner.tana.inc/articles/intro-to-nodes-fields-and-supertags">Tana — Intro to nodes, fields, and supertags</a></li>
+<li><a href="https://outliner.tana.inc/articles/tana-learn-live-supertags-and-fields">Tana — Learn Live: Supertags and Fields</a></li>
+<li><a href="https://outliner.tana.inc/articles/tana-makes-me-feel-dumb">Tana — Tana makes me feel dumb</a></li>
+<li><a href="https://outliner.tana.inc/articles/tana-template-schema-structure-for-tana-by-david-delgado-vendrell">Tana — Schema structure for Tana (David Delgado Vendrell template)</a></li>
+<li><a href="https://tana.inc/supertags">Tana — Supertags landing page</a></li>
+</ul>
+<p>Community / reviews / power-user writeups:</p>
+<ul>
+<li><a href="https://www.cortexfutura.com/supertag-basics-tana-fundamentals/">Cortex Futura — Supertag basics in Tana</a></li>
+<li><a href="https://www.unlocktana.com/blog/supertags-vs-tags">Unlock Tana — Supertags vs Tags Explained</a></li>
+<li><a href="https://www.unlocktana.com/blog/tana-vs-logseq">Unlock Tana — Tana vs Logseq</a></li>
+<li><a href="https://medium.com/@bri-ballard/my-tana-super-tag-structure-for-task-management-objective-centered-productivity-c893abc68090">Bri Ballard (Medium) — My Tana Super Tag Structure for Productivity</a></li>
+<li><a href="https://medium.com/@bri-ballard/from-an-avid-obsidian-user-why-i-came-to-love-tana-45ee9edf5ec8">Bri Ballard (Medium) — From an Avid Obsidian User: Why I Came to Love Tana</a></li>
+<li><a href="https://www.xda-developers.com/tana-supertags-review/">XDA — I tested Tana's supertags</a></li>
+<li><a href="https://www.xda-developers.com/tana-no-supertags/">XDA — Tested a no-overwhelm way to organize without supertags</a></li>
+<li><a href="https://markmcelroy.com/tana-my-honest-initial-impressions/">Mark McElroy — Tana, my honest initial impressions</a></li>
+<li><a href="https://fourhourfreedom.substack.com/p/i-left-tana-for-obsidian-after-recent">fourhourfreedom — Tana Is Starting to Feel Like the Future Again</a></li>
+<li><a href="https://medium.com/personal-knowledge-management-deep-dive/obsidian-vs-tana-how-they-compare-c5086127bcad">Yalcin Arsan (Medium) — Obsidian vs. Tana</a></li>
+<li><a href="https://aiproductivity.ai/guides/tana-supertags-guide/">AI:PRODUCTIVITY — Tana Supertags Guide</a></li>
+<li><a href="https://medium.com/@bah.lindt/supertags-in-tana-940a10e5a977">Bah (Medium) — Supertags in Tana</a></li>
+<li><a href="https://x.com/dreetje/status/1792119695400710366">André Foeken on X — Auto-tagging entities in Tana with GPT-4o</a></li>
+<li><a href="https://discuss.logseq.com/t/what-are-the-biggest-differences-between-tana-and-logeq/13579">Logseq forum — Differences between Tana and Logseq</a></li>
+</ul>
+<p>Cross-tool / context:</p>
+<ul>
+<li><a href="https://deepwiki.com/logseq/logseq/3.2-property-management">DeepWiki — Logseq Property Management</a></li>
+<li><a href="https://get-alfred.ai/blog/best-roam-research-alternatives">alfred — Best Roam Research alternatives</a></li>
+<li><a href="https://github.com/jcfischer/supertag-cli">Jens-Christian Fischer — supertag-cli</a></li>
+</ul>

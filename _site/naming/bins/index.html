@@ -1,0 +1,90 @@
+<h1>Bin names</h1>
+<h2>Convention</h2>
+<p>Every executable shipped by a Parachute package is named
+<code>parachute-&lt;subcommand&gt;</code> on PATH.</p>
+<p>The umbrella <code>parachute</code> command (from <code>@openparachute/cli</code>) discovers those
+bins by PATH scan and dispatches to them:</p>
+<pre><code>parachute &lt;sub&gt; [args...]   →  execs `parachute-&lt;sub&gt;` with the remaining args
+parachute                    →  lists discovered subcommands + descriptions
+</code></pre>
+<p>First match on PATH wins (same as shell lookup). This means <code>parachute vault ...</code> works as soon as <code>@openparachute/vault</code> is installed anywhere on PATH,
+without the umbrella having to know about it at build time.</p>
+<p>See: <a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/cli.ts">parachute-hub/src/cli.ts</a>.</p>
+<h2>Current bins (state of the world, 2026-04-25)</h2>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Bin name</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@openparachute/cli</code></td>
+<td><code>parachute</code></td>
+<td>umbrella dispatcher</td>
+</tr>
+<tr>
+<td><code>@openparachute/vault</code></td>
+<td><code>parachute-vault</code></td>
+<td>conformant (renamed in <a href="https://github.com/ParachuteComputer/parachute-vault/pull/134">vault #134</a>)</td>
+</tr>
+<tr>
+<td><code>@openparachute/scribe</code></td>
+<td><code>parachute-scribe</code></td>
+<td>conformant (renamed in <a href="https://github.com/ParachuteComputer/parachute-scribe/pull/9">scribe #9</a>)</td>
+</tr>
+<tr>
+<td><code>@openparachute/notes</code></td>
+<td><em>(no bin)</em></td>
+<td>frontend; served by <code>parachute-hub</code>'s <code>notes-serve</code> shim, no own bin</td>
+</tr>
+<tr>
+<td><code>@openparachute/channel</code></td>
+<td><code>parachute-channel</code>, <code>parachute-channel-bridge</code></td>
+<td>conformant</td>
+</tr>
+<tr>
+<td><code>@openparachute/agent</code></td>
+<td><code>parachute-agent</code>, <code>parachute-agent-ui</code></td>
+<td>conformant</td>
+</tr>
+<tr>
+<td><code>@openparachute/narrate</code></td>
+<td><code>parachute-narrate</code></td>
+<td>planned; not yet published</td>
+</tr>
+<tr>
+<td><code>tailshare</code></td>
+<td><code>tailshare</code></td>
+<td>not a Parachute-branded tool; no rename planned</td>
+</tr>
+</tbody>
+</table>
+<h2>Why</h2>
+<ul>
+<li><strong>PATH discovery is the composition point.</strong> The umbrella never hard-codes
+its subcommand list — install a new <code>parachute-&lt;x&gt;</code> bin anywhere on PATH
+and it appears. That only works if everyone shares the prefix.</li>
+<li><strong>Avoids collisions.</strong> Short names like <code>scribe</code> and <code>narrate</code> collide with
+common system or third-party binaries. The prefix is boring and safe.</li>
+<li><strong>Discoverability.</strong> Tab-completion on <code>parachute-</code> in any shell lists
+every Parachute bin installed locally.</li>
+</ul>
+<h2>Rules</h2>
+<ul>
+<li>Primary bin: <code>parachute-&lt;module&gt;</code>.</li>
+<li>Secondary bins (if a package ships more than one, e.g. a server + a UI):
+<code>parachute-&lt;module&gt;-&lt;role&gt;</code>. Example: <code>parachute-agent-ui</code>.</li>
+<li>No bare-word bins. A package that currently ships one is on the migration
+list (see <code>adoption/migration-notes.md</code>).</li>
+<li>The umbrella <code>parachute</code> bin is reserved for <code>@openparachute/cli</code>. Nothing
+else may claim it. The vault rename unblocks this.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li>Do we want a <code>parachute doctor</code> subcommand (shipped in the umbrella) that
+lints PATH for bare-name or duplicate bins? Tracked informally until
+someone hits a real collision.</li>
+</ul>

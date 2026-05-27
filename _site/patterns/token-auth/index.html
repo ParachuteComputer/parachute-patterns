@@ -1,0 +1,68 @@
+<h1>Token auth — <code>pvt_</code> tokens</h1>
+<h2>Convention</h2>
+<p>Parachute-issued <strong>personal access tokens</strong> use a <code>pvt_</code> prefix
+(&quot;parachute token&quot;), are stored as sha256 hashes (never in clear), are
+scoped to a vault / tenant / agent, and are revealed to the user
+exactly once via the issuing surface — typically a cookie-gated modal
+after creation.</p>
+<p><code>pvt_*</code> tokens are the <strong>user-facing PAT</strong> path: a logged-in human
+generates one in the issuing module's UI and pastes it into a script,
+a CLI, or a third-party tool. They sit alongside the <strong>OAuth bearer
+token</strong> path (<a href="./hub-as-issuer.md"><code>hub-as-issuer.md</code></a>), which is for
+agent-to-service and service-to-service flows where the consumer goes
+through the consent dance. Same scope vocabulary on both — see
+<a href="./oauth-scopes.md"><code>oauth-scopes.md</code></a>.</p>
+<h2>Shape</h2>
+<pre><code>pvt_&lt;base64url random 32 bytes&gt;
+</code></pre>
+<p>Stored as:</p>
+<pre><code>sha256(pvt_...) hex → (tenant_id, scope, created_at, last_used_at, label)
+</code></pre>
+<h2>Rules</h2>
+<ul>
+<li><strong>Prefix is <code>pvt_</code>.</strong> Makes tokens instantly grep-able in logs and in
+leaked credentials scanners. No module should use a different prefix.</li>
+<li><strong>Store only the hash.</strong> The server never has a plaintext token after
+issuance. Comparing: hash the incoming bearer, look up by hash.</li>
+<li><strong>Scope is required.</strong> Every token has a named scope
+(<code>vault:read</code>, <code>vault:write</code>, <code>agent:invoke</code>, etc.). A token without
+scope is a bug. Scope strings follow
+<a href="./oauth-scopes.md"><code>oauth-scopes.md</code></a> — <code>pvt_*</code> and OAuth bearer
+tokens share one vocabulary so a <code>vault:read</code> grant means the same
+thing on either side of the validator seam.</li>
+<li><strong>Reveal once.</strong> The UI that issues a token shows the full <code>pvt_...</code>
+exactly one time, gated by the user's active session cookie. After modal
+close, the UI shows only a last-4 suffix + label. The caller is
+responsible for copying it then.</li>
+<li><strong>Last-used tracking.</strong> Record <code>last_used_at</code> on each successful auth so
+stale tokens can be surfaced in an admin view.</li>
+<li><strong>Revocation is by hash.</strong> Deleting the hash row revokes instantly.</li>
+</ul>
+<h2>Why</h2>
+<ul>
+<li>Prefix + scope + hash is the pattern GitHub / Anthropic / most modern
+token issuers use. Nothing exotic.</li>
+<li>The cookie-reveal pattern prevents a leaked clipboard or ps-listing from
+burning a token post-issuance — the plaintext exists only in the user's
+browser for one modal's lifetime.</li>
+<li>One sha256 hash per row gives O(1) lookup without a KV rotation concern.</li>
+</ul>
+<h2>Where this applies</h2>
+<ul>
+<li><code>parachute-vault</code> — vault tokens for REST / MCP auth. Today this is
+the only shipped issuer of <code>pvt_*</code> tokens.</li>
+<li>Future modules with a user-facing PAT surface — same shape, same
+scope vocabulary. Modules whose only credentialed callers are agents
+or other services should prefer the OAuth bearer path
+(<a href="./hub-as-issuer.md"><code>hub-as-issuer.md</code></a>) over minting their own
+<code>pvt_*</code> issuer.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li>Rotation story: today we revoke + re-issue. Should we add
+per-token-rotation (old token works for 24h after rotation)? Not needed
+until an automated client can't tolerate a flip.</li>
+<li>Per-scope TTL defaults: unset today. Reasonable future: <code>agent:invoke</code>
+tokens default to 90d, <code>vault:*</code> tokens default to no expiry (revoke
+explicitly).</li>
+</ul>

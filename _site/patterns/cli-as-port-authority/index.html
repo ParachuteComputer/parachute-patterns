@@ -1,0 +1,201 @@
+<h1>CLI as port authority</h1>
+<h2>Convention</h2>
+<p><code>parachute-hub</code> is the <strong>port authority</strong> for the Parachute ecosystem. At
+install time the CLI picks a port for each service and reflects the chosen
+port in <code>~/.parachute/services.json</code> (also stamping <code>PORT=&lt;port&gt;</code> into
+<code>~/.parachute/&lt;svc&gt;/.env</code> as a dev-shell convenience).</p>
+<p>Services resolve their listen port at boot via a four-tier ladder:
+<strong><code>services.json</code> entry → service-specific env (<code>&lt;SERVICE&gt;_PORT</code>) → bare
+<code>PORT</code> env → compiled-in canonical default</strong>. The hub's <code>parachute install</code>
+and the operator's manifest edits both feed <code>services.json</code>; env tiers are
+dev-shell / PaaS overrides; the canonical default (e.g. vault → 1940) is
+the final fallback so a stand-alone <code>bun run</code> still works. See
+&quot;Service-side contract&quot; below.</p>
+<p>The authoritative implementation is
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/port-assign.ts"><code>parachute-hub/src/port-assign.ts</code></a>.
+The install hook lives in
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/install.ts"><code>parachute-hub/src/commands/install.ts</code></a>.
+This pattern doc captures the why and the rules; if the two ever disagree,
+the code wins and this doc is wrong.</p>
+<p>Pairs with <a href="./canonical-ports.md"><code>canonical-ports.md</code></a>: canonical-ports
+defines <em>which</em> ports belong to Parachute; this doc defines <em>who decides</em>
+who gets which one.</p>
+<h2>Why up-front assignment</h2>
+<p>The previous shape was detect-on-collision-at-boot: each service tried its
+canonical port, fell back if the bind failed. That broke in three ways:</p>
+<ul>
+<li><strong>Opaque &quot;address in use&quot; errors.</strong> Two services racing the same port
+produce a bind error deep inside one of them, with no shared picture of
+who owns what.</li>
+<li><strong>Hub proxy 502s.</strong> The hub's reverse-proxy targets are computed from
+<code>services.json</code>. If a service silently fell back to a different port at
+runtime, the hub kept proxying to a dead port and the user saw a 502 with
+no explanation.</li>
+<li><strong>Race-y first install.</strong> Two services starting in parallel could both
+decide the canonical slot was free and both try to bind it.</li>
+</ul>
+<p>Up-front assignment makes the CLI the single coherent picture: the .env
+written at install time is the contract for the next boot, and
+<code>services.json</code> is kept in sync as the side effect.</p>
+<h2>Algorithm</h2>
+<p><code>assignPort(canonical, occupied)</code> is the pure helper:</p>
+<ol>
+<li><strong>Prefer canonical.</strong> If the service has a canonical slot
+(vault → 1940, etc.) and it's free, use it.</li>
+<li><strong>Walk the unassigned reservations.</strong> On collision (or when the service
+has no canonical slot — third-party modules), iterate
+<code>PORT_RESERVATIONS</code> where <code>status === &quot;reserved&quot;</code> and pick the first
+free one. Today that's <code>1944..1949</code>.</li>
+<li><strong>Fall outside the range.</strong> If the entire reserved set is full, walk
+past <code>CANONICAL_PORT_MAX</code> (1949) until a free port is found, and
+surface a warning. The install still proceeds — the warning tells the
+operator the install landed outside the curated range.</li>
+</ol>
+<p><code>assignServicePort(opts)</code> wraps the helper with .env round-trip:</p>
+<ul>
+<li>Reads <code>~/.parachute/&lt;svc&gt;/.env</code>. If <code>PORT</code> is already set to a valid
+numeric value (regex: <code>^[1-9]\d{0,4}$</code>, range-checked &lt; 65536),
+<strong>preserves it</strong> and returns <code>source: &quot;preserved&quot;</code> without writing.</li>
+<li>Otherwise calls <code>assignPort</code>, upserts <code>PORT=&lt;n&gt;</code> into the file
+(preserving surrounding lines via
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/env-file.ts"><code>env-file.ts</code></a>),
+and returns the chosen port plus the assignment source.</li>
+</ul>
+<p>The <code>occupied</code> set is built by <code>collectOccupiedPorts</code> in <code>install.ts</code>:
+union of (a) every <code>port</code> already in <code>services.json</code> for <em>other</em> services,
+and (b) any port in the <a href="./canonical-ports.md"><code>1939–1949</code></a> range that
+responds to a 150ms TCP probe at
+<code>127.0.0.1:&lt;port&gt;</code>. The probe is fail-open — timeouts and errors return
+<code>false</code> so a flaky probe never blocks an install.</p>
+<h2>Idempotency</h2>
+<p>The contract is: <strong>re-installing a service must not change its port unless
+you ask it to.</strong></p>
+<ul>
+<li>Existing <code>PORT=</code> in <code>.env</code> wins. A user who edited their port keeps it
+across upgrades.</li>
+<li>A service whose <code>.env</code> has no <code>PORT</code> gets one written; subsequent
+installs see it and preserve.</li>
+<li>The canonical-vs-collision path only runs on the first install (or after
+a manual <code>.env</code> edit that removed <code>PORT</code>).</li>
+</ul>
+<p>To force a re-pick: delete the <code>PORT=</code> line from
+<code>~/.parachute/&lt;svc&gt;/.env</code>, then re-run <code>parachute install &lt;svc&gt;</code>.</p>
+<h2>Defensive manifest sync</h2>
+<p><code>install.ts</code> keeps <code>services.json</code> consistent with the .env it just wrote:</p>
+<ul>
+<li><strong>No entry yet + spec has a <code>seedEntry</code>:</strong> seed the entry, overriding
+the seed's port if the CLI assigned a different one.</li>
+<li><strong>Entry exists on a different port:</strong> upsert with the assigned port.
+This catches the case where a service's own init wrote an entry at the
+canonical port before the CLI's collision logic redirected it elsewhere.</li>
+<li><strong>Read-back verify after every write.</strong> A silent upsert failure (perms,
+external writer races) surfaces as a loud log line instead of a phantom
+&quot;registered&quot; claim. Surfaced by
+<a href="https://github.com/ParachuteComputer/parachute-hub/issues/44">parachute-hub#44</a>:
+notes silently missing from <code>services.json</code> on a fresh bun 1.2.x install.</li>
+</ul>
+<h2>Service-side contract</h2>
+<p>A service resolves its listen port at boot via this precedence ladder
+(highest priority first):</p>
+<ol>
+<li><strong><code>services.json</code> entry's <code>port</code></strong> for the service's name in
+<code>~/.parachute/services.json</code>. This is the operator-canonical record.</li>
+<li><strong><code>&lt;SERVICE&gt;_PORT</code> env</strong> — service-scoped explicit override
+(<code>PARACHUTE_SCRIBE_PORT</code>, <code>PARACHUTE_AGENT_WEB_PORT</code>, etc.).</li>
+<li><strong><code>PORT</code> env</strong> — generic / PaaS-style override and what the hub's
+port-assigner writes into <code>~/.parachute/&lt;svc&gt;/.env</code> at install time.</li>
+<li><strong>Compiled-in canonical default</strong> (vault → 1940, notes → 1942,
+scribe → 1943, agent → 1944).</li>
+</ol>
+<p>The service then binds and serves. On <code>EADDRINUSE</code> (or any bind error)
+the service <strong>fails loudly</strong> with a named conflict — port number, the
+source the port came from (<code>services.json</code> / env var name / <code>default</code>),
+and an actionable hint — and exits non-zero. <strong>It does not silently
+re-pick</strong> another port at runtime: re-picking would let services drift
+out of the manifest the hub uses to compute proxy targets, exactly the
+class of bug up-front assignment exists to prevent.</p>
+<p>Why <code>services.json</code> outranks env: env values can be stale (the hub's
+port-assigner stamps a value once and never clears it; a later
+operator-edited <code>services.json</code> is the more authoritative record) or
+migrated (a port carried over from a previous host). Treating
+<code>services.json</code> as the source of truth and env as a first-run / dev-shell
+fallback closes the loop where a service's own boot rewrites the
+operator's manifest from a stale env.</p>
+<p>The ladder is the same shape for every service. Scribe implements all
+four tiers today
+(<a href="https://github.com/ParachuteComputer/parachute-scribe/pull/41"><code>parachute-scribe#41</code></a>).
+Agent implements three — <code>services.json</code> → <code>PARACHUTE_AGENT_WEB_PORT</code> →
+default — pending
+<a href="https://github.com/ParachuteComputer/paraclaw/issues/147"><code>parachute-agent#147</code></a>
+to add the bare <code>PORT</code> env tier for full symmetry. Vault and notes have
+services.json reads for other purposes but haven't yet adopted the ladder
+for port resolution — adoption is the follow-up work. Operators reading
+the rule from one service should not be surprised by another.</p>
+<p>The CLI's <code>lifecycle.start</code> merges <code>~/.parachute/&lt;svc&gt;/.env</code> into the
+spawn env before exec, so a CLI-managed boot still sees the assigned
+<code>PORT</code> if no <code>services.json</code> entry exists (first install). A direct
+<code>bun run</code> outside the CLI works the same way — env override or
+compiled-in default.</p>
+<p>This means: <strong>third-party modules participate by implementing the
+ladder.</strong> A module that only reads env (skipping <code>services.json</code>) won't
+respect operator edits to the manifest after first install. The
+implementation is small (one resolver function + a manifest read) and
+the service-scoped env name (<code>&lt;SERVICE&gt;_PORT</code>) is the module's choice.</p>
+<p><strong>Implementing changes:</strong></p>
+<ul>
+<li><a href="https://github.com/ParachuteComputer/parachute-scribe/pull/41"><code>parachute-scribe#41</code></a> /
+commit <a href="https://github.com/ParachuteComputer/parachute-scribe/commit/9f28ad27c508f95bc5ebc678ada28b5a338ce324"><code>9f28ad2</code></a>
+— landed the ladder in scribe; pure <code>resolvePort()</code> helper +
+<code>readServiceEntry()</code> accessor + named bind-failure logging.</li>
+<li><a href="https://github.com/ParachuteComputer/paraclaw/pull/146"><code>parachute-agent#146</code></a> /
+commit <a href="https://github.com/ParachuteComputer/paraclaw/commit/b919fc2da5c9dfbd230225bea80e2a5f135fa78a"><code>b919fc2</code></a>
+— symmetric fix in agent (the GitHub repo slug is still <code>paraclaw</code>
+pending the rename to <code>parachute-agent</code>; see
+<a href="../adoption/migration-notes.md#2026-05-04--paraclaw-renamed-to-parachute-agent"><code>adoption/migration-notes.md</code></a>).
+Initial cut had <code>env &gt; services.json</code>; reviewer fold-fix inverted to
+match scribe.</li>
+</ul>
+<p>Both shipped 2026-05-08 in response to a real collision: stale
+<code>PORT=1944</code> env on scribe + agent's hardcoded slot raced for the same
+port, services.json edits were silently reverted on every boot. The
+ladder change makes the manifest stick.</p>
+<h2>Rules</h2>
+<ul>
+<li><strong>The CLI is the authority on installed services.</strong> A service that
+hard-codes a port — or ignores the resolution ladder above — breaks the
+authority and will collide on contested machines. Resolve in order:
+<code>services.json</code> entry → <code>&lt;SERVICE&gt;_PORT</code> env → <code>PORT</code> env → compiled-in
+default.</li>
+<li><strong>Don't write <code>PORT</code> from inside a service's own init.</strong> The CLI writes
+it during install. A service init that also writes <code>PORT</code> creates two
+sources of truth and an idempotency hole.</li>
+<li><strong>Surface the warning when assignment falls outside the range.</strong> Tools
+that wrap <code>parachute install</code> (TUIs, future installers) must echo the
+warning to the operator — silently landing on <code>1950+</code> defeats the
+point of the curated range.</li>
+<li><strong>Probe fail-open.</strong> A failed TCP probe must not block install. Worst
+case the CLI assigns a port that something else is on; the bind fails at
+boot with a clear error and the operator re-runs install.</li>
+</ul>
+<h2>Examples</h2>
+<ul>
+<li>Helper:
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/port-assign.ts"><code>parachute-hub/src/port-assign.ts</code></a>.</li>
+<li>Install hook (port assignment + manifest sync):
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/install.ts"><code>parachute-hub/src/commands/install.ts</code></a>.</li>
+<li>Test matrix:
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/__tests__/port-assign.test.ts"><code>parachute-hub/src/__tests__/port-assign.test.ts</code></a>.</li>
+<li>Originating PR:
+<a href="https://github.com/ParachuteComputer/parachute-hub/pull/54">parachute-hub#54</a>
+(closes #53).</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li><strong>Re-pick UX.</strong> Today the only way to force a re-pick is to hand-edit
+<code>.env</code>. A <code>parachute install --reassign-port &lt;svc&gt;</code> flag is plausible
+but unbuilt; defer until someone needs it.</li>
+<li><strong>Cross-machine sync.</strong> Multi-machine setups (e.g. one workstation, one
+always-on box) currently pick ports independently. Not a problem yet —
+the hub fronts each machine separately — but worth flagging if cross-
+machine consistency becomes a goal.</li>
+</ul>

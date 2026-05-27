@@ -1,0 +1,48 @@
+<h1>Dev-auto-user convenience</h1>
+<h2>[DRAFT] — convention is real, the naming isn't locked</h2>
+<h2>Convention</h2>
+<p>In local development, a Parachute service may auto-authenticate as a
+synthetic &quot;dev user&quot; when (and only when):</p>
+<ol>
+<li>The process detects it is running in a <strong>local development</strong> context, AND</li>
+<li>An explicit environment variable opts in.</li>
+</ol>
+<pre><code>PARACHUTE_DEV_AUTO_USER=1
+</code></pre>
+<p>Without that env, the service refuses dev-auto-user even if other signals
+(hostname, NODE_ENV) suggest dev. This is the gate.</p>
+<h2>Why</h2>
+<ul>
+<li>Removes friction when hacking on a vault / cloud / agent runner locally —
+no need to create a token on every fresh checkout.</li>
+<li>Gating on a <em>single explicit env var</em> (not <code>NODE_ENV=development</code>, not
+&quot;localhost only&quot;) prevents the class of mistake where a misconfigured
+staging deploy silently disables auth.</li>
+</ul>
+<h2>Rules</h2>
+<ul>
+<li><strong>Env variable name: <code>PARACHUTE_DEV_AUTO_USER</code>.</strong> Same name across every
+module. Never a per-module variant.</li>
+<li><strong>Off by default.</strong> The default state of a fresh checkout must still
+require real auth. Opt in is a deliberate act.</li>
+<li><strong>Log loudly on boot.</strong> When dev-auto-user is enabled, the server logs a
+visible banner: <code>⚠ PARACHUTE_DEV_AUTO_USER is enabled — do not use in production</code>.</li>
+<li><strong>Never bundle in production builds.</strong> The code path should be reachable
+from the dev env only; prefer a guard + a unit test that asserts the
+banner appears in dev and does not appear in prod.</li>
+<li><strong>Synthetic user gets a fixed id.</strong> <code>dev-user</code> or similar — so vault
+notes / logs produced during dev are easy to find and clear.</li>
+</ul>
+<h2>Where this applies</h2>
+<ul>
+<li><code>parachute-vault</code> (single-tenant local dev)</li>
+<li><code>parachute-cloud</code> (multi-tenant; dev-auto-user maps to a fixed dev tenant)</li>
+<li>Any future server that would otherwise require real auth to exercise
+locally.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li>Do we want <code>PARACHUTE_DEV_AUTO_USER=&lt;id&gt;</code> (picks the synthetic user/tenant
+id) vs a boolean? Probably boolean + a separate <code>PARACHUTE_DEV_USER_ID</code>
+override. Not blocking.</li>
+</ul>

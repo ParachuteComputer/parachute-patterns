@@ -1,0 +1,41 @@
+<h1>Modularity in practice</h1>
+<p>Three worked examples of sibling modules composing without coupling.</p>
+<h2>Scribe → Vault (proper nouns)</h2>
+<p><strong>Standalone:</strong> <code>parachute-scribe</code> takes audio or raw text and returns clean
+text. Works fully offline of the vault.</p>
+<p><strong>Opt-in composition:</strong> when a vault is configured, Scribe pulls a
+proper-noun list from notes tagged <code>scribe/proper-noun</code> and biases the
+cleanup pass. Without a vault, the cleanup pass still runs — just without
+the custom vocabulary.</p>
+<p><strong>What makes this modular:</strong> Scribe has a <code>ProperNounSource</code> interface with
+implementations for <code>file</code>, <code>inline</code>, and <code>vault</code>. The vault impl is one of
+three; none is privileged.</p>
+<h2>Agents → Vault (agent definitions)</h2>
+<p><strong>Standalone:</strong> <code>@openparachute/agent</code> loads agent markdown from a directory
+(<code>loadAgentsFromDir</code>). Deploy-time bundled or filesystem-watched.</p>
+<p><strong>Opt-in composition:</strong> set <code>config.agents</code> to the result of
+<code>loadAgentsFromVault({ vault, tag: &quot;agent-definition&quot; })</code> and the same runner
+reads agents from vault notes instead. The parsed shape is identical — the
+source just differs.</p>
+<p><strong>What makes this modular:</strong> the runner consumes a <code>Record&lt;string, string&gt;</code>
+map of <code>path → markdown</code>. Where that map came from is the caller's problem.
+See <code>patterns/loadAgents.md</code> for the shared source-tagged-union convention.</p>
+<h2>Octopus → Vault (future: team roster)</h2>
+<p><strong>Standalone:</strong> <code>octopus-ui</code> reads the live team from
+<code>~/.claude/teams/octopus/config.json</code>. No network. No vault.</p>
+<p><strong>Opt-in composition (planned):</strong> with <code>OCTOPUS_CONFIG_SOURCE=vault</code>, the UI
+server reads the roster from a vault note tagged <code>octopus-config</code>. Enables
+driving octopus-ui from a tablet against a hosted vault.</p>
+<p><strong>What makes this modular:</strong> the config source is an env-selected strategy.
+The default stays filesystem-local. Nothing in the UI assumes a vault exists.</p>
+<h2>What these share</h2>
+<p>Each integration:</p>
+<ol>
+<li>Has a <strong>standalone default</strong> that works without the sibling.</li>
+<li>Exposes a <strong>named strategy</strong> (env var, config field, or plugin) that swaps
+in the composed implementation.</li>
+<li>Uses a <strong>stable data shape</strong> at the boundary (a proper-noun list; an
+agent-markdown map; a team roster) so either side can evolve the
+internals without the other noticing.</li>
+</ol>
+<p>When you propose a new cross-module integration, check against those three.</p>

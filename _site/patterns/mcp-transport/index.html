@@ -1,0 +1,78 @@
+<h1>MCP transport</h1>
+<h2>Convention</h2>
+<p>Parachute-hosted MCP servers speak <strong>Streamable HTTP</strong> at <code>&lt;base&gt;/mcp</code>
+and authenticate via OAuth bearer tokens (or <code>pvt_*</code> PATs) over
+<code>Authorization: Bearer &lt;token&gt;</code>. The OAuth bearer path is the
+agent-and-service default; <code>pvt_*</code> is the user-facing PAT — see
+<a href="./token-auth.md"><code>token-auth.md</code></a>.</p>
+<ul>
+<li>Canonical example: <code>parachute-vault</code> serves its MCP at <code>&lt;vault-url&gt;/mcp</code>.</li>
+<li>Clients: agents in <code>@openparachute/agent</code> connect via
+<code>@modelcontextprotocol/sdk</code> + the Streamable HTTP transport. Source:
+<a href="https://github.com/ParachuteComputer/parachute-agents/blob/main/src/vault.ts">parachute-agents/src/vault.ts</a>.</li>
+<li>OAuth-aware clients discover the token endpoint via RFC 8414
+metadata at <code>&lt;origin&gt;/.well-known/oauth-authorization-server[/&lt;path&gt;]</code>
+— see <a href="./well-known-discovery-rfc.md"><code>well-known-discovery-rfc.md</code></a>
+for the path-insertion shape and <a href="./hub-as-issuer.md"><code>hub-as-issuer.md</code></a>
+for which origin the <code>iss</code> claim points to.</li>
+</ul>
+<h2>Why Streamable HTTP (not SSE)</h2>
+<ul>
+<li>Supports bidirectional streaming over a single HTTP connection.</li>
+<li>Works behind most load balancers and serverless runtimes (Cloudflare
+Workers, fly machines) without special long-lived-connection handling.</li>
+<li>SSE is the legacy transport. Prefer Streamable HTTP for any new server.</li>
+</ul>
+<h2>Auth shape</h2>
+<p>Two schemes supported by <code>@openparachute/agent</code>'s MCP tool entry. See
+<code>schemas/agent-markdown.md</code> for the frontmatter spec.</p>
+<h3>Bearer (static token)</h3>
+<pre><code class="language-yaml">mcp:
+  name: my-service
+  url: https://svc.example.com/mcp
+  auth:
+    type: bearer
+    token_env: MY_SERVICE_TOKEN     # or `token: &lt;literal&gt;` (discouraged)
+</code></pre>
+<h3>OAuth (client credentials)</h3>
+<pre><code class="language-yaml">mcp:
+  name: my-service
+  url: https://svc.example.com/mcp
+  auth:
+    type: oauth
+    client_id_env: MY_SERVICE_CLIENT_ID
+    client_secret_env: MY_SERVICE_CLIENT_SECRET
+    token_url: https://svc.example.com/oauth/token
+    scope: &quot;read write&quot;
+</code></pre>
+<p>Runs the RFC 6749 <code>client_credentials</code> grant and caches the access
+token per-server. PKCE, authorization_code, and refresh_token flows
+are out of scope until an agent actually needs one.</p>
+<p><code>token_url</code> may be omitted — clients that implement RFC 8414 discovery
+will GET <code>&lt;origin&gt;/.well-known/oauth-authorization-server[/&lt;issuer- path&gt;]</code> against the MCP <code>url</code>'s origin, read the advertised
+<code>token_endpoint</code>, and proceed. See
+<a href="./well-known-discovery-rfc.md"><code>well-known-discovery-rfc.md</code></a>. Static
+<code>token_url</code> remains the explicit override when an author wants to pin
+the endpoint or skip discovery.</p>
+<h2>Rules</h2>
+<ul>
+<li><strong>URLs must be http(s).</strong> Non-http schemes (<code>file://</code>, etc.) are rejected
+at schema-parse time — an agent markdown file can't smuggle a bad
+transport into the client. See
+<a href="https://github.com/ParachuteComputer/parachute-agents/blob/main/src/agents.ts">parachute-agents/src/agents.ts</a>.</li>
+<li><strong>Never inline a token in the markdown</strong> when the file is checked into a
+repo or stored in vault. Use <code>token_env</code> and supply the secret via the
+runner's environment.</li>
+<li><strong>Scope the token.</strong> Follow <a href="./token-auth.md"><code>token-auth.md</code></a> — every
+Parachute token has a declared scope; MCP tokens typically have something
+like <code>vault:read</code> or <code>agent:invoke</code> (see
+<a href="./oauth-scopes.md"><code>oauth-scopes.md</code></a> for the shared vocabulary).</li>
+<li><strong>Path convention.</strong> Servers should mount MCP at <code>/mcp</code> (not <code>/api/mcp</code>,
+not <code>/v1/mcp</code>). Keeps client URLs uniform.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li>Do we want an OAuth <code>authorization_code</code> + PKCE flow for user-scoped
+tokens (as opposed to service-scoped client_credentials)? Likely yes when
+a first end-user app on top of an agent lands. Not urgent.</li>
+</ul>

@@ -1,0 +1,469 @@
+<h1>Module JSON extensibility</h1>
+<blockquote>
+<p><strong>Status: target convention, partial implementation.</strong> The shape is
+declared in
+<a href="https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md#extensibility-path"><code>parachute.computer/design/2026-04-20-module-architecture.md</code></a>
+and committed to as the third-party path. The CLI's
+<code>parachute install</code> does not yet read <code>.parachute/module.json</code> —
+today it falls back to a hardcoded <code>SERVICE_SPECS</code> table in
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/service-spec.ts"><code>parachute-hub/src/service-spec.ts</code></a>.
+That hardcoding is a <strong>first-party shortcut, not an architectural
+limit</strong>. This pattern doc nails the contract so third-party authors
+and the eventual CLI implementation agree on the shape.</p>
+</blockquote>
+<h2>Convention</h2>
+<p>A Parachute module is identified by its <strong>contracts</strong>, not by its
+package name. A third-party module declares itself by shipping a
+<code>.parachute/module.json</code> file in the published npm package; the CLI
+reads it on <code>parachute install &lt;package&gt;</code> and treats the package as
+first-class. <strong>No <code>@openparachute/</code> scope, no <code>parachute-*</code> prefix
+required.</strong></p>
+<p>The <code>module.json</code> is the canonical, machine-readable self-description.
+Everything the CLI needs to install and run the module — and
+everything the hub needs to render and route to it — lives in this
+one file the author controls.</p>
+<h2>Shape</h2>
+<pre><code class="language-json">{
+  &quot;name&quot;: &quot;my-service&quot;,
+  &quot;manifestName&quot;: &quot;my-service&quot;,
+  &quot;displayName&quot;: &quot;My Service&quot;,
+  &quot;tagline&quot;: &quot;What the service does&quot;,
+  &quot;kind&quot;: &quot;api&quot;,
+  &quot;port&quot;: 7001,
+  &quot;paths&quot;: [&quot;/my-service&quot;],
+  &quot;health&quot;: &quot;/health&quot;,
+  &quot;hasAuth&quot;: true,
+  &quot;startCmd&quot;: [&quot;bin/my-service&quot;, &quot;serve&quot;],
+  &quot;init&quot;: { &quot;command&quot;: [&quot;my-service&quot;, &quot;init&quot;] },
+  &quot;urlForEntry&quot;: {
+    &quot;perConsumer&quot;: {
+      &quot;claude.ai&quot;: { &quot;appendPath&quot;: &quot;/mcp&quot; }
+    }
+  },
+  &quot;managementUrl&quot;: &quot;/admin&quot;,
+  &quot;scopes&quot;: { &quot;defines&quot;: [&quot;my-service:read&quot;, &quot;my-service:write&quot;] },
+  &quot;dependencies&quot;: {
+    &quot;vault&quot;: { &quot;optional&quot;: true, &quot;scopes&quot;: [&quot;vault:read&quot;] }
+  }
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Stable, unique identifier across the ecosystem. Becomes the <code>services.json</code> key, the scope namespace, the <code>parachute start &lt;name&gt;</code> token. Must match <code>[a-z][a-z0-9-]*</code>.</td>
+</tr>
+<tr>
+<td><code>manifestName</code></td>
+<td>The name used in user-facing manifests (PWA / OAuth client name). Often equals <code>name</code>.</td>
+</tr>
+<tr>
+<td><code>displayName</code></td>
+<td>Human label rendered on the hub card.</td>
+</tr>
+<tr>
+<td><code>tagline</code></td>
+<td>One-line description rendered under <code>displayName</code>.</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>One of <code>&quot;api&quot; | &quot;frontend&quot; | &quot;tool&quot;</code>. Hub picks card vs. iframe vs. launcher.</td>
+</tr>
+<tr>
+<td><code>port</code></td>
+<td>Default loopback port. Pick outside the reserved Parachute range (<code>1939–1949</code>) — see <a href="./canonical-ports.md"><code>canonical-ports.md</code></a>. The CLI warns on collision but does not block.</td>
+</tr>
+<tr>
+<td><code>paths</code></td>
+<td>URL paths the module serves under the hub origin.</td>
+</tr>
+<tr>
+<td><code>health</code></td>
+<td>Path for liveness probes.</td>
+</tr>
+<tr>
+<td><code>hasAuth</code></td>
+<td><code>true</code> if the module is itself an OAuth resource server (gates its own endpoints behind auth). Drives default public-exposure policy and tunnel/funnel treatment. Optional; defaults to <code>false</code>. See <a href="#install-time-behaviors">Install-time behaviors</a> below.</td>
+</tr>
+<tr>
+<td><code>startCmd</code></td>
+<td>Argv the CLI invokes for <code>parachute start &lt;name&gt;</code>. Resolved relative to the installed package.</td>
+</tr>
+<tr>
+<td><code>init</code></td>
+<td>Optional post-install one-shot the CLI runs after <code>parachute install &lt;name&gt;</code>. Object with a <code>command</code> argv. Safety: first arg must equal a bin defined by the installed npm package. See <a href="#install-time-behaviors">Install-time behaviors</a>.</td>
+</tr>
+<tr>
+<td><code>urlForEntry</code></td>
+<td>Optional declarative URL adjustments keyed by consumer. Today's only operations: <code>appendPath</code> (append a suffix) or <code>replaceWith</code> (full override). See <a href="#install-time-behaviors">Install-time behaviors</a>.</td>
+</tr>
+<tr>
+<td><code>managementUrl</code></td>
+<td>Optional path-or-full-URL where the module's admin UI lives. Hub renders a &quot;Manage&quot; link when present. See <a href="#hub-ui-fields">Hub UI fields</a>.</td>
+</tr>
+<tr>
+<td><code>scopes.defines</code></td>
+<td>OAuth scopes the module owns. Namespaced by <code>name</code> so collisions don't happen — see <a href="./oauth-scopes.md"><code>oauth-scopes.md</code></a>.</td>
+</tr>
+<tr>
+<td><code>dependencies</code></td>
+<td>Other modules this one wants to talk to. Each entry has <code>optional</code> and <code>scopes</code> fields; CLI uses these to auto-wire on install (env-var injection) — see <a href="./service-to-service-auth.md"><code>service-to-service-auth.md</code></a>.</td>
+</tr>
+</tbody>
+</table>
+<h2>Install-time behaviors</h2>
+<p><code>hasAuth</code>, <code>init</code>, and <code>urlForEntry</code> were added 2026-04-30 (parachute-hub#100)
+to close the gap between <code>module.json</code> and the hub's transitional
+<code>FIRST_PARTY_FALLBACKS</code> extras block. Aaron's call: <strong>path 1 — extend the
+schema — over path 2 — codify a permanent extras lane.</strong> Rationale: extras
+exists only for first-party modules and is meant to retire; if a behavior
+is real enough to ship in vault, it's real enough to be declarable by any
+module. All three fields are optional and missing defaults to &quot;no&quot; /
+&quot;none&quot;, so existing manifests are valid unchanged.</p>
+<h3><code>hasAuth: boolean</code></h3>
+<pre><code class="language-ts">hasAuth?: boolean;  // default false
+</code></pre>
+<p>Declares the module as an OAuth resource server — i.e., it validates
+bearer tokens on its own endpoints. The hub uses this to derive
+<code>publicExposure</code>'s default for <code>kind: &quot;api&quot; | &quot;tool&quot;</code> services: with
+<code>hasAuth: true</code> they default to <code>&quot;allowed&quot;</code> (safe to expose because the
+module gates itself); without it they default to <code>&quot;auth-required&quot;</code>
+(the module hasn't claimed auth, so non-loopback layers are gated by
+hub on its behalf). It also informs how <code>parachute expose</code> and the
+discovery surface treat bearer-bearing modules. <code>kind: &quot;frontend&quot;</code>
+modules ignore this field — they default to <code>&quot;allowed&quot;</code> regardless.</p>
+<h4>Runtime behavior — hub-side per-request layer-gate</h4>
+<p><code>publicExposure</code> is enforced <strong>per request, in hub</strong>, not at expose
+time. Every reverse-proxied request is tagged with the layer it
+arrived on — <code>loopback</code> (127.0.0.1), <code>tailnet</code> (Tailscale), or
+<code>public</code> (Cloudflare Tunnel / Funnel) — and hub consults the target
+service's <code>publicExposure</code> value to decide whether to proxy or 404.
+The expose surface (tailnet, public) is collapsed to a single hub
+catchall; per-service expose toggles do not exist as independent
+state anymore. See <a href="https://github.com/ParachuteComputer/parachute-hub/pull/187">parachute-hub#187</a>
+for the implementing change (2026-05-08).</p>
+<p>Access matrix:</p>
+<table>
+<thead>
+<tr>
+<th><code>publicExposure</code></th>
+<th>Loopback</th>
+<th>Tailnet</th>
+<th>Public</th>
+<th>Gated by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&quot;allowed&quot;</code></td>
+<td>reaches</td>
+<td>reaches</td>
+<td>reaches</td>
+<td>service's own auth (none required by hub)</td>
+</tr>
+<tr>
+<td><code>&quot;loopback&quot;</code></td>
+<td>reaches</td>
+<td>404</td>
+<td>404</td>
+<td>hub layer-gate (the service never sees the request)</td>
+</tr>
+<tr>
+<td><code>&quot;auth-required&quot;</code></td>
+<td>reaches</td>
+<td>reaches</td>
+<td>reaches</td>
+<td>service's own auth (same gate behavior as <code>&quot;allowed&quot;</code>; the value documents &quot;I have auth and I'm enforcing it&quot; vs. <code>&quot;allowed&quot;</code>'s &quot;no opinion / open&quot;)</td>
+</tr>
+</tbody>
+</table>
+<p>Concretely: <code>&quot;loopback&quot;</code> is the only value that withholds traffic
+from non-loopback layers. <code>&quot;allowed&quot;</code> and <code>&quot;auth-required&quot;</code> produce
+identical hub behavior — the difference is documentary: <code>&quot;allowed&quot;</code>
+asserts the service is intentionally open or has no sensitive
+surface; <code>&quot;auth-required&quot;</code> asserts the service is enforcing auth on
+its own endpoints. Hub forwards in both cases and trusts the service
+to handle authn/z.</p>
+<p>Trivially declarative — the value doesn't change at runtime. If a
+module's auth gate is conditional on a config flag (e.g., scribe with /
+without <code>SCRIBE_AUTH_TOKEN</code>), declare the conservative default here and
+let the runtime overwrite via an explicit <code>publicExposure</code> write to its
+<code>services.json</code> row when configuration confirms auth is on.</p>
+<h3><code>init: { command: [string, ...string[]] }</code></h3>
+<pre><code class="language-ts">init?: {
+  command: readonly [string, ...string[]];  // non-empty argv
+};
+</code></pre>
+<p>Post-install one-shot the CLI runs once after <code>parachute install &lt;name&gt;</code>
+completes. Used today by vault to seed its data directory:</p>
+<pre><code class="language-json">{ &quot;init&quot;: { &quot;command&quot;: [&quot;parachute-vault&quot;, &quot;init&quot;] } }
+</code></pre>
+<p><strong>Safety constraint (mandatory).</strong> The first arg of <code>command</code> MUST equal
+a bin name declared by the installed npm package (resolved at install
+time via the package's <code>package.json</code> <code>bin</code> field). The hub rejects the
+manifest at install time otherwise. This rules out things like:</p>
+<pre><code class="language-json">{ &quot;init&quot;: { &quot;command&quot;: [&quot;rm&quot;, &quot;-rf&quot;, &quot;/&quot;] } }   // REJECTED at install time
+{ &quot;init&quot;: { &quot;command&quot;: [&quot;curl&quot;, &quot;evil.example&quot;] } }  // REJECTED
+</code></pre>
+<p>The constraint is structural, not advisory. It means a malicious or
+broken <code>module.json</code> cannot trick the CLI into invoking arbitrary
+binaries on the user's <code>$PATH</code> — the only thing <code>init</code> can run is the
+package's own published code. Subsequent args (after the bin name) are
+passed through verbatim and are the module's own concern.</p>
+<p><strong>Failure mode.</strong> If the init command exits non-zero, <code>parachute install</code>
+fails hard and surfaces the exit code + stderr. No retries, no silent
+continue — partial-init state is the kind of bug that's worse to mask
+than to surface.</p>
+<p><strong>Idempotency is the module's responsibility.</strong> The CLI runs <code>init</code> once
+per <code>parachute install</code> invocation; modules whose init touches durable
+state should make repeated runs safe (e.g., vault's <code>init</code> is a no-op if
+the data directory already exists).</p>
+<h3><code>urlForEntry.perConsumer</code></h3>
+<pre><code class="language-ts">urlForEntry?: {
+  perConsumer: {
+    // exactly one of appendPath or replaceWith per consumer entry
+    [consumerId: string]: {
+      appendPath?: string;   // suffix appended to the canonical URL
+      replaceWith?: string;  // full URL override (escape hatch)
+    };
+  };
+};
+</code></pre>
+<p>Declarative URL adjustments for specific consumers. Replaces the
+<code>urlForEntry: (entry) =&gt; string</code> JS callback the hub's <code>VAULT_FALLBACK</code>
+carries today.</p>
+<p>The canonical URL for a service is <code>http://127.0.0.1:&lt;port&gt;&lt;paths[0]&gt;</code>
+(with trailing slashes stripped). Most clients hit that URL directly.
+A few well-known consumers need an adjustment because their conventions
+diverge — today's only real case is claude.ai, which expects vault's MCP
+endpoint at <code>&lt;base&gt;/mcp</code> rather than the bare mount path:</p>
+<pre><code class="language-json">{
+  &quot;urlForEntry&quot;: {
+    &quot;perConsumer&quot;: {
+      &quot;claude.ai&quot;: { &quot;appendPath&quot;: &quot;/mcp&quot; }
+    }
+  }
+}
+</code></pre>
+<p><strong>Operations (exactly one per consumer entry).</strong></p>
+<ul>
+<li><code>appendPath</code>: string suffix concatenated to the canonical URL after
+trailing-slash normalization. Most common case.</li>
+<li><code>replaceWith</code>: full absolute URL replacing the canonical one entirely.
+Escape hatch for services whose endpoint isn't path-derivable from the
+module's mount (e.g., scribe today serves at the bare port root, not
+under <code>/scribe</code>).</li>
+</ul>
+<p>Specifying both is a validation error. Specifying neither is a
+validation error.</p>
+<p><strong>Consumer-id resolution.</strong> The <code>consumerId</code> key is matched against a
+list of well-known consumer IDs the hub curates (e.g., <code>claude.ai</code>,
+<code>chatgpt.com</code>). The hub publishes the list at <code>/.parachute/consumers</code>
+(target — not yet shipped); for now, treat the list as the union of
+consumers any first-party module references. Unknown consumer IDs in a
+manifest are validated for shape but ignored at lookup time — they
+become live the moment the hub adds their definition. The lookup is
+exact-match on the consumer ID string; no regex or template
+substitution at v1.</p>
+<p><strong>Why no template / regex / per-request logic.</strong> YAGNI. The vault
+<code>urlForEntry</code> callback the hub ships today is a closure over a single
+constant <code>/mcp</code> suffix; a regex lookup table is more complexity than the
+problem warrants. Re-evaluate if a third consumer needs a non-<code>appendPath</code>
+shape that doesn't reduce to <code>replaceWith</code>.</p>
+<h2>Hub UI fields</h2>
+<p>Render-time fields the hub reads from a module's <code>module.json</code> (surfaced
+via the module's well-known doc) to shape its directory page. Optional;
+absent means &quot;the hub renders nothing for this concern&quot; — existing
+manifests stay valid unchanged.</p>
+<p>For the discovery-side peer field <code>uiUrl</code> — a path on <strong>hub's</strong> origin
+declaring where a module's user-facing UI lives, rendered as a tile on
+hub's discovery page — see
+<a href="./module-ui-declaration.md"><code>module-ui-declaration.md</code></a>. Note the
+resolution-base difference: <code>managementUrl</code>'s relative form resolves
+against the module's own origin; <code>uiUrl</code>'s relative form resolves
+against hub's origin.</p>
+<h3><code>managementUrl: string</code></h3>
+<pre><code class="language-ts">managementUrl?: string;  // path or full URL
+</code></pre>
+<p>Where the module's admin UI lives. The hub reads this from the module's
+well-known doc and renders a &quot;Manage <displayName>&quot; link on its
+directory page. Added 2026-05-02 alongside the hub vault-management SPA
+work (parachute-hub#158, parachute-vault#216).</p>
+<p><strong>Resolution.</strong></p>
+<ul>
+<li><strong>Relative path</strong> (e.g., <code>&quot;/admin&quot;</code>): hub resolves against the module's
+well-known origin — <code>&lt;module-url&gt;&lt;managementUrl&gt;</code>. For first-party
+modules under the hub origin this means <code>&lt;hub-origin&gt;/&lt;short&gt;&lt;managementUrl&gt;</code>
+(e.g., <code>https://parachute.tailnet/vault/admin</code>).</li>
+<li><strong>Full absolute URL</strong> (e.g., <code>&quot;https://admin.example.com&quot;</code>): hub uses
+verbatim. Escape hatch for modules whose admin UI is hosted somewhere
+other than the module's own origin.</li>
+</ul>
+<p><strong>Auth seam.</strong> The module's UI handles its own auth — typically a
+hub-issued JWT scoped narrowly to that module (e.g., a vault-admin scope
+for vault's SPA). The hub doesn't proxy module internals or sniff auth
+headers; it links out and the module's own SPA boots up under its
+origin and runs its own OAuth dance against the hub if it needs one.</p>
+<p><strong>Backwards-compatible.</strong> Absent field = no link rendered. Modules that
+manage purely via CLI, or have no admin surface at all, simply omit the
+field. Same rule as <code>hasAuth</code> / <code>init</code> / <code>urlForEntry</code>.</p>
+<p><strong>Why this lives with the module, not the hub.</strong> Per-module admin UIs
+need to render module-internal API shapes — vault's name list, scribe's
+job queue, parachute-agent's bot wiring. Putting the UI in the hub leaks those
+shapes into the portal and breaks the modular contract. Putting it
+under the module's own origin keeps the boundary clean: hub stays a
+thin directory + link-out; each module owns its admin surface
+end-to-end. Decision recorded 2026-05-02 (Aaron's call) after an
+initial pass at hub-side per-vault detail pages was reverted.</p>
+<h2>Why this shape</h2>
+<ul>
+<li><strong>Author-controlled.</strong> The package author declares everything in one
+file in their published artifact. No central registry, no PR against
+Parachute repos, no naming approval.</li>
+<li><strong>Caller-agnostic to the CLI.</strong> First-party and third-party modules
+go through the same <code>module.json</code> path. The first-party
+<code>SERVICE_SPECS</code> table is a transitional shortcut.</li>
+<li><strong>Hub doesn't inspect names.</strong> A <code>services.json</code> entry written from
+any <code>module.json</code> renders identically to first-party entries. The
+hub already treats any conformant entry as first-class — see
+<a href="./module-protocol.md"><code>module-protocol.md</code></a>.</li>
+<li><strong>Scope namespace = module name.</strong> No central registry of scope
+names. A <code>my-service</code> module owns <code>my-service:*</code>. Names are unique
+across the ecosystem because <code>services.json</code> keys are unique.</li>
+<li><strong>Composable with auto-wiring.</strong> The <code>dependencies</code> block is what
+makes <code>parachute install &lt;module&gt;</code> able to mint a token (today: a
+shared secret; Phase B2: a JWT) and inject it into both ends —
+callee gets the validator material, caller gets the credential —
+without the user manually copying anything.</li>
+</ul>
+<h2>How the CLI consumes it (target)</h2>
+<p><code>parachute install &lt;package&gt;</code> will run:</p>
+<ol>
+<li><code>bun add -g &lt;package&gt;</code> — standard npm install. No naming constraint.</li>
+<li>Read <code>&lt;package&gt;/.parachute/module.json</code> from the installed artifact.</li>
+<li>Validate against the module-manifest schema. Reject malformed
+modules early.</li>
+<li>Write a <code>services.json</code> entry using the declared <code>name</code>, <code>port</code>,
+<code>paths</code>, <code>health</code>, <code>displayName</code>, <code>tagline</code>, <code>kind</code>.</li>
+<li>Register <code>startCmd</code> so <code>parachute start &lt;name&gt;</code> knows what to spawn.</li>
+<li>For each <code>dependencies</code> entry, run <code>auto-wire</code> (mints credential,
+writes both ends, idempotent) — same machinery the vault↔scribe
+pair already uses. See
+<a href="./service-to-service-auth.md"><code>service-to-service-auth.md</code></a>.</li>
+</ol>
+<p>The first-party <code>SERVICE_SPECS</code> record stays as a fallback for
+packages that pre-date the convention, then retires.</p>
+<h2>Rules</h2>
+<ul>
+<li><strong><code>name</code> is the unique identifier.</strong> Reuse of <code>name</code> across packages
+is a conflict — <code>services.json</code> keys must be unique. CLI fails the
+install if <code>name</code> collides with an existing entry.</li>
+<li><strong><code>name</code> is the scope namespace.</strong> A module declaring
+<code>defines: [&quot;foo:read&quot;]</code> must have <code>name: &quot;foo&quot;</code>. Otherwise a third
+party could squat scopes the user already trusts for a different
+module.</li>
+<li><strong>Port outside the reserved range when you can.</strong> The Parachute
+range <code>1939–1949</code> is for first-party modules. Third-parties pick
+outside; the CLI warns but does not block.</li>
+<li><strong><code>startCmd</code> must be argv, not a shell string.</strong> Avoids
+shell-injection weirdness when users have spaces in package paths.</li>
+<li><strong><code>init.command[0]</code> must be a bin from the installed package.</strong> The
+CLI rejects manifests at install time when <code>init.command[0]</code> isn't
+declared as a bin in the package's <code>package.json</code>. This keeps <code>init</code>
+from invoking arbitrary <code>$PATH</code> binaries — see <a href="#install-time-behaviors">Install-time
+behaviors</a> above.</li>
+<li><strong><code>module.json</code> is shipped in the npm artifact.</strong> Not in
+<code>.gitignore</code>, not generated at install time. The CLI reads it
+post-install from the installed package directory.</li>
+<li><strong>Don't mutate the caller's <code>module.json</code> at install time.</strong> If the
+CLI needs install-time state (assigned port, generated secret), it
+goes in <code>~/.parachute/&lt;name&gt;/.env</code> (see
+<a href="./cli-as-port-authority.md"><code>cli-as-port-authority.md</code></a>), not in
+the package's source.</li>
+</ul>
+<h2>What this isn't</h2>
+<ul>
+<li><strong>A package-naming convention.</strong> First-party packages happen to use
+<code>parachute-*</code> (see <a href="../naming/bins.md"><code>naming/bins.md</code></a>) but the
+ecosystem doesn't require it. <code>module.json</code> is what makes a package
+a Parachute module.</li>
+<li><strong>A registry.</strong> There is no central index of installed third-party
+modules. Discovery is per-machine via <code>~/.parachute/services.json</code>,
+exactly like first-party modules.</li>
+<li><strong>A trust mechanism.</strong> <code>module.json</code> makes a package
+<em>Parachute-compatible</em>; it doesn't make it trusted. Users still
+decide what to install. The hub-as-OAuth-issuer architecture is
+what gates capability grants; see
+<a href="./hub-as-issuer.md"><code>hub-as-issuer.md</code></a>.</li>
+</ul>
+<h2>Where this applies</h2>
+<ul>
+<li><strong>Today:</strong> first-party modules (vault, notes, scribe, channel) are
+hardcoded in <code>parachute-hub/src/service-spec.ts</code>. The shape lives in
+<code>PORT_RESERVATIONS</code> + <code>SERVICE_SPECS</code> and is functionally a
+pre-<code>module.json</code> ancestor.</li>
+<li><strong>Tomorrow (target):</strong> every module — first-party and third-party —
+ships its own <code>module.json</code>. The CLI reads it; the hardcoded
+<code>SERVICE_SPECS</code> table goes away or shrinks to a transitional
+fallback.</li>
+<li><strong>Reference for authors:</strong> the design doc at
+<a href="https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md"><code>parachute.computer/design/2026-04-20-module-architecture.md</code></a>
+is the live shape until this pattern doc and the CLI implementation
+catch up.</li>
+</ul>
+<h2>Versioning</h2>
+<p>The schema is <strong>backwards-compatible</strong>. Every field added to date —
+including the 2026-04-30 <code>hasAuth</code> / <code>init</code> / <code>urlForEntry</code> extension
+and the 2026-05-02 <code>managementUrl</code> addition — is optional with a
+sensible &quot;absent&quot; default. Existing manifests stay valid; existing
+parsers ignore fields they don't understand. When (if) the shape
+evolves breakingly, we'll add a <code>manifestVersion: 1</code> discriminator.
+Defer until a v2 shape is real.</p>
+<h2>Migration</h2>
+<p>The 2026-04-30 schema extension exists to retire hub's transitional
+<code>FIRST_PARTY_FALLBACKS.extras</code> block (see
+<code>parachute-hub/src/service-spec.ts</code>). Sequence:</p>
+<ol>
+<li><strong>This PR (parachute-patterns)</strong> — define the three fields. Done.</li>
+<li><strong>parachute-hub parser update</strong> — extend <code>module-manifest.ts</code>'s
+validator to read the new fields, route them through
+<code>composeServiceSpec</code> so the spec produced from a real <code>module.json</code>
+carries the same <code>hasAuth</code> / <code>init</code> / <code>urlForEntry</code> semantics the
+fallback's <code>extras</code> block does. Add the <code>init.command[0]</code> bin-name
+check at install time (resolved via the installed package's
+<code>package.json</code> <code>bin</code>).</li>
+<li><strong>vault / scribe / notes</strong> — emit the new fields in their shipped
+<code>.parachute/module.json</code>. One PR per module.</li>
+<li><strong>parachute-hub fallback retirement</strong> — delete each module's
+<code>FALLBACK:</code> entry once the corresponding upstream <code>module.json</code>
+carries the equivalent declarations.</li>
+</ol>
+<p>Until step 2 ships, the new fields validate only against this doc, not
+against running code. Authors writing third-party modules can include
+them today; the hub will start honoring them once the parser update
+lands.</p>
+<h2>Open questions</h2>
+<ul>
+<li><strong>Schema location.</strong> Do we publish a JSON Schema for <code>module.json</code>
+(e.g. <code>https://parachute.computer/schemas/module.json/v1</code>)?
+Defer until the validator is being written — premature otherwise.</li>
+<li><strong>Consumer registry.</strong> <code>urlForEntry.perConsumer</code> keys against the
+hub's curated consumer list. Today that list is implicit (defined by
+the union of <code>module.json</code> references). Surface it as
+<code>/.parachute/consumers</code> once a third consumer arrives; until then the
+list of &quot;well-known&quot; consumers is short enough to keep in code.</li>
+<li><strong>Capabilities.</strong> The richer <code>manifest</code> shape in the design doc has
+<code>capabilities</code>, <code>iconUrl</code>, <code>endpoints</code> etc. Today most of those
+duplicate what <code>/.parachute/info</code> already exposes at runtime.
+<code>module.json</code> is install-time; runtime metadata stays at
+<code>/.parachute/info</code> (see <a href="./module-protocol.md"><code>module-protocol.md</code></a>).
+The boundary is &quot;what the CLI needs to install and route&quot; lives in
+<code>module.json</code>; &quot;what the hub fetches every render&quot; stays at
+<code>/.parachute/info</code>.</li>
+</ul>

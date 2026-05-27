@@ -1,0 +1,76 @@
+<h1><code>loadX</code> source-tagged-union convention</h1>
+<h2>Convention</h2>
+<p>Any Parachute module that loads &quot;a list of configurable things&quot; from one of
+several possible sources exposes the same shape: a tagged union on <code>type</code>,
+with interchangeable implementations that return a common data form.</p>
+<pre><code class="language-ts">type Source&lt;T&gt; =
+  | { type: &quot;dir&quot;; path: string }
+  | { type: &quot;vault&quot;; tag: string; vault: VaultClient }
+  | { type: &quot;inline&quot;; items: T };
+
+async function loadX(source: Source&lt;T&gt;): Promise&lt;T&gt;;
+</code></pre>
+<h2>Why</h2>
+<ul>
+<li><strong>Modularity stays opt-in.</strong> A module works standalone (<code>dir</code> or <code>inline</code>)
+and gains vault powers by swapping the source value. No runtime imports
+change; no build-time dependency is added.</li>
+<li><strong>One handshake for every module.</strong> Scribe's proper nouns, Agents'
+definitions, Daily's templates, Narrate's voice configs — all have the
+same decision (&quot;where's this list coming from?&quot;) and same shape.</li>
+<li><strong>Composability with config.</strong> The source is a plain data value, so it's
+trivially passed from CLI flags, env vars, or a runtime <code>config</code> object.</li>
+</ul>
+<h2>Where this applies</h2>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th><code>T</code></th>
+<th>Tag for vault source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@openparachute/agent</code></td>
+<td>agent markdown map (<code>Record&lt;path, md&gt;</code>)</td>
+<td><code>agent-definition</code></td>
+</tr>
+<tr>
+<td>parachute-scribe</td>
+<td>proper-noun list</td>
+<td><code>scribe/proper-noun</code></td>
+</tr>
+<tr>
+<td>parachute-narrate</td>
+<td>voice configs</td>
+<td>TBD</td>
+</tr>
+<tr>
+<td>parachute-daily</td>
+<td>capture templates</td>
+<td>TBD</td>
+</tr>
+</tbody>
+</table>
+<p>Today the most complete implementation is in parachute-agents:
+<a href="https://github.com/ParachuteComputer/parachute-agents/blob/main/src/agent-sources.ts"><code>src/agent-sources.ts</code></a>.
+Other modules should port that shape as they add vault integration.</p>
+<h2>Rules</h2>
+<ul>
+<li><strong>Common data shape.</strong> Every source branch returns the same <code>Promise&lt;T&gt;</code>.
+The caller never knows which branch produced it.</li>
+<li><strong>Graceful degradation.</strong> The <code>vault</code> branch must not hard-fail a boot —
+it logs and returns an empty-ish default so the module still starts.
+Hard failures belong to the caller that chose the vault source.</li>
+<li><strong>Default to standalone.</strong> When no source is explicitly configured, pick
+the local one (<code>dir</code> or <code>inline</code>). No surprise network calls.</li>
+<li><strong>Type discriminant is <code>type</code>.</strong> Don't invent <code>kind</code>, <code>source</code>, <code>from</code>.
+<code>type</code> matches every other tagged union in the codebase.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li>Do we want a shared <code>@openparachute/sources</code> package that provides the
+tagged-union helpers? Tempting, but currently the duplication across 2–3
+modules is a few lines each. Revisit when it's 5+ modules.</li>
+</ul>

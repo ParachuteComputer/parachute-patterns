@@ -1,0 +1,440 @@
+<h1>Cloudflare-hosted vault — research</h1>
+<blockquote>
+<p><strong>Note (2026-05-09):</strong> this doc predates vault v14 (2026-05-03). References to <code>_tags/*</code> notes as the source of <code>getTagDescendants</code> and to cache invalidation firing on <code>_tags/*</code> writes describe the pre-v14 architecture. The current data source is the <code>tags.parent_names</code> column; see <a href="../patterns/tag-data-model.md"><code>patterns/tag-data-model.md</code></a>. The cloud-deployment reasoning here (DO-per-tenant + R2) is unaffected — the post-v14 cache mechanics are simpler, not different in shape. Preserved as research history.</p>
+</blockquote>
+<blockquote>
+<p>Companion research for Aaron's reconsideration of the cloud path: could we host the vault itself on Cloudflare's edge platform (Workers + D1 + Durable Objects + R2) as a low-cost, low-friction gateway to Parachute, instead of (or alongside) the &quot;managed control plane + per-user Cloudflare Tunnel&quot; v1 currently recommended in vault#199 / cloud-offering-sketch.md?</p>
+<p>Author: vault tentacle (Uni). Date: 2026-05-02.</p>
+<p><strong>Status:</strong> research. Aaron decides; this surfaces options.</p>
+</blockquote>
+<hr>
+<h2>1. TL;DR</h2>
+<ul>
+<li><strong>CF-hosted vault is technically viable today</strong>, and one CF primitive — SQLite-backed Durable Objects — is an unusually clean fit. Per-DO SQLite is synchronous, in-thread, supports FTS5, GA in 2026. Maps onto vault's <code>BunSqliteStore</code> nearly line-for-line.</li>
+<li><strong>D1 is the wrong primitive.</strong> D1 does not support FTS5 (no virtual tables). Vault's <code>searchNotes</code> depends on <code>notes_fts</code>. Picking D1 = rebuild search.</li>
+<li><strong>The right shape is &quot;DO-per-tenant + R2 for attachments&quot;</strong> — what this doc calls <strong>Shape γ</strong>, what vault PR #99 prototyped before being parked.</li>
+<li><strong>Unit cost at 1k users: ~$0.015–0.05/user/month all-in</strong> (Workers + R2 + DO duration + storage). At 100 users mostly inside the free tier; at 10k roughly $0.01–0.04/user/mo. Order-of-magnitude cheaper than every alternative considered.</li>
+<li><strong>Bun→V8-isolate is the load-bearing porting cost, not SQLite→DO or FS→R2.</strong> Each has a Worker analog (fetch-handler, <code>crypto.subtle</code>, env bindings, Cron Triggers, DO storage), but the diff across <code>src/</code> is non-trivial. The just-shipped tag-scope cache (vault#241) actually fits <em>better</em> on per-DO state than it does on a stateless Worker.</li>
+<li><strong>Two parked PRs did most of the abstraction work.</strong> PR #99 (<code>SqlDb</code> + <code>DoSqliteStore</code>) and PR #101 (<code>BlobStore</code> FS+R2). Closed without merge, branches preserved. Reviving them is Phase-0.</li>
+<li><strong>Product vs technical questions come apart.</strong> CF-hosted-vault is a strong technical answer to &quot;give early users a vault cheap and fast.&quot; It's a weaker answer to &quot;preserve your-data-on-your-machine as the brand promise.&quot; Whether to pursue is positioning, not feasibility. The v3 plan (cloud hub first, cloud vault later) and &quot;host vault on CF&quot; answer different <em>when</em> questions.</li>
+<li><strong>Self-hosted parity preserved</strong> via export/import — vault's Obsidian-import path becomes the migration tool. No lock-in.</li>
+<li><strong>Hub-offline = system-offline (vault#199 v2 §7.3) does not apply</strong> if vault runs on CF. CF-hosted vault is always-reachable for agent calls regardless of the user's laptop. This <em>is</em> the win Aaron's framing implies.</li>
+<li><strong>Hidden costs are operational shape change</strong> (Wrangler, Miniflare, CI/CD for Workers) <strong>and a per-tenant DO management surface</strong> (routing, provisioning, DO migration, backup-via-export). Modest numerically; meaningfully different from &quot;ship a Bun binary.&quot;</li>
+</ul>
+<hr>
+<h2>2. Existing-research synthesis</h2>
+<h3>Settled</h3>
+<p>vault#199 v3 (the active recommendation): cloud is a paid Parachute Computer LLC tier; one billing relationship; provider-abstraction across VM-on-cheap-cloud (Hetzner/Render/Fly); <strong>Phase 1 = Cloud Hub</strong>, not Cloud Vault; multi-IDP from day one; parked PRs (#99 + #101) merge as ecosystem hygiene regardless of cloud shape.</p>
+<p>cloud-offering-sketch (April-20): tenant-per-subdomain shape; lossless export/import (no vendor lock); vault's Store interface is the seam to swap engines; Notes PWA is static on CDN; identity federates from each origin to centralized <code>auth.parachute.computer</code>.</p>
+<h3>Deferred / unresolved</h3>
+<ul>
+<li><strong>Whether the cloud-vault data plane is D1 or DO-SQLite.</strong> The April-20 sketch said &quot;D1,&quot; vault#199 v1 §2 said DO-SQLite — they contradict. <strong>This doc resolves it: DO-SQLite, not D1</strong> (§3.2).</li>
+<li><strong>Multi-tenant routing concrete shape inside CF.</strong> Mentioned at the level of &quot;front-door Worker dispatches by hostname → DO ID = hash(user)&quot;; Workers for Platforms not needed.</li>
+<li><strong>Cloud-hub → cloud-vault interaction once both exist.</strong> v2 §7.4 named the shapes but didn't sequence them.</li>
+<li><strong>Pricing for Cloud Vault.</strong> $20/mo Pro estimate not COGS-modelled for a CF-hosted vault.</li>
+<li><strong>&quot;Your machine, your data&quot; preservation via opt-in local replica.</strong> Shape 4 (CRDT) assessed and parked.</li>
+<li><strong>Migration tooling specifics.</strong> Asserted lossless; not designed.</li>
+</ul>
+<p>This doc sharpens &quot;concrete shape and cost of CF-hosted vault if we ship it&quot; — i.e., Phase 3 (or earlier — see §8).</p>
+<hr>
+<h2>3. Cloudflare surface evaluation</h2>
+<h3>3.1 Workers (the request handler)</h3>
+<p>Workers run as V8 isolates, not Node or Bun. Per-isolate memory cap <strong>128 MB</strong>; CPU per request <strong>30s</strong> on Paid (5 min upper bound); subrequest cap <strong>10,000 per invocation</strong> on Paid (vs 50 free); request body up to <strong>100 MB</strong> on Free/Pro plans, more on Business+. (<a href="https://developers.cloudflare.com/workers/platform/limits/">Workers limits</a>)</p>
+<p>Pricing: <strong>$5/mo minimum on Paid</strong>, then 10M requests + 30M CPU-ms included; <strong>$0.30/M requests</strong> + <strong>$0.02/M CPU-ms</strong> beyond. Free tier is 100k requests/day. (<a href="https://developers.cloudflare.com/workers/platform/pricing/">Workers pricing</a>)</p>
+<p>Bun-specific APIs (<code>Bun.serve()</code>, <code>Bun.password</code>, <code>Bun.$</code>, <code>bun:sqlite</code>) do <strong>not</strong> run on Workers. Workers do support <code>node:fs</code> (in-memory virtual FS) and <code>node:http</code> since 2025-08-15+ compat dates with <code>nodejs_compat</code> flag. (<a href="https://developers.cloudflare.com/workers/runtime-apis/nodejs/">Node.js compat</a>, <a href="https://blog.cloudflare.com/more-npm-packages-on-cloudflare-workers-combining-polyfills-and-native-code/">npm packages on Workers</a>)</p>
+<p><strong>Fit for vault</strong>: Good as a request handler; bad as a stateful runtime. The CPU/memory caps are fine for vault's workload (an MCP query is microseconds; a vault-info call is ms). The hard constraint is <em>no persistent state between requests in the Worker itself</em> — which is why the vault's process must move to a Durable Object, not stay in the Worker.</p>
+<h3>3.2 D1 (SQLite-on-Cloudflare, managed)</h3>
+<p>D1 is SQLite at the SQL layer, but accessed over HTTP from the Worker (network roundtrip per query). Storage cap: <strong>10 GB per database</strong> on Paid (500 MB on Free), and &quot;this limit cannot be increased.&quot; Statement size: <strong>100 KB</strong>. Concurrent connections per Worker invocation: <strong>6</strong>. (<a href="https://developers.cloudflare.com/d1/platform/limits/">D1 limits</a>)</p>
+<p>Pricing: 5 GB free + <strong>$0.75/GB-month</strong> beyond. 25B rows-read + 50M rows-written/month free at Paid; <strong>$0.001/M</strong> rows-read and <strong>$1/M</strong> rows-written above. (<a href="https://developers.cloudflare.com/d1/platform/pricing/">D1 pricing</a>)</p>
+<p><strong>Critical incompatibility</strong>: D1 import explicitly does <strong>not support virtual tables — including FTS5 full-text search</strong>. (<a href="https://developers.cloudflare.com/d1/best-practices/import-export-data/">D1 import docs</a>) Vault's schema includes <code>notes_fts</code> as an FTS5 virtual table; <code>core/src/notes.ts</code> <code>searchNotes()</code> runs against it. Picking D1 means either (a) drop full-text search, (b) reimplement search on top of <code>LIKE</code> queries (slow), or (c) build an external search index (Pages-hosted Lunr, Vectorize, etc.). All three are bad.</p>
+<p><strong>Migration path</strong>: <code>wrangler d1 execute --file=schema.sql</code> after dumping local SQLite as SQL. <strong>5 GiB max file</strong> for a single import; larger requires splitting. Foreign keys + standard triggers + collations are supported. FTS5 is not.</p>
+<p><strong>Fit for vault</strong>: poor. The 10 GB cap is fine; FTS5 incompatibility is the dealbreaker.</p>
+<h3>3.3 Durable Objects + DO-SQLite</h3>
+<p>A Durable Object is a stateful per-instance compute primitive that lives in a single colo and can hold persistent storage. Each DO has its own isolate, its own storage, and runs at most one request at a time per object (input gates).</p>
+<p>The <strong>SQLite storage backend</strong> (<code>ctx.storage.sql</code>) is <strong>GA since 2025</strong>, includes the <strong>FTS5 module</strong> (and <code>fts5vocab</code>), and runs <strong>synchronously, in-thread, in-process</strong> with the Worker code — &quot;the database code runs not just on the same machine as the DO, not just in the same process, but in the very same thread&quot; — yielding microsecond query latency. (<a href="https://blog.cloudflare.com/sqlite-in-durable-objects/">SQLite-in-DO blog</a>, <a href="https://developers.cloudflare.com/durable-objects/api/sql-storage/">Storage API</a>)</p>
+<p>Limits:</p>
+<ul>
+<li><strong>10 GB SQLite per DO</strong> (was 1 GB during beta).</li>
+<li><strong>2 MB per row/string/BLOB</strong>.</li>
+<li><strong>100 KB per SQL statement</strong>.</li>
+<li><strong>1,000 req/sec soft limit per DO</strong> before &quot;overloaded.&quot;</li>
+<li>30s default CPU per request, configurable to 5 min.</li>
+<li>Class definitions per account: <strong>500 on Paid, 100 on Free</strong>. (Each tenant is one <em>instance</em> of a class, not a class — instances are unlimited.)
+(<a href="https://developers.cloudflare.com/durable-objects/platform/limits/">DO limits</a>)</li>
+</ul>
+<p>Pricing on Paid: <strong>$0.15/M requests</strong> (1M free), <strong>$12.50/M GB-seconds</strong> (400k free), and <strong>$0.20/GB-month SQLite storage</strong> (5 GB free) — storage billing <strong>starts January 2026</strong>. (<a href="https://developers.cloudflare.com/durable-objects/platform/pricing/">DO pricing</a>)</p>
+<p><strong>Fit for vault</strong>: excellent. The synchronous in-thread SQLite means vault's <code>BunSqliteStore</code> ports almost verbatim — <code>bun:sqlite</code>'s <code>Database.prepare().run()</code> becomes <code>ctx.storage.sql.exec()</code>, both synchronous. FTS5 works. 10 GB per tenant covers the heaviest realistic vault (Aaron's <code>default</code> is ~50 MB at 2280 notes; 10 GB is ~400k notes equivalent). The 1000 req/s ceiling is irrelevant for personal vaults. Hibernation when idle means scale-to-zero per tenant.</p>
+<h3>3.4 R2 (object storage)</h3>
+<p>R2 is S3-compatible, charges <strong>$0.015/GB-month</strong> standard storage (Infrequent Access $0.01), <strong>zero egress charges</strong>, <strong>$4.50/M Class A ops</strong> (writes) and <strong>$0.36/M Class B ops</strong> (reads). Free tier: 10 GB-month, 1M Class A, 10M Class B. (<a href="https://developers.cloudflare.com/r2/pricing/">R2 pricing</a>)</p>
+<p><strong>Fit for vault</strong>: ideal. Vault attachments are write-rare-read-rare (transcribed audio, images), 50 MB/user typical. Zero-egress means notes app on a phone can stream attachments without R2 bandwidth costs. The parked PR #101 already ships an <code>R2BlobStore</code> against a structurally-typed <code>R2BucketLike</code> interface.</p>
+<h3>3.5 Pages (static hosting)</h3>
+<p>Pages serves static <code>dist/</code> from CDN with custom domains, free TLS, free deploys. Free tier: 500 builds/month, 20 min/build, 20k files/site, 25 MiB/asset, 100 custom domains. Functions billed as Workers. (<a href="https://developers.cloudflare.com/pages/platform/limits/">Pages limits</a>)</p>
+<p><strong>Fit for vault</strong>: great for the Notes PWA (already supported by parachute-notes' build), and great for the vault Admin SPA (<code>src/admin-spa.ts</code>). One Pages site can serve the SPA bundle for all tenants; each tenant origin (<code>&lt;user&gt;.parachute.computer</code>) routes static asset requests to Pages and dynamic API/MCP requests to the Worker → DO chain.</p>
+<h3>3.6 Cloudflare Tunnel</h3>
+<p><code>cloudflared</code> establishes an outbound-only secure tunnel from a private origin (the user's Mac, a VPS) to Cloudflare's edge, exposing the origin under a Cloudflare-managed hostname. <strong>Free for up to 50 users</strong>, $7/user/month above. No published bandwidth cap on the free tier; pricing is per-seat, not per-GB. (<a href="https://blog.cloudflare.com/tunnel-for-everyone/">Free tunnels announcement</a>)</p>
+<p><strong>Fit for vault</strong>: irrelevant for the &quot;host vault on CF&quot; question (vault is on CF, no tunnel needed); central for vault#199 Shape 3 / γ where vault stays local. The &quot;low-cost low-friction&quot; framing Aaron is now reconsidering specifically argues that tunnel-fronting still requires a user machine to be on, which is the friction CF-hosted-vault eliminates.</p>
+<hr>
+<h2>4. The vault → Cloudflare transformation</h2>
+<p>What concretely changes in vault to deploy on Cloudflare?</p>
+<h3>4.1 Runtime: Bun → V8 isolate</h3>
+<p>Vault's <code>src/server.ts</code> boots <code>Bun.serve()</code> and supervises a transcription worker, trigger handlers, and a stop-signal sentinel. On Workers:</p>
+<ul>
+<li><code>Bun.serve(handler)</code> → <code>export default { fetch(req, env, ctx) }</code>. Routing in <code>src/routing.ts</code> ports unchanged.</li>
+<li><code>Bun.password.hash/verify</code> (bcrypt) → <code>crypto.subtle</code> (PBKDF2 or scrypt). Single-file swap; existing hashes need both-verifiers + re-hash-on-next-login.</li>
+<li><code>process.env.X</code> → <code>env.X</code> Worker bindings via <code>wrangler.toml</code>. ~30+ one-line swaps across <code>src/</code>.</li>
+<li><code>setInterval</code> (stop-signal, transcription poller) → Cron Triggers + Queues. Stop-signal pattern goes away entirely.</li>
+<li><code>node:fs</code> config writes → DO storage; Workers Secrets for global env.</li>
+<li>Daemon supervision (<code>launchd</code>, <code>systemd</code>) → kept for self-hosted, omitted from CF bundle.</li>
+</ul>
+<p><strong>Estimated effort</strong>: 1–2 weeks for one steward to land a Workers-runnable build that passes the existing test suite under DO. Wide-but-shallow diff.</p>
+<h3>4.2 Storage: SQLite → DO-SQLite</h3>
+<p>The <code>Store</code> interface is already async (every method returns <code>Promise&lt;T&gt;</code>). PR #99 introduced <code>SqlDb</code> — a <code>prepare/exec/iterate</code> adapter — and <code>DoSqliteStore</code> against <code>ctx.storage.sql</code>. The ops modules (<code>notes.ts</code>, <code>links.ts</code>, <code>wikilinks.ts</code>, <code>tag-schemas.ts</code>) consume <code>SqlDb</code>, so they run unchanged on either backend.</p>
+<p>What's <em>not</em> yet handled in the parked PR:</p>
+<ul>
+<li><strong>FTS5 trigger SQL has embedded semicolons.</strong> PR #99 included a BEGIN/END-aware splitter because DO's <code>sql.exec()</code> only accepts one statement per call. This works but needs the smoke test <code>migrateToV4</code> referenced in PR #99's test plan.</li>
+<li><strong><code>PRAGMA table_info(notes)</code> calls</strong> (used by <code>migrateToV4</code>) need to be redirected to <code>.prepare().all()</code> shape on DO; the adapter's PRAGMA-skip applies only to schema-init PRAGMAs.</li>
+<li><strong><code>transactionSync()</code> semantics</strong> — DO storage exposes synchronous transactions designed for this exact pattern (rolls back on throw). Vault's <code>createNotes</code> bulk path needs to wrap in <code>ctx.storage.transactionSync()</code>.</li>
+</ul>
+<p><strong>Migration from local SQLite to DO</strong>: not a wrangler import — DO storage is per-instance, not a database in the D1 sense. Migration is &quot;open the DO, replay an export.&quot; The natural shape: vault's existing Obsidian-import endpoint, fed an export zip generated from the user's local install. PR #99 doesn't ship this; it's the next missing piece.</p>
+<h3>4.3 Filesystem → R2 + DO storage</h3>
+<p>Vault writes two kinds of state to disk today:</p>
+<ul>
+<li><strong>Attachments</strong> at <code>~/.parachute/vault/assets/&lt;vault&gt;/&lt;id&gt;</code> — file blobs uploaded via <code>/api/storage/upload</code> and served via <code>/api/storage/&lt;id&gt;</code>. PR #101's <code>BlobStore</code> interface + <code>FsBlobStore</code> (local) + <code>R2BlobStore</code> (CF) covers this. Wire up: pass <code>R2BlobStore(env.ATTACHMENTS_BUCKET, prefix=tenantId)</code> into the DO.</li>
+<li><strong>Config</strong> in <code>~/.parachute/vault/.env</code>, <code>vault.yaml</code>, <code>config.yaml</code>, <code>services.json</code>, token-store JSON files. These move to DO storage (small, per-tenant, transactional with the SQLite they sit alongside) — except global env (Workers Secrets) and the static hub JWKS-cache (Workers KV with TTL).</li>
+</ul>
+<p><strong>Tokens table is already in SQLite.</strong> No change.</p>
+<h3>4.4 The tag-scope auth check (vault#241)</h3>
+<p>vault#241 (rc.30, just merged) ships tag-scoped tokens Phase 1. The auth check runs on every read and uses two mechanisms:</p>
+<ol>
+<li><strong>Schema-driven <code>getTagDescendants</code> cache</strong> — built from <code>_tags/&lt;name&gt;</code> config notes via <code>loadTagHierarchy(db)</code> in <code>core/src/tag-hierarchy.ts</code>. Cached on the store as <code>_tagHierarchy</code>, invalidated on writes to <code>_tags/*</code> paths.</li>
+<li><strong>String-form fallback</strong> — for each note tag <code>t</code>, check <code>t.split(&quot;/&quot;)[0] === scopedRoot</code>. Pure string ops, no I/O.</li>
+</ol>
+<p>Both ports cleanly to DO:</p>
+<ul>
+<li>The cache is <strong>per-store-instance</strong>, and on DO each tenant <em>is</em> one store instance (one DO = one BunSqliteStore-equivalent). The cache is naturally per-tenant and lives across requests within the DO's lifetime — better than on a stateless Worker where caches die with each isolate. Hibernation drops the cache, but the next request rebuilds it (single SQL query against <code>_tags/*</code> notes).</li>
+<li><code>getTagDescendants</code> is pure compute; the cache uses a memoization map. No environment dependencies.</li>
+<li>The <code>loadTagHierarchy</code> function uses <code>db.prepare(...).all()</code> — runs on <code>SqlDb</code>, hence on DO via <code>ctx.storage.sql.exec()</code>.</li>
+</ul>
+<p><strong>Net</strong>: the just-shipped tag-scope work <em>helps</em> the CF port, doesn't hurt it. The DO model is exactly the right home for per-tenant caches.</p>
+<h3>4.5 MCP transport</h3>
+<p>Vault exposes MCP over Streamable HTTP at <code>/vault/&lt;name&gt;/mcp</code>. The transport is implemented in <code>src/mcp-http.ts</code> using <code>Bun.serve</code>'s response-stream API. Workers support the same Web Streams API natively (<code>ReadableStream</code>, <code>Response</code> with stream body), and the Streamable HTTP MCP transport is well-suited to Workers (see <a href="https://developers.cloudflare.com/agents/model-context-protocol/">MCP Servers on Cloudflare</a> for the canonical pattern). Stdio MCP is irrelevant in cloud; clients connect over HTTP.</p>
+<p>Hub-issued JWT validation via JWKS already uses <code>fetch()</code> (<code>src/hub-jwt.ts</code>); ports without modification. JWKS cache lives in DO storage with a TTL; no behavioral change.</p>
+<h3>4.6 Multi-tenant routing</h3>
+<p>A single Worker serves all tenants. Routes resolve as:</p>
+<ul>
+<li><code>&lt;user&gt;.parachute.computer/api/...</code> → Worker → forward to DO with ID <code>idFromName(user)</code>.</li>
+<li><code>&lt;user&gt;.parachute.computer/notes/...</code> → Pages (static asset).</li>
+<li><code>&lt;user&gt;.parachute.computer/admin/...</code> → Pages (admin SPA bundle) + Worker for API calls.</li>
+</ul>
+<p>For custom domains (<code>notes.aarongabriel.com</code>), Cloudflare for SaaS handles per-tenant TLS automation. Workers for Platforms is <em>not</em> needed (no per-customer code execution); the dispatch Worker pattern (route by hostname) is sufficient.</p>
+<hr>
+<h2>5. Cost modeling</h2>
+<p>Workload assumption (per the brief): per user, <strong>~2000 notes</strong>, <strong>~300 attachments / 50 MB</strong>, <strong>~50 requests/day average + bursts</strong>.</p>
+<p>For 1000 users, that's: 1.5M monthly requests, 50 GB attachments, 50 GB hot SQLite (50 MB × 1000), modest CPU.</p>
+<h3>5.1 Cloudflare cost model (DO + R2 shape)</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Free included</th>
+<th>At 1k users</th>
+<th>Pricing</th>
+<th>Net</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Workers requests</td>
+<td>10M/mo</td>
+<td>1.5M</td>
+<td>$0.30/M</td>
+<td>within free</td>
+</tr>
+<tr>
+<td>Workers CPU-ms</td>
+<td>30M/mo</td>
+<td>~3M (assume 2ms avg)</td>
+<td>$0.02/M</td>
+<td>within free</td>
+</tr>
+<tr>
+<td>DO requests</td>
+<td>1M/mo</td>
+<td>1.5M (each user request = ≥1 DO req)</td>
+<td>$0.15/M</td>
+<td>$0.08</td>
+</tr>
+<tr>
+<td>DO duration GB-s</td>
+<td>400k/mo</td>
+<td>hibernation-dependent; assume 2s avg-active per req × 128MB = 0.25 GB-s × 1.5M = 375k</td>
+<td>$12.50/M</td>
+<td>within free</td>
+</tr>
+<tr>
+<td>DO SQLite storage</td>
+<td>5 GB/mo</td>
+<td>50 GB</td>
+<td>$0.20/GB-mo</td>
+<td>$9.00</td>
+</tr>
+<tr>
+<td>R2 storage</td>
+<td>10 GB/mo</td>
+<td>50 GB</td>
+<td>$0.015/GB-mo</td>
+<td>$0.60</td>
+</tr>
+<tr>
+<td>R2 Class A (writes)</td>
+<td>1M/mo</td>
+<td>0.3M (one write per attachment created)</td>
+<td>$4.50/M</td>
+<td>within free</td>
+</tr>
+<tr>
+<td>R2 Class B (reads)</td>
+<td>10M/mo</td>
+<td>1M (occasional attachment reads)</td>
+<td>$0.36/M</td>
+<td>within free</td>
+</tr>
+<tr>
+<td>Pages</td>
+<td>unlimited</td>
+<td>—</td>
+<td>—</td>
+<td>$0</td>
+</tr>
+<tr>
+<td><strong>Workers Paid base</strong></td>
+<td>—</td>
+<td>—</td>
+<td>$5/mo</td>
+<td>$5</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td><strong>~$15/mo at 1k users</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Per-user/month at 1k users: ~$0.015.</strong> That's not a typo. <strong>At 10k users, scaling linearly</strong>: storage dominates, ~$110/mo (DO storage 500 GB ≈ $99 + R2 500 GB ≈ $7.50 + DO requests 15M ≈ $2 + Workers Paid base $5) → <strong>~$0.01/user/mo</strong>. <strong>At 100 users</strong>: comfortably within free tier; ~$5/mo (just the Workers Paid base) → <strong>~$0.05/user/mo</strong>.</p>
+<p>A more conservative model (DO duration scales worse than linearly because cold-start hibernation gives way to warm-instance billing as request rate climbs): factor <strong>3× for headroom</strong> still puts 1k users under $50/mo and 10k users under $400/mo.</p>
+<h3>5.2 Comparison: alternative shapes (per-user/month at 1k users)</h3>
+<table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>Infra at 1k users</th>
+<th>Per-user/mo</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CF Workers + DO + R2</strong> (Shape γ)</td>
+<td>~$15–50/mo</td>
+<td>$0.015–0.05</td>
+<td>This research; scale-to-zero, FTS5 native</td>
+</tr>
+<tr>
+<td><strong>Fly.io 1-container-per-tenant</strong> (vault#199 Shape 2)</td>
+<td>~$2,000/mo</td>
+<td>$2</td>
+<td>$1.94/mo machine × 1000 + volumes. Idle machines dominate.</td>
+</tr>
+<tr>
+<td><strong>Fly.io shared-container, multi-tenant SQLite</strong></td>
+<td>~$50/mo</td>
+<td>$0.05</td>
+<td>A handful of beefy machines hosting many tenants' SQLite via vault's existing <code>getVaultStore</code> cache. Single-region.</td>
+</tr>
+<tr>
+<td><strong>AWS Lambda + S3 + Aurora Serverless</strong></td>
+<td>~$200–500/mo</td>
+<td>$0.20–0.50</td>
+<td>Aurora min ACUs alone is $40+/mo; per-tenant Postgres-RLS schema; Lambda colder than Workers.</td>
+</tr>
+<tr>
+<td><strong>Render / Railway</strong></td>
+<td>~$400–800/mo</td>
+<td>$0.40–0.80</td>
+<td>$7/mo entry containers; PostgreSQL add-on starts at $20/mo. Multi-tenant required to be cheap; same RLS bug-surface as AWS option.</td>
+</tr>
+<tr>
+<td><strong>Self-hosted by user</strong> (Shape 3 from vault#199 v1)</td>
+<td>tunnel + scribe pool only</td>
+<td>$0.50–2</td>
+<td>Free for vault itself; Parachute pays for tunnel-CF-Access ($7/user above 50) + scribe pool. The user-machine-must-be-on cost is paid in user retention, not dollars.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Cheapest viable option = CF DO + R2</strong> by a factor of 30–100× over containerized alternatives, because scale-to-zero per tenant + zero idle cost. Self-hosted by user is the cheapest in absolute dollars to Parachute but pays the cost in user-friction.</p>
+<p>(Caveats: these are ballpark; real billing depends on bursty patterns, attachment-read distribution, and DO duration which scales with how often DOs hibernate. The order-of-magnitude finding is robust; the exact dollar figures within an order of magnitude are not.)</p>
+<hr>
+<h2>6. Three architectural shapes</h2>
+<p>The brief asks evaluation of three shapes specific to &quot;hosted vault on Cloudflare.&quot; All three are within the CF-hosted family — they differ in tenant-isolation strategy.</p>
+<h3>Shape α — Worker + D1 (single DB, multi-tenant via app-layer RLS)</h3>
+<p>One D1 database; rows tagged with <code>tenant_id</code>; queries filter by tenant.</p>
+<p><strong>Pros</strong>:</p>
+<ul>
+<li>Simplest infrastructure — one database, one schema, one migration path.</li>
+<li>D1 is &quot;batteries included&quot; with backup/export tooling, query insights, point-in-time recovery.</li>
+<li>Cross-tenant analytics is trivial (we're the operator; we may want this for billing/usage).</li>
+</ul>
+<p><strong>Cons</strong>:</p>
+<ul>
+<li><strong>No FTS5.</strong> Hard incompatibility with vault's <code>notes_fts</code> table. Reimplement search externally or accept LIKE-only search.</li>
+<li><strong>App-layer-RLS is bug-surface.</strong> Every query needs <code>WHERE tenant_id = ?</code>; one missing clause = data leak. The current vault SQL doesn't have that pattern (it's single-tenant).</li>
+<li>10 GB cap per database is fine for 1k users at our workload (50 GB needed), so we'd shard across N D1 databases anyway — at which point the &quot;one DB&quot; simplicity is gone.</li>
+<li>100 KB statement size; 6 concurrent connections per Worker invocation. Tight for some bulk-import flows.</li>
+</ul>
+<p><strong>Verdict</strong>: Don't pick this. The FTS5 incompatibility alone disqualifies it for vault.</p>
+<h3>Shape β — Worker + DO + D1-per-DO</h3>
+<p>Each tenant gets a Durable Object that owns its own D1 binding. Vault state lives in D1; the DO is just a router.</p>
+<p><strong>Pros</strong>:</p>
+<ul>
+<li>Physical per-tenant DB (one D1 per tenant). Strong isolation.</li>
+<li>D1 backup/export tooling per tenant.</li>
+<li>Hibernation-friendly: DO is cheap to spin up; D1 is the durable layer.</li>
+</ul>
+<p><strong>Cons</strong>:</p>
+<ul>
+<li><strong>Still no FTS5</strong> — D1 still doesn't support virtual tables.</li>
+<li>D1 is accessed by HTTP from the DO — adds 1–10ms latency per query that DO-SQLite avoids.</li>
+<li>Per-DO D1 binding requires platform support that's awkward at present. Workers normally can't &quot;create a new D1 database when a new tenant signs up&quot; without a control-plane API call.</li>
+<li>Two storage layers to manage (DO local for transient state + D1 for durable) doubles the moving parts.</li>
+</ul>
+<p><strong>Verdict</strong>: Don't pick this. Inherits D1's FTS5 problem without offsetting it.</p>
+<h3>Shape γ — Worker + DO with embedded SQLite (the natural fit)</h3>
+<p>Each tenant is one Durable Object instance. The DO holds its own SQLite via <code>ctx.storage.sql</code>, runs vault's per-store ops in-thread, and exposes the same HTTP/MCP routes the Bun-host vault exposes today.</p>
+<p><strong>Pros</strong>:</p>
+<ul>
+<li><strong>FTS5 supported.</strong> Full vault schema ports verbatim.</li>
+<li><strong>Synchronous SQLite calls in-thread</strong> — vault's <code>BunSqliteStore</code> ports almost line-for-line. PR #99's <code>SqlDb</code> adapter is the abstraction.</li>
+<li><strong>Per-tenant isolation is physical.</strong> Each DO has its own storage; no cross-tenant data even possible at the SQL layer.</li>
+<li><strong>Scale-to-zero per tenant.</strong> A user who hasn't logged in this week costs nothing in DO duration (only storage).</li>
+<li>10 GB SQLite per DO covers 99.9% of personal vaults indefinitely.</li>
+<li>Zero-egress from R2 means notes-PWA can stream attachments without bandwidth costs.</li>
+<li>The just-shipped tag-scope cache lives naturally per-DO.</li>
+</ul>
+<p><strong>Cons</strong>:</p>
+<ul>
+<li>Still on Cloudflare — vendor coupling. (<code>SqlDb</code> mitigates by making the SQL layer portable.)</li>
+<li>One DO per tenant means <strong>provisioning is a code action</strong> (create DO instance, run schema migration) rather than a &quot;row in a database.&quot; The control plane for this is small but new.</li>
+<li>DO migrations across class versions need Cloudflare's migration tooling (rename class, versioned schema). Vault already has <code>migrateToV4</code>-style versioned migrations — they fit, but each migration becomes a per-DO replay.</li>
+<li>DO storage backup is by code (export + write to R2) rather than declarative — we control backups, which means we operate them.</li>
+<li><strong>DO &quot;owns the tenant&quot;</strong> — moving a tenant to a different colo or off CF requires explicit migration code (export from DO, import to new home). Not free.</li>
+</ul>
+<p><strong>Verdict</strong>: This is the shape. PR #99 prototyped it; PR #101 prototyped the attachment side; together they're 70-80% of the work.</p>
+<h3>Note on the brief's &quot;Shape γ — KV-on-DO blob&quot;</h3>
+<p>The brief sketched a variant where the tenant's full SQLite is stored as a blob in DO KV, loaded into wasm-sqlite per request. That's not necessary — <code>ctx.storage.sql</code> is a real SQLite running in the DO's thread, not a blob you serialize. The real Shape γ above subsumes it; no blob-shuffle needed.</p>
+<hr>
+<h2>7. Required vault changes — concrete checklist</h2>
+<h3>Already done (no action)</h3>
+<ul>
+<li>Async <code>Store</code> interface (<code>core/src/types.ts</code>).</li>
+<li><code>BunSqliteStore</code> is an <code>async</code> wrapper over sync internals — interface contract is met.</li>
+<li>Tag-scope auth cache is per-store, hierarchy-driven, sync-pure (vault#241 / rc.30).</li>
+<li>Per-vault MCP routing in <code>src/routing.ts</code> is hostname-agnostic.</li>
+<li>Hub-JWT validation uses <code>fetch()</code> (<code>src/hub-jwt.ts</code>).</li>
+<li>Notes PWA is static; runs on Pages with no change.</li>
+<li>Admin SPA (<code>src/admin-spa.ts</code>) is static markup + Worker-facing API; ports.</li>
+</ul>
+<h3>Small effort (1–3 days each)</h3>
+<ul>
+<li><strong><code>Bun.password</code> → <code>crypto.subtle</code></strong> for password hashing; keep both verifiers for migration. Touches <code>src/auth.ts</code>, <code>src/owner-auth.ts</code>.</li>
+<li><strong><code>process.env.X</code> → Worker <code>env.X</code></strong> mechanical pass across <code>src/</code>. Wrangler bindings declared in <code>wrangler.toml</code>. Search for <code>process.env</code> (~30+ sites).</li>
+<li><strong><code>Bun.serve()</code> → <code>export default { fetch }</code></strong> in <code>src/server.ts</code>. Routing already extracted.</li>
+<li><strong>Stop-signal sentinel removal</strong> (<code>src/stop-signal.ts</code>). Workers don't need a kill signal.</li>
+<li><strong>Wrangler config + Miniflare local dev</strong> — new file <code>wrangler.toml</code>, dev workflow change. Steward needs to learn Wrangler.</li>
+<li><strong>Daemon wrappers</strong> (<code>src/launchd.ts</code>, <code>src/systemd.ts</code>, <code>src/backup-launchd.ts</code>) — keep for self-hosted, omit from CF bundle.</li>
+</ul>
+<h3>Medium effort (3–7 days each)</h3>
+<ul>
+<li><strong>Filesystem config → DO storage / Workers Secrets</strong>. Per-tenant config (<code>vault.yaml</code>, token-store) → DO storage. Global env (Anthropic key, R2 bucket name) → Secrets. Touches <code>src/config.ts</code> heavily.</li>
+<li><strong><code>R2BlobStore</code> integration</strong> beyond what PR #101 shipped — wire into <code>src/routes.ts</code> <code>handleStorage</code>, ensure path-traversal guard transports correctly to opaque-key R2 path.</li>
+<li><strong>MCP HTTP transport on Workers Streams</strong> — verify <code>src/mcp-http.ts</code> works with Workers' <code>ReadableStream</code>. Probably 1-line diff but needs end-to-end tested.</li>
+<li><strong>Cron Triggers + Queues</strong> for the transcription worker — replace <code>setInterval</code> polling. Defines a new ops surface but the existing queue logic in <code>src/transcription-worker.ts</code> translates.</li>
+<li><strong><code>migrateToV4</code>-style migrations on DO</strong> — ensure each schema bump runs per-DO on first request after deploy. Probably needs a &quot;schema_version on DO storage&quot; check + replay.</li>
+<li><strong><code>SqlDb</code> adapter completion</strong> — PR #99 didn't ship the BEGIN/END splitter for FTS triggers in production-ready form. Smoke test against real DO via Miniflare or remote.</li>
+</ul>
+<h3>Major effort (1–3 weeks each)</h3>
+<ul>
+<li><strong>Per-tenant DO routing + provisioning control plane.</strong> A Worker that, given a hostname, finds-or-creates a DO; signup flow that triggers DO creation; tenant-rename / tenant-delete code paths. New service surface that doesn't exist today. <strong>This is the dominant cost</strong> — it's where vault's per-tenant lifecycle becomes a thing we operate.</li>
+<li><strong>Migration tooling</strong> — export from local Bun-vault → import into CF DO. Reuse vault's existing Obsidian-import path; wrap as a CLI command (<code>parachute-vault cloud-migrate</code>). This is what makes &quot;no lock-in&quot; honest.</li>
+<li><strong>Cloudflare for SaaS custom domains</strong> — per-tenant TLS automation, hostname management, DNS API. The April-20 cloud-offering-sketch mentions this; no code yet.</li>
+<li><strong>Backup-via-export pipeline</strong> — DO storage doesn't have native external backup; we run a periodic export to R2 with PITR-style retention. Operational-grade backup is its own thing.</li>
+<li><strong>CI/CD for Workers</strong> — Wrangler deploys, environment promotion (dev/stage/prod), versioned DO migrations. Different shape from <code>bun run build &amp;&amp; docker push</code>.</li>
+</ul>
+<hr>
+<h2>8. Recommendation</h2>
+<p>Aaron's framing — &quot;really low cost way of getting people a vault really quickly … gonna let us have a lot of early users&quot; — points at user-acquisition friction, not steady-state COGS. Both numbers favor CF-hosted-vault.</p>
+<p>Three plausible re-sequencings (Aaron decides):</p>
+<ul>
+<li><strong>(i) Stay with vault#199 v3.</strong> CF-hosted vault is Phase 3, after Cloud Hub validates with paying users. Pick this if the goal is to validate the managed-Parachute value prop independent of where data lives, and you'll absorb the &quot;your-machine-must-be-on&quot; friction for v1.</li>
+<li><strong>(ii) Re-sequence: CF-hosted vault as Phase 1.</strong> Skip tunnel-fronting; ship vault directly on CF DO from day one. Pick this if the goal is genuinely-zero-friction onboarding and you accept the brand-shift toward &quot;managed by Parachute&quot; first, &quot;self-host as backstop&quot; second. MVP: 4–6 weeks for one steward to revive PR #99 + #101, add per-tenant DO routing, signup, billing, and migration tooling.</li>
+<li><strong>(iii) Both, layered.</strong> Cloud Hub for the 5 existing self-hosted users (stable URL + identity, data stays local); Cloud Vault for new signups (zero-machine-required). Each path is 3–4 weeks; they share <code>auth.parachute.computer</code> and the notes PWA. Most defensible long-term, more attention-cost.</li>
+</ul>
+<p>The CF technical evaluation supports any of the three — Shape γ is feasible at low cost regardless of when it ships.</p>
+<hr>
+<h2>9. Open questions for Aaron</h2>
+<p>These are the calls only Aaron can make. The brief's &quot;Aaron decides; don't decide for him&quot; is honored.</p>
+<ol>
+<li>
+<p><strong>Re-sequence the roadmap?</strong> Cloud Hub-first (vault#199 v3) vs Cloud Vault-first vs both-parallel. The single load-bearing strategic decision. The vault#199 v3 §8.7 phase plan was settled 2026-04-29; this research surfaces a credible reason to revisit the order.</p>
+</li>
+<li>
+<p><strong>Brand-positioning shift.</strong> &quot;Your data on your machine&quot; was the promise; &quot;your data on a Cloudflare DO that we operate, exportable at any time&quot; is a different promise. Both are coherent, but they appeal to different users. Are we explicitly making this shift, or threading the needle (CF-hosted as one tier, self-host as another, equal billing)?</p>
+</li>
+<li>
+<p><strong>Pricing posture for CF-hosted vault.</strong> Unit cost is ~$0.05/user/month all-in; a $5/mo Starter tier has 100× margin. Do we price for early-volume (cheap) or for sustained margin (defensive against Anthropic/CF surprises)? The vault#199 v3 $15/Starter $30/Pro tiers were anchored on Hetzner-VM costs that don't apply here.</p>
+</li>
+<li>
+<p><strong>How much vendor coupling to Cloudflare are we comfortable with?</strong> Shape γ doesn't preclude later moves (the <code>SqlDb</code> + <code>BlobStore</code> abstractions keep the SQL/blob layer portable). But the per-tenant DO + per-tenant routing + DO migration tooling are CF-specific code. We'd be doing real work to leave if CF prices change. AWS-equivalent (Aurora Serverless + Lambda + S3 + per-tenant Cognito) is 4-5× more expensive for the same workload, so the lock-in is &quot;we paid CF prices to get CF prices.&quot;</p>
+</li>
+<li>
+<p><strong>What's the migration-from-self-hosted UX?</strong> A current self-hosted user wants to move to cloud. Options: (a) run-an-export-then-upload (manual), (b) <code>parachute-vault cloud-migrate</code> CLI command (one-shot), (c) ongoing-replication (hard — that's vault#199 Shape 4). The brief asks about volume; (c) is overkill, (b) is the right call, but it's a new piece of code.</p>
+</li>
+<li>
+<p><strong>Does the cloud-hosted vault still expose an MCP endpoint clients can connect to directly?</strong> Today's design says yes (<code>https://&lt;user&gt;.parachute.computer/vault/default/mcp</code>). That means agents (Claude Desktop, Claude Code, third-party MCP clients) hit Cloudflare on every read. Is that the intent, or do we want to mediate through hub on the cloud side too? The current routing already supports both.</p>
+</li>
+<li>
+<p><strong>DO storage billing starts January 2026.</strong> It hasn't actually billed yet — January 7, 2026 was the announced target. Has it activated? If it has, the cost model in §5.1 stands. If billing has been delayed, costs are even lower for early launch.</p>
+</li>
+<li>
+<p><strong>What's the FTS5-vs-D1 tension's escape hatch?</strong> This research recommends DO-SQLite explicitly because of FTS5. If Cloudflare adds FTS5 to D1 in 2026 (no announcement at writing), Shape α and β become viable too — D1 is cheaper-per-byte at small scale. Worth tracking, not worth waiting for.</p>
+</li>
+</ol>
+<hr>
+<h2>Companions</h2>
+<ul>
+<li>vault PR <a href="https://github.com/ParachuteComputer/parachute-vault/pull/99">#99</a> (closed, branch preserved): <code>feat/do-sqlite-store</code> — <code>SqlDb</code> + <code>DoSqliteStore</code>. Revive as Phase 0 if pursuing Shape γ.</li>
+<li>vault PR <a href="https://github.com/ParachuteComputer/parachute-vault/pull/101">#101</a> (closed, branch preserved): <code>feat/r2-blob-store</code> — <code>BlobStore</code> FS + R2. Same.</li>
+<li>vault <code>docs/cloud-shape-research</code> branch: <code>docs/design/2026-04-29-parachute-cloud-shape.md</code> — vault#199's three-version research doc. v3 §8 is the active recommendation.</li>
+<li><code>parachute.computer/design/2026-04-20-cloud-offering-sketch.md</code> — earlier north-star sketch.</li>
+<li><code>parachute-patterns/research/parachute-data-model-shape.md</code> — current vault data model (2280 notes / 46 tags / 945 links / 295 attachments on Aaron's <code>default</code>).</li>
+</ul>
+<h2>Cloudflare docs cited</h2>
+<ul>
+<li><a href="https://developers.cloudflare.com/workers/platform/limits/">Workers limits</a></li>
+<li><a href="https://developers.cloudflare.com/workers/platform/pricing/">Workers pricing</a></li>
+<li><a href="https://developers.cloudflare.com/workers/runtime-apis/nodejs/">Workers Node.js compatibility</a></li>
+<li><a href="https://developers.cloudflare.com/d1/platform/limits/">D1 limits</a></li>
+<li><a href="https://developers.cloudflare.com/d1/platform/pricing/">D1 pricing</a></li>
+<li><a href="https://developers.cloudflare.com/d1/best-practices/import-export-data/">D1 import / export (FTS5 unsupported)</a></li>
+<li><a href="https://developers.cloudflare.com/durable-objects/platform/limits/">Durable Objects limits</a></li>
+<li><a href="https://developers.cloudflare.com/durable-objects/platform/pricing/">Durable Objects pricing</a></li>
+<li><a href="https://developers.cloudflare.com/durable-objects/api/sql-storage/">Durable Objects SQL Storage API</a></li>
+<li><a href="https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/">Durable Objects best-practices: storage</a></li>
+<li><a href="https://blog.cloudflare.com/sqlite-in-durable-objects/">SQLite-in-DO blog announcement</a></li>
+<li><a href="https://developers.cloudflare.com/r2/pricing/">R2 pricing</a></li>
+<li><a href="https://developers.cloudflare.com/pages/platform/limits/">Pages limits</a></li>
+<li><a href="https://blog.cloudflare.com/tunnel-for-everyone/">Cloudflare Tunnel free tier announcement</a></li>
+<li><a href="https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/">Workers for Platforms overview</a></li>
+<li><a href="https://blog.cloudflare.com/more-npm-packages-on-cloudflare-workers-combining-polyfills-and-native-code/">More NPM packages on Workers (node:fs, node:http)</a></li>
+</ul>

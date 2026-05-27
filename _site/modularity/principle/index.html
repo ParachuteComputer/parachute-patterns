@@ -1,0 +1,50 @@
+<h1>Modularity is the product</h1>
+<h2>Convention</h2>
+<p><strong>Every Parachute module stands alone. Composition is opt-in. No hidden
+coupling.</strong></p>
+<p>Concretely: a module must be useful installed by itself, with no other
+Parachute module present. If it <em>can</em> compose with a sibling, that
+composition is a config flag or plugin — never a build-time dependency,
+never a runtime requirement.</p>
+<h2>Why</h2>
+<ul>
+<li>Adoption path: a user or developer picks up one piece (say, the vault) and
+gets real value without signing up for a platform.</li>
+<li>Each module stays small and focused. The pressure to grow features lives
+inside that module, not in a shared core.</li>
+<li>The failure mode we're avoiding is &quot;Parachute Suite&quot; — a coupled monorepo
+where every module imports the others, nothing can be adopted in isolation,
+and a breaking change anywhere propagates everywhere. (See Emacs:
+indispensable for some, unadoptable for most.)</li>
+<li>The magic is cumulative: each added module makes the others more powerful
+without any of them <em>requiring</em> the others.</li>
+</ul>
+<h2>Rules</h2>
+<ul>
+<li><strong>No <code>@openparachute/*</code> package may import from another at build time
+unless it's genuinely a library layer</strong> (e.g. a future <code>@openparachute/core</code>
+providing vault types). Runtime integrations go through configured clients
+or MCP.</li>
+<li><strong>Every integration is a flag.</strong> <code>config.agentSource = &quot;dir&quot; | &quot;vault&quot;</code>.
+<code>config.backend = &quot;vercel-ai&quot; | &quot;claude&quot;</code>. <code>config.vault = { url, token }</code>
+(absent → no vault features). Defaults must exercise the standalone path.</li>
+<li><strong>Graceful absence.</strong> When an optional integration is missing, the module
+falls back to its standalone behavior and logs (not errors). Example:
+<code>loadAgentsFromVault</code> returns <code>{}</code> with a warning when the vault is
+unreachable so the runner still boots (see
+<a href="https://github.com/ParachuteComputer/parachute-agents/blob/main/src/agent-sources.ts">parachute-agents/src/agent-sources.ts</a>).</li>
+<li><strong>Document the opt-in.</strong> Each composable integration gets an entry in the
+module's README <em>and</em> a <code>patterns/</code> entry here if the shape is reusable
+across modules.</li>
+</ul>
+<h2>What this looks like in practice</h2>
+<p>See <code>modularity/examples.md</code> for Scribe + vault, Agents + vault, Octopus +
+vault composed without coupling.</p>
+<h2>Open questions</h2>
+<ul>
+<li>A shared <code>@openparachute/vault-client</code> package would reduce duplication
+across Agents, Daily, Prism. It would be a library (importable), not a
+runtime dependency, so it doesn't violate the principle — but the
+threshold for &quot;this is worth extracting&quot; isn't codified yet. Tracked in
+parachute-vault issue #102.</li>
+</ul>

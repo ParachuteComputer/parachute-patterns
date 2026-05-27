@@ -1,0 +1,136 @@
+<h1>Optimistic concurrency</h1>
+<h2>Convention</h2>
+<p>Every Parachute write API requires the caller to present the
+<strong>last-seen <code>updated_at</code> timestamp</strong> of the resource it's modifying.
+The server compares it against the live row and refuses the write if
+they differ. The caller can opt out explicitly with <code>force: true</code> —
+the only way to clobber, never the default.</p>
+<p>This protects against the lost-update race that's the default failure
+mode when N agents (or N tabs, or one agent + a sync worker) write to
+the same note concurrently.</p>
+<h2>Shape</h2>
+<h3>Request</h3>
+<pre><code class="language-jsonc">{
+  &quot;content&quot;: &quot;...&quot;,
+  &quot;if_updated_at&quot;: &quot;2026-04-21T17:33:08.412Z&quot;,  // required by default
+  &quot;force&quot;: true                                   // explicit opt-out (overrides if_updated_at)
+}
+</code></pre>
+<h3>Responses</h3>
+<p><strong>409 Conflict</strong> — caller's <code>if_updated_at</code> doesn't match the live row.</p>
+<pre><code class="language-jsonc">{
+  &quot;error_type&quot;: &quot;conflict&quot;,
+  &quot;current_updated_at&quot;: &quot;2026-04-21T17:35:11.207Z&quot;,
+  &quot;your_updated_at&quot;:    &quot;2026-04-21T17:33:08.412Z&quot;,
+  &quot;path&quot;:   &quot;projects/launch.md&quot;,
+  &quot;note_id&quot;: &quot;01J9Z2K3...&quot;,
+  &quot;message&quot;: &quot;...&quot;
+}
+</code></pre>
+<p><strong>428 Precondition Required</strong> (RFC 6585) — caller sent neither
+<code>if_updated_at</code> nor <code>force: true</code>.</p>
+<pre><code class="language-jsonc">{
+  &quot;error_type&quot;: &quot;precondition_required&quot;,
+  &quot;note_id&quot;: &quot;01J9Z2K3...&quot;,
+  &quot;path&quot;:   &quot;projects/launch.md&quot;,
+  &quot;message&quot;: &quot;update requires `if_updated_at` (the note's last-seen updated_at) or `force: true`.&quot;
+}
+</code></pre>
+<p>The two status codes are deliberately differentiated — <code>428</code> is
+&quot;you didn't try&quot;, <code>409</code> is &quot;you tried and lost the race&quot;. An agent
+should react differently to each.</p>
+<h3>Reads always return <code>updated_at</code></h3>
+<p>Every single-resource response includes <code>updated_at</code>, falling back to
+<code>created_at</code> if the resource has never been updated. <code>create-note</code>
+returns <code>updated_at</code> on the freshly-created note so the next write
+already has a token. There is no path through the API where a caller
+could end up holding a resource without a precondition value.</p>
+<p>Canonical implementation:
+<a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/src/routes.ts"><code>parachute-vault/src/routes.ts</code></a>
+(write handlers, lines ~418–525) +
+<a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/src/mcp-http.ts"><code>parachute-vault/src/mcp-http.ts</code></a>
+(MCP tool surface — identical structured-error shape). Landed in
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/153"><code>parachute-vault#153</code></a>.</p>
+<h2>Why</h2>
+<ul>
+<li><strong>Agents are concurrent by default.</strong> Two agents reading the same
+note, both updating, both succeeding silently is the most common
+silent-data-loss bug in agent stacks. Optimistic concurrency makes
+the conflict visible at the API boundary.</li>
+<li><strong>428 ≠ 409.</strong> Distinguishing &quot;no precondition supplied&quot; from
+&quot;precondition supplied but stale&quot; lets clients/agents differentiate
+<em>bug-in-my-code</em> from <em>raced-with-someone-else</em>. A blanket 400
+collapses signal that the caller needs to recover.</li>
+<li><strong>Same shape on HTTP and MCP.</strong> Whether an agent calls
+<code>update-note</code> over MCP or <code>PUT /api/notes/:id</code> over HTTP, the error
+body keys are identical (<code>error_type</code>, <code>current_updated_at</code>,
+<code>your_updated_at</code>, <code>path</code>, <code>note_id</code>). One recovery path.</li>
+<li><strong><code>force: true</code> is loud.</strong> Making the override an explicit boolean
+rather than absence of a header means clobbers show up in audit
+logs as deliberate decisions, not accidents.</li>
+</ul>
+<h2>Rules</h2>
+<ul>
+<li><strong>Default is required, not optional.</strong> Writes without
+<code>if_updated_at</code> AND without <code>force: true</code> get a 428. Don't soft-fail
+to a write.</li>
+<li><strong><code>force: true</code> overrides any <code>if_updated_at</code>.</strong> Don't try to honour
+both — the explicit clobber wins. Documenting one rule keeps client
+logic simple.</li>
+<li><strong>Atomic check + write.</strong> The precondition check must run inside the
+same transaction as the update, not as a separate <code>SELECT</code> →
+application-layer compare → <code>UPDATE</code>. Otherwise the race window
+reopens.</li>
+<li><strong>Never auto-resolve.</strong> The server doesn't merge, doesn't pick a
+side, doesn't retry. The 409 is a signal back to the caller; the
+caller decides whether to re-fetch + re-apply or <code>force: true</code>.</li>
+<li><strong>Conflict body uses the structured field names.</strong> <code>current_updated_at</code>,
+<code>your_updated_at</code>, <code>path</code>, <code>note_id</code>, <code>error_type: &quot;conflict&quot;</code>.
+Don't invent module-specific aliases. Legacy fields
+(<code>expected_updated_at</code>) may exist for back-compat shims; keep them
+alongside the new shape, drop on the next major.</li>
+<li><strong>Single-resource reads always include <code>updated_at</code>.</strong> If the
+resource has never been updated, fall back to <code>created_at</code>. A read
+that doesn't return a precondition token is a bug.</li>
+<li><strong>Apply to <em>every</em> write.</strong> Update, partial-update, link mutations,
+tag mutations on a note — anything that changes a resource's
+<code>updated_at</code>. Bulk operations either all-or-nothing the precondition
+per-resource, or document a different (<code>force: true</code>-equivalent)
+contract on the bulk endpoint.</li>
+</ul>
+<h2>Where this applies</h2>
+<ul>
+<li><strong><code>parachute-vault</code></strong> — reference implementation. HTTP write handlers
+(<code>routes.ts</code>) and MCP <code>update-note</code> tool (<code>mcp-http.ts</code>) both
+enforce. PR #153.</li>
+<li><strong><code>parachute-notes</code></strong> — relies on this contract for collaborative
+edits (browser tab + agent edits to the same note). Must not strip
+the precondition before forwarding writes from the PWA.</li>
+<li><strong>Future API-surface modules</strong> — when a module exposes mutating
+HTTP/MCP endpoints over a database-backed resource, follow the same
+shape. Cheap to implement, prevents an entire class of silent
+corruption.</li>
+</ul>
+<h2>Non-applicability</h2>
+<ul>
+<li><strong>Append-only / event-log surfaces.</strong> Anything where the operation
+is &quot;add a row&quot; rather than &quot;modify a row&quot; doesn't need the
+precondition — there's no row to clobber. Conflict semantics may
+still apply at the <em>uniqueness</em> level (e.g. a duplicate-path
+rejection on create), but that's a different shape (typically 409
+with <code>error_type: &quot;duplicate&quot;</code>).</li>
+<li><strong>Idempotent overwrites under a caller-supplied key.</strong> Patterns like
+<code>PUT /by-key/:idempotency-key { value }</code> where the caller's key
+<em>is</em> the precondition.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li><strong>Bulk operation semantics.</strong> A bulk update across N notes today
+would require N preconditions. Reasonable, but verbose. A future
+bulk endpoint may want a single <code>if_unchanged_since: &lt;ISO&gt;</code> against
+the whole working set; not yet designed.</li>
+<li><strong>Cross-resource transactions.</strong> Updating a note + a tag + a link in
+one call (today: separate operations, separate preconditions). If
+this becomes common, a transactional wrapper that takes a vector of
+preconditions could land. Premature today.</li>
+</ul>

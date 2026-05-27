@@ -58,7 +58,7 @@ duplicate row is removed by hand.
 
 - vault: [`parachute-vault/src/self-register.ts`](https://github.com/ParachuteComputer/parachute-vault/blob/main/src/self-register.ts) — `name: manifest.manifestName`
 - scribe: [`parachute-scribe/src/self-register.ts`](https://github.com/ParachuteComputer/parachute-scribe/blob/main/src/self-register.ts) — `name: module.manifestName`
-- app: [`parachute-app/packages/app-host/src/self-register.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/self-register.ts) — `name: ROW_NAME` (pre-resolved from `module.json`'s `manifestName` at module scope)
+- app: [`parachute-surface/packages/app-host/src/self-register.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/self-register.ts) — `name: ROW_NAME` (pre-resolved from `module.json`'s `manifestName` at module scope)
 - runner: [`parachute-runner/src/self-register.ts`](https://github.com/ParachuteComputer/parachute-runner/blob/main/src/self-register.ts) — same pattern as app
 
 The `ROW_NAME` const variant (app + runner) is slightly safer than the
@@ -73,10 +73,10 @@ matches `manifestName`.
 | Surface | Identifier shape | Example |
 | --- | --- | --- |
 | Operator CLI (`parachute install`, `parachute restart`) | short | `parachute install app` |
-| services.json row `name` field | manifestName | `"parachute-app"` |
-| Hub `findService` lookups | manifestName | `findService("parachute-app")` |
-| Module-discovery URL paths | short or per-paths from `module.json` | `/app/...` |
-| npm package name | scoped manifestName | `@openparachute/app` |
+| services.json row `name` field | manifestName | `"parachute-surface"` |
+| Hub `findService` lookups | manifestName | `findService("parachute-surface")` |
+| Module-discovery URL paths | short or per-paths from `module.json` | `/surface/...` |
+| npm package name | scoped manifestName | `@openparachute/surface` |
 
 The CLI translates short → `manifestName` at the boundary; downstream
 code never sees the short name. The two namespaces share a stem
@@ -101,11 +101,11 @@ When writing a new module's self-register:
 ## History
 
 - **2026-05-22**: Aaron hit a `duplicate port 1946 — claimed by both
-  "parachute-app" and "app"` error walking a fresh install. Root cause:
-  parachute-app's self-register wrote `name: "app"` while hub's install
-  path had earlier stamped `name: "parachute-app"`. Same shape latent
+  "parachute-surface" and "app"` error walking a fresh install. Root cause:
+  parachute-surface's self-register wrote `name: "app"` while hub's install
+  path had earlier stamped `name: "parachute-surface"`. Same shape latent
   in parachute-runner (`name: "runner"`). Fixed inline in
-  [parachute-app#13](https://github.com/ParachuteComputer/parachute-app/pull/13)
+  [parachute-surface#13](https://github.com/ParachuteComputer/parachute-surface/pull/13)
   and
   [parachute-runner#4](https://github.com/ParachuteComputer/parachute-runner/pull/4).
   Pattern doc landed same day to prevent recurrence; audit script

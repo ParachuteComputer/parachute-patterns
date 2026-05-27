@@ -1,0 +1,273 @@
+<h1>Knowledge tool data models — a survey</h1>
+<p><strong>Status:</strong> research input for Parachute Vault architecture review
+<strong>Date:</strong> 2026-05-02
+<strong>Scope:</strong> how mainstream knowledge / note tools structure paths, names, tags, schemas, and links — and what trade-offs each pattern carries for a system like Parachute Vault.</p>
+<p>This doc surveys eleven tools, focused on the relationships between <strong>identity, path, tags, schemas, links, and permissions</strong>. Sources are cited inline by URL. Speculation is avoided; where a doc is silent, the doc says &quot;silent&quot;.</p>
+<hr>
+<h2>1. TL;DR</h2>
+<ol>
+<li><strong>Two camps on note identity.</strong> File-based tools (Obsidian, TiddlyWiki) use <strong>name-as-key</strong>; database-backed tools (Logseq, Roam, Notion, Anytype, Tana, Capacities) use <strong>stable UUIDs</strong>, with names being mutable display strings on top. Parachute's <code>id (TEXT pk)</code> + optional unique <code>path</code> puts it in the &quot;stable ID, mutable path&quot; camp — same family as Logseq/Notion/Anytype.</li>
+<li><strong>Path is rarely a (folder, name) tuple in successful tools.</strong> Filesystem-bound tools store a single string; graph tools elide path entirely. The (folder, name) split shows up only when the underlying storage is a real filesystem, and even then is usually flattened to a single string for resolution.</li>
+<li><strong>Tag identity stability matters most when schemas attach to tags.</strong> Tools that bind schemas to tags (Logseq classes, Tana supertags, Anytype types, Capacities object types) all give tags <strong>stable IDs</strong> with mutable display names. Tools that treat tags as pure pivots/labels (Obsidian, TiddlyWiki, Roam page-as-tag) get away with name-as-identity, but pay for it on rename.</li>
+<li><strong>Schema-attached-to-tag is the dominant pattern for typed notes.</strong> Logseq classes, Tana supertags, Anytype types, Capacities object types, and Notion data sources all converge on: <em>applying a tag/type to a node implies a property schema</em>. Parachute's <code>_tags/&lt;name&gt;</code> config note is a structural cousin — schema-as-data, authored in the same surface as content.</li>
+<li><strong>Wikilink rename auto-follow is a <em>runtime</em> index, not a stored pointer.</strong> Obsidian rewrites the link text on rename only because the editor is the rename channel; external rename breaks links. Logseq/Roam/Anytype/Notion link via stable ID under the hood, so display name changes don't break anything — display is rendered from the current name, not stored.</li>
+<li><strong>Hierarchical tags are nearly always slash-as-string.</strong> Obsidian, Logseq, and Tana all use <code>parent/child</code> string conventions. Only Anytype/Capacities/Tana support real type inheritance (parent-pointer in the schema), which is a different feature than display hierarchy.</li>
+<li><strong>Permissions land in two patterns.</strong> Page-tree inheritance (Notion: parent grants flow to children, with overrides) or whole-space role membership (Anytype channels, Tana workspaces). Property-driven access (Notion's &quot;page-level access via Person property&quot;) is the rarest and most powerful — and it presupposes a typed schema. Tag-scoped tokens (Parachute's Phase 1) are unusual; nothing surveyed scopes by tag root.</li>
+<li><strong>&quot;Everything is X&quot; axis splits the field.</strong> Roam/Logseq: blocks. Obsidian: files. Notion: pages-and-databases. Anytype/Tana/Capacities: typed objects. Parachute's &quot;tags-as-config-notes&quot; makes notes the universal substrate, with structure layered as data — closer to TiddlyWiki's &quot;everything is a tiddler&quot; than to any of the typed-object systems.</li>
+<li><strong>Schema-as-data scales further than schema-as-code.</strong> Tools that store schemas inside the user's own data (Tana fields-on-supertag, Notion property objects, Anytype JSON-bundled types, Logseq class properties) let users evolve schemas without touching code. Schema-in-code (TiddlyWiki, raw Obsidian) leaves users to convention; Dataview-style indexing emerges to fill the gap.</li>
+<li><strong>The rename-vs-stable tension is the deepest split.</strong> Tools that treat name as identity (Obsidian, TiddlyWiki) get filesystem interop and human readability. Tools that decouple name from identity (everyone else surveyed) get rename safety and richer relations. You can't have both without paying for an indirection layer — and the indirection layer is exactly what Parachute's <code>links</code> and <code>note_tags</code> tables are.</li>
+</ol>
+<hr>
+<h2>2. Per-tool survey</h2>
+<h3>2.1 Obsidian</h3>
+<p><strong>Identity / path.</strong> A note is a file on disk. The stable identifier is its <strong>path</strong> (vault-relative, including the <code>.md</code> extension). Obsidian has no UUID layer; the path <em>is</em> the identity. Folder structure is the path string — not a (folder, name) tuple. Properties (formerly &quot;frontmatter&quot;) are YAML at the top of the file with typed values: text, list, number, checkbox, date, datetime (<a href="https://help.obsidian.md/properties">Obsidian Help — Properties</a>). There is no per-note schema; users define a global &quot;Properties view&quot; that knows about field names and assumes types, but enforcement is best-effort and global.</p>
+<p><strong>Tags / schemas.</strong> Tags are <strong>strings</strong>, not entities. They appear inline as <code>#foo/bar</code> or in YAML <code>tags: [foo/bar]</code>. Hierarchy is by slash convention only — <code>#animals/dogs</code> is conceptually under <code>#animals</code> but there is no parent pointer; the tag pane parses the slashes at display time (<a href="https://help.obsidian.md/tags">Obsidian Help — Tags</a>). There is no tag identity: rename is a vault-wide find-and-replace, not a referential update. There is no per-tag schema; the property system is global. Plugins like Dataview fill the schema-query gap by indexing frontmatter at runtime.</p>
+<p><strong>Links / permissions.</strong> Wikilinks <code>[[X]]</code> resolve by <strong>shortest unique filename</strong>. If <code>Math.md</code> exists once in the vault, <code>[[Math]]</code> works; if it exists twice, you must write <code>[[Folder/Math]]</code>. The resolution order is exact filename → normalized (spaces/hyphens/underscores collapsed) → path (<a href="https://forum.obsidian.md/t/settings-new-link-format-what-is-shortest-path-when-possible/6748">Obsidian forum — Settings: New Link Format</a>, <a href="https://gist.github.com/dhpwd/9bb86c53b69cb63e09ccca42e3bf924c">obsidian_wikilink_rules</a>). Rename auto-follow is a <em>rewrite</em> operation: when you rename inside Obsidian, every <code>[[old]]</code> is rewritten to <code>[[new]]</code>. External renames break every link (<a href="https://desktopcommander.app/blog/obsidian-bulk-rename-files/">Desktop Commander — Bulk Rename</a>). Section-link renames (<code>[[file#section]]</code>) are not auto-updated, and Dataview-embedded wikilinks aren't either (<a href="https://forum.obsidian.md/t/wikilinks-not-updated-on-file-rename-when-part-of-a-dataview-query/70043">Obsidian forum — Wikilinks not updated...</a>). Obsidian is single-user; sync/sharing is filesystem-level. No native permission model.</p>
+<h3>2.2 Logseq</h3>
+<p><strong>Identity / path.</strong> Every block has a <strong>stable UUID</strong> (<code>:block/uuid</code>). Pages are blocks-with-<code>:node/title</code>. Path is essentially absent from the data model — pages live in a flat namespace (file-graph mode keeps <code>pages/</code> and <code>journals/</code> directories on disk, but the database treats them as a flat keyed-by-title space) (<a href="https://deepwiki.com/logseq/logseq/4.2-database-schema-and-validation">Logseq Database Schema</a>). Content is stored as a Datascript graph. Renaming a page changes <code>:node/title</code> but <code>:block/uuid</code> is unchanged, so block references survive.</p>
+<p><strong>Tags / schemas.</strong> Tags and pages are the <strong>same thing</strong> — <code>#foo</code> is shorthand for <code>[[foo]]</code> (<a href="https://discuss.logseq.com/t/the-difference-between-page-links-tags-and-properties/8393">Logseq forum — page links, tags, and properties</a>). Logseq DB v1+ introduced <strong>classes</strong>: a class is a tag with an attached property schema. When a block has <code>:block/tags</code> pointing to a class entity, the schema declares which properties are required/recommended, with type validation via Malli (<a href="https://deepwiki.com/logseq/logseq/3.2-property-management">DeepWiki — Property Management</a>). Property values flow through <code>:db.cardinality/one</code> or <code>:many</code>. Schema is authored in the UI, stored as data in the same Datascript DB. This is the closest analog to Parachute's <code>_tags/&lt;name&gt;</code> config note model — schema-as-first-class-data, edited in the same surface as content.</p>
+<p><strong>Links / permissions.</strong> Page links <code>[[X]]</code> resolve by <strong>title string</strong>. Block references <code>((uuid))</code> resolve by UUID and are immune to renames. When you rename a page, <code>[[X]]</code> strings in block content get rewritten — display and storage are the same here. Logseq is local-first; multi-user comes via external sync (Git, iCloud, Logseq Sync). No native permission model beyond filesystem.</p>
+<h3>2.3 Roam Research</h3>
+<p><strong>Identity / path.</strong> Roam is a <strong>Datomic graph</strong>. Every block is a datom-set keyed by a 9-character <code>:block/uid</code> (e.g. <code>((GGv3cyL6Y))</code>) plus an internal entity ID. Pages are blocks distinguished by <code>:node/title</code>; paragraphs have <code>:block/string</code> (<a href="https://www.zsolt.blog/2021/01/Roam-Data-Structure-Query.html">Zsolt — Roam Data Structure</a>). There is no path — only a hierarchical <code>:block/parents</code>/<code>:block/children</code> tree per page, and a flat page namespace.</p>
+<p><strong>Tags / schemas.</strong> Tags are page references — <code>#foo</code> and <code>[[foo]]</code> both create an edge to the page named &quot;foo&quot;. Roam has <strong>attributes</strong> as a third primitive: a block whose string is <code>Status:: Active</code> writes a triple <code>(parent-block, Status, Active)</code>. Attributes are name-based (the attribute &quot;Status&quot; is just a page named Status). Roam has no schema layer — the convention is that you write <code>Status::</code> as the first child of any block of a certain &quot;type&quot;, and queries pivot on that. Templates emulate schema; the system itself is schema-less (<a href="https://nesslabs.com/pages-tags-attributes-roam-research">Ness Labs — pages, tags, attributes</a>).</p>
+<p><strong>Links / permissions.</strong> Page links resolve by title; block refs by 9-char UID. Renaming a page rewrites <code>[[old]]</code> to <code>[[new]]</code> everywhere because the underlying ref points to the entity, and the markdown is regenerated from the current title. Roam supports multi-user via graph sharing; permissions are graph-level (read/write per user on a graph). No per-page permissions.</p>
+<h3>2.4 Notion</h3>
+<p><strong>Identity / path.</strong> Pages and databases (now called <strong>data sources</strong>) have <strong>stable UUIDs</strong> (<a href="https://developers.notion.com/reference/property-object">Notion Property Object</a>). Pages live in a tree (parent → child), so &quot;path&quot; is implicit through the parent chain rather than a string. A database is a typed container; rows are pages with property values conforming to the database's schema. Since the September 2025 API change, one <em>database</em> can hold multiple <em>data sources</em> — the data source is the schema-bearing unit, the database is the UI grouping (<a href="https://www.simonesmerilli.com/life/notion-database-data-source">Notion Databases Explained</a>).</p>
+<p><strong>Tags / schemas.</strong> Notion has no global tag concept. The equivalent is a <strong>select / multi-select property</strong> on a database — its values are the &quot;tags&quot; for that database, with their own option IDs and colors. Schema is per-database: the database's <code>properties</code> object defines columns with 21 supported types (rich_text, number, date, select, multi_select, status, relation, rollup, formula, files, people, etc.) (<a href="https://developers.notion.com/reference/property-object">Notion Property Object</a>). Schema lives <strong>as metadata on the database object</strong>, not as user-authored content. Schema size is capped at 50KB.</p>
+<p><strong>Links / permissions.</strong> In-text mentions resolve by page UUID; the display title is rendered from the current page name, so renames are free. Database <strong>relations</strong> are first-class typed properties with a <code>data_source_id</code> pointing to the target schema; bidirectional relations create a synced inverse property (<a href="https://www.notion.com/help/relations-and-rollups">Notion Help — Relations and Rollups</a>). Permissions are page-tree based: parent permissions inherit to children with overrides, with four levels (Full Access / Can Edit / Can Comment / Can View). Databases add &quot;Can edit content&quot; (edit rows but not schema) (<a href="https://www.notion.com/help/sharing-and-permissions">Notion Help — Sharing &amp; Permissions</a>). On Business/Enterprise, <strong>page-level access rules</strong> can grant access by a property value — e.g. &quot;users in the <code>Owner</code> person property can edit&quot;. This is the rarest and most powerful pattern surveyed: ABAC via the schema itself.</p>
+<h3>2.5 TiddlyWiki</h3>
+<p><strong>Identity / path.</strong> A tiddler is a <strong>JS object keyed by <code>title</code></strong> in an in-memory map (<a href="https://tiddlywiki.com/dev/static/Datamodel.html">TiddlyWiki Datamodel</a>). Title <em>is</em> the identity — there is no UUID, no path. Folders don't exist; the tiddler space is flat. Every tiddler has a <code>text</code> field plus arbitrary user fields (name:value). The fields system is open: any tiddler can have any field (<a href="https://tiddlywiki.com/static/TiddlerFields.html">TiddlerFields</a>).</p>
+<p><strong>Tags / schemas.</strong> Tags are a <strong><code>tags</code> array field</strong> on each tiddler — values are strings that happen to be other tiddler titles. A tag with a tiddler of the same name doubles as a &quot;category page&quot; with rendering rules (<a href="https://tiddlywiki.com/static/Tagging.html">TiddlyWiki Tagging</a>). There is no schema layer; the closest is a <em>system tag</em> (e.g. <code>$:/tags/Stylesheet</code>) that triggers TiddlyWiki to treat the tagged tiddler as part of a system function. Field names are conventions; types are inferred at filter time. Hierarchy via tags is by string convention plus the special <code>list-after</code>/<code>list-before</code> fields for ordering siblings.</p>
+<p><strong>Links / permissions.</strong> Wiki links <code>[[X]]</code> resolve by tiddler title — no path, no ID. Rename rewrites links across the wiki via the editor's rename action; external edits to the underlying file (when persisted via plugin) break things. TiddlyWiki has no native permission model — it's a single HTML file or single-user node-server. Multi-user TiddlyWiki ships via plugins (Bob, NodeJS edition with users.csv) and grants are tiddler-pattern based.</p>
+<h3>2.6 Anytype</h3>
+<p><strong>Identity / path.</strong> Every object — including types and relations themselves — has a <strong>unique key</strong> and lives inside a <strong>space</strong> (formerly called channel) (<a href="https://deepwiki.com/anyproto/anytype-heart/3.1-object-types-and-relations">DeepWiki — Object Types and Relations</a>). There is no path; the data model is a graph. Object Types (Page, Task, Person, custom types) and Relations (name, due-date, status, ...) are themselves objects, declared in JSON bundles for system types and as user objects for custom ones.</p>
+<p><strong>Tags / schemas.</strong> Schema is <strong>tied to types</strong> — every object has a type, and the type declares which relations apply. A relation can be Text, Number, Date, Select, Multi-select, Email/Phone/URL, Checkbox, File, or Object (a typed reference) (<a href="https://doc.anytype.io/anytype-docs/getting-started/types/relations">Anytype Docs — Properties</a>). Tags-as-strings live as multi-select relation values. Types can inherit (sub-types) — so the &quot;schema graph&quot; is itself a graph, not a flat list. This is the cleanest typed-object model surveyed: types are first-class, schemas live with types, and types are shareable across spaces.</p>
+<p><strong>Links / permissions.</strong> Object references are by stable key; display name is rendered from the current state. Spaces are encrypted containers with <strong>per-space roles</strong>: Owner, Editor, Viewer (<a href="https://doc.anytype.io/anytype-docs/getting-started/vault-and-key/space">Anytype Docs — Channels</a>). There is no per-object access control yet (active feature request); permission is whole-space. Compare to Notion's per-page tree model — Anytype trades granularity for cryptographic space isolation.</p>
+<h3>2.7 Tana</h3>
+<p>A node has a stable internal ID; Tana inherits the Roam-like outliner shape (<a href="https://tana.inc/articles/intro-to-nodes-fields-and-supertags">Tana — Intro to nodes, fields, supertags</a>). No path concept. <strong>Supertags</strong> are tags-with-schema: applying one attaches a template of fields and child nodes. Fields have types (Plain, Options, Instance, Date, ...) and a <em>discoverable</em> flag that lifts their definition into the global schema for reuse (<a href="https://tana.inc/docs/fields">Tana — Fields</a>). Supertags can inherit (a <code>Sub-task</code> from <code>Task</code>). Schema is authored in the same outliner where content lives — supertag config nodes <em>are</em> Tana nodes. This is the strongest direct analog to Parachute's <code>_tags/&lt;name&gt;</code> pattern: schema-bearing nodes that look identical to content nodes, with supertags providing the type relation. Links use stable IDs; display follows the current name. Permissions are workspace-level.</p>
+<h3>2.8 Capacities</h3>
+<p>An object has a stable ID and <strong>always has a type</strong>; there is no untyped object (<a href="https://docs.capacities.io/reference/content-types">Capacities — Object Types</a>). Types include built-in basics (Page, Tag, Image, Weblink, File, Tweet, AI Chat, Query, Table) and user-defined Custom Object Types. Tags are themselves <em>a basic object type</em> — a Tag is an object you can apply to other objects, and it can carry its own properties. Schema is per-type: properties have name, description, icon, and type (<a href="https://docs.capacities.io/reference/properties">Capacities — Properties</a>). Object-typed properties allow typed cross-references with optional bidirectional sync. Custom types and properties propagate to all instances; you can't have one-off properties on a single object without defining them on the type first. No documented fine-grained permission model; primarily single-user with cloud sync.</p>
+<h3>2.9 Reflect</h3>
+<p>Daily-note centric — opening Reflect drops into today's note, with notes scrolling as a chronology (<a href="https://reflect.academy/using-backlinks-and-tags">Reflect Academy — Using backlinks and tags</a>). Two organizational primitives: backlinks <code>[[X]]</code> (associations) and tags (flat-string categorization). No schema/property layer; the explicit design choice is &quot;no hierarchy, only association&quot;. AI is the structuring layer instead. Single-user. The useful lesson is the <em>deliberate absence</em> of schema — Reflect bets AI-over-flat-text beats user-authored schema for personal knowledge.</p>
+<h3>2.10 Athens (archived)</h3>
+<p>Open-source Roam clone on Datascript (<a href="https://github.com/athensresearch/athens">Athens GitHub</a>). Block-based, UUID-keyed, attributes-by-convention — same shape as Roam. Archived 2022. Community lessons: building a Datascript-backed graph is a heavy engine investment; the schemaless graph is hard to make legible to new users; collaborative editing on a graph DB is a research problem (<a href="https://news.ycombinator.com/item?id=26316793">HN — Athens Launch thread</a>). Supports the broader pattern: schema-less graphs are pure but ergonomically punishing without a typing layer on top.</p>
+<h3>2.11 schema.org</h3>
+<p>Not a tool but the canonical &quot;things have types and types have properties&quot; web vocabulary. Three primitives: Types, Properties, Enumerated Values. Types form a multi-inheritance hierarchy; properties have <code>domainIncludes</code> and <code>rangeIncludes</code> — both fuzzy (&quot;expected&quot;, not enforced) (<a href="https://schema.org/docs/datamodel.html">Schema.org Data Model</a>). The flexibility doctrine is explicit: &quot;Schema.org is based on a very flexible datamodel, and takes a pragmatic view of conformance.&quot; Relevance for Parachute: schema.org is the deep-time argument that <strong>types-with-properties-with-fuzzy-conformance</strong> is the right shape for heterogeneous knowledge. The &quot;expected, not enforced&quot; stance is the model Parachute should consider for <code>_tags/&lt;name&gt;</code> — declare what's indexed/queryable without rejecting notes that don't match.</p>
+<hr>
+<h2>3. Cross-cutting comparison</h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Note ID</th>
+<th>Path/location</th>
+<th>Tag identity</th>
+<th>Tag hierarchy</th>
+<th>Schema location</th>
+<th>Link resolution</th>
+<th>Rename auto-follow</th>
+<th>Permissions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Obsidian</strong></td>
+<td>path string</td>
+<td>single string (vault-relative)</td>
+<td>string only</td>
+<td>slash convention</td>
+<td>global property names; per-tag schema absent</td>
+<td>shortest unique filename</td>
+<td>yes (in-app rename); no (external)</td>
+<td>filesystem only</td>
+</tr>
+<tr>
+<td><strong>Logseq</strong></td>
+<td>block UUID</td>
+<td>flat title space</td>
+<td>class entity (UUID)</td>
+<td>slash + class inheritance</td>
+<td>classes (data)</td>
+<td>title for <code>[[]]</code>, UUID for <code>(())</code></td>
+<td>yes (UUID-backed)</td>
+<td>filesystem / sync</td>
+</tr>
+<tr>
+<td><strong>Roam</strong></td>
+<td>9-char UID</td>
+<td>flat title space</td>
+<td>page reference (entity)</td>
+<td>slash convention</td>
+<td>none (attributes by convention)</td>
+<td>title for <code>[[]]</code>, UID for <code>(())</code></td>
+<td>yes</td>
+<td>per-graph</td>
+</tr>
+<tr>
+<td><strong>Notion</strong></td>
+<td>UUID</td>
+<td>parent-tree (implicit)</td>
+<td>select option ID per database</td>
+<td>none (per-database options)</td>
+<td>per-database <code>properties</code> (metadata)</td>
+<td>UUID, title rendered live</td>
+<td>yes (free)</td>
+<td>page-tree inheritance + property-driven (Biz+)</td>
+</tr>
+<tr>
+<td><strong>TiddlyWiki</strong></td>
+<td>title string</td>
+<td>flat space</td>
+<td>string in <code>tags</code> field</td>
+<td>string + list-after/before</td>
+<td>none (field name convention)</td>
+<td>title</td>
+<td>yes (in-app rename)</td>
+<td>plugin-dependent</td>
+</tr>
+<tr>
+<td><strong>Anytype</strong></td>
+<td>object key</td>
+<td>none (graph)</td>
+<td>type entity (key)</td>
+<td>sub-types (parent pointer)</td>
+<td>type bundles (JSON for system; objects for user)</td>
+<td>key, title rendered live</td>
+<td>yes (free)</td>
+<td>per-space role (Owner/Editor/Viewer)</td>
+</tr>
+<tr>
+<td><strong>Tana</strong></td>
+<td>node ID</td>
+<td>none (outline)</td>
+<td>supertag entity</td>
+<td>supertag inheritance</td>
+<td>supertag config nodes (data)</td>
+<td>ID, title rendered live</td>
+<td>yes</td>
+<td>workspace</td>
+</tr>
+<tr>
+<td><strong>Capacities</strong></td>
+<td>object ID</td>
+<td>none</td>
+<td>tag is a basic type</td>
+<td>none documented</td>
+<td>per-type schema</td>
+<td>ID</td>
+<td>yes</td>
+<td>single-user / cloud sync</td>
+</tr>
+<tr>
+<td><strong>Reflect</strong></td>
+<td>UUID (inferred)</td>
+<td>flat</td>
+<td>string</td>
+<td>none</td>
+<td>none (no schema)</td>
+<td>name</td>
+<td>yes</td>
+<td>single-user</td>
+</tr>
+<tr>
+<td><strong>Athens (archived)</strong></td>
+<td>block UID</td>
+<td>flat title space</td>
+<td>page entity</td>
+<td>slash convention</td>
+<td>none (attributes)</td>
+<td>title for <code>[[]]</code></td>
+<td>yes</td>
+<td>per-graph</td>
+</tr>
+<tr>
+<td><strong>schema.org</strong></td>
+<td>IRI</td>
+<td>none (web)</td>
+<td>type IRI</td>
+<td>multi-inheritance</td>
+<td>type definition (RDF)</td>
+<td>IRI</td>
+<td>n/a</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><strong>Parachute Vault</strong></td>
+<td>TEXT pk</td>
+<td>optional unique TEXT</td>
+<td>tag entity (id) + name</td>
+<td>name-prefix <code>/</code> + <code>_tags/&lt;name&gt;</code></td>
+<td><code>_tags/&lt;name&gt;</code> config notes (data)</td>
+<td>name (with path fallback?)</td>
+<td>via <code>links</code> table</td>
+<td>tag-scoped tokens (Phase 1)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>4. Patterns Parachute could adopt vs reject</h2>
+<h3>Adopt</h3>
+<ul>
+<li><strong>Stable tag IDs with mutable names — already in.</strong> Parachute's <code>tags.id</code> decoupled from <code>tags.name</code> puts it in the typed-object camp (Logseq class, Anytype type, Tana supertag, Capacities type). Rename a tag → all <code>note_tags</code> rows still resolve. This is non-negotiable once schemas attach to tags; without it, schema-rename becomes a vault-wide rewrite.</li>
+<li><strong>Schema-as-data via <code>_tags/&lt;name&gt;</code>.</strong> Validated by Tana (supertag config nodes) and Logseq (class properties stored in Datascript). The pattern survives: schemas evolve as fast as content because they live in the same surface. The user authoring tools that work for notes work for schemas. Parachute should keep this and double down — explicitly version <code>_tags/&lt;name&gt;</code> notes the same way other notes are versioned.</li>
+<li><strong>Wikilink resolution by tag/name with fallback to path.</strong> Matches Obsidian's &quot;shortest unique&quot; plus a path disambiguator. The <code>links</code> table acts as the <em>index</em> that makes rename auto-follow possible without rewriting note content. (Obsidian rewrites; Parachute can re-resolve at read time. Re-resolution at read is more flexible.)</li>
+<li><strong>Hierarchical tags via name-prefix.</strong> All the convergent evidence (Obsidian, Logseq, Tana) says the slash-string convention works fine for <em>display</em> hierarchy. Reserve actual parent-pointer trees for sub-typing if/when Parachute introduces tag-of-tag inheritance.</li>
+<li><strong>Property-driven access for the Cloud tier (eventually).</strong> Notion's &quot;page-level access by Person property&quot; is the most powerful pattern surveyed and the one cloud-multi-user Parachute will eventually want. It composes naturally with <code>_tags/&lt;name&gt;</code> schemas: a tag schema field with type &quot;person&quot; can drive ACLs, no separate ACL system needed.</li>
+</ul>
+<h3>Reject (or defer)</h3>
+<ul>
+<li><strong>(folder, name) tuple as the storage shape.</strong> No surveyed tool benefits from the split at the data-model layer; even file-based tools store path as a single string and let the filesystem handle the slash. Parachute's <code>path</code> column being a single TEXT is the right call — keep it that way.</li>
+<li><strong>Wikilink rewrite on rename.</strong> Obsidian rewrites note content because it has no link index. Parachute <em>has</em> a <code>links</code> table — re-resolve at read time, don't rewrite content. This avoids the Dataview-edge-case class of bugs Obsidian has lived with.</li>
+<li><strong>Schema-by-database (Notion).</strong> Tying schemas to containers (databases) over types (tags) is what forces Notion's &quot;one type per database&quot; awkwardness. Parachute's tag-as-schema-carrier is more flexible: a note can have multiple tags, hence multiple schemas overlaid. Notion can't — a row belongs to one database.</li>
+<li><strong>Block-as-first-class (Roam, Logseq, Athens).</strong> The block-graph model is technically pure but ergonomically heavy and has crushed multiple companies (Athens). Note-as-first-class with tags-as-config-notes covers ~95% of block-graph use cases without the engine cost.</li>
+<li><strong>Tag-name root-level token scoping as the long-term answer.</strong> Parachute Phase 1 ships <code>scoped_tags</code> as an allowlist on tokens. Nothing else surveyed scopes by tag root — Notion does it by page tree, Anytype by space, the rest don't have multi-user. Tag-root scoping is a fine MVP but the long-term shape is more likely property-driven (a <code>viewable_by:</code> field on tag schemas) once the cloud tier needs real multi-tenancy.</li>
+</ul>
+<hr>
+<h2>5. Open questions / edge cases</h2>
+<ol>
+<li><strong>Wikilink ambiguity policy.</strong> Obsidian's &quot;shortest unique path&quot; requires the user to know what's unique. Parachute's <code>[[X]]</code> resolved by name needs a clear rule when two notes share a name. Options: (a) error / warn, (b) most-recently-updated wins, (c) require path on ambiguity. What does Parachute do today, and is it documented?</li>
+<li><strong>Tag-rename history.</strong> With stable tag IDs, rename is a metadata-only operation — but downstream consumers (search indexes, exports, MCP tool returns) may have cached the old name. Is there a tag-name-history table, or does the system trust &quot;rename is rare&quot;?</li>
+<li><strong>Schema validation strictness.</strong> Tana, Logseq, Anytype all enforce typed properties with validation. Parachute's <code>_tags/&lt;name&gt;</code> declares fields — does it <em>enforce</em> that notes with tag X carry the declared fields? Or is it schema.org-style &quot;expected, not required&quot;? Both are defensible; pick one and document it.</li>
+<li><strong>Path uniqueness vs reuse.</strong> <code>path TEXT optional unique</code> — is path required for some kinds of notes (e.g. anything in <code>_tags/</code>)? Or is path purely cosmetic? If <code>_tags/&lt;name&gt;</code> is a path, what happens when a tag with no <code>_tags/</code> config note is referenced? Implicit-schema-from-usage vs explicit-schema-required-for-tag.</li>
+<li><strong>Bidirectional links.</strong> Parachute's <code>links</code> table is graph edges. Are they directional (note A → note B) or bidirectional? Notion and Capacities make this a per-relation choice; Anytype defaults bidirectional; Obsidian's backlinks panel is computed at read time. If Parachute's links are stored directionally, the inverse query is a simple SELECT — no need to materialize bidirectionality.</li>
+<li><strong>Block-level granularity.</strong> None of the database-graph tools (Roam, Logseq, Anytype) regret making blocks first-class for outlining; the regret is the engine cost. If Parachute ever wants block-level tags or block-level links, the cleanest path is a <code>blocks</code> table that mirrors the <code>notes</code> shape — not retrofitting <code>notes.metadata</code>.</li>
+<li><strong>Multi-vault link resolution.</strong> Parachute is one vault per user (today). If/when cross-vault links are a thing (e.g. shared <code>_tags/</code> registries across an org), the link resolver needs a vault-qualified namespace. Notion handles this with workspace-scoped UUIDs; Anytype with cross-space type sharing.</li>
+<li><strong>External-edit safety.</strong> Obsidian breaks links when files are renamed outside the app. Parachute's <code>links</code> table re-resolved at read time is robust to direct-DB edits <em>if</em> renames go through the API. What's the contract for direct SQL writes? (Not a hypothetical — automation bots and export pipelines will hit the DB directly.)</li>
+<li><strong>Permission composition.</strong> Phase 1 tag-root-scoped tokens + (eventual) per-note ACLs + (eventual) field-driven ACLs need a composition story. Notion settled on inheritance-with-overrides — child overrides parent, explicit wins over implicit. Parachute should pick its rule before building the second permission dimension.</li>
+<li><strong>The <code>_tags/</code> reserved prefix.</strong> Multiple tools have a special prefix (<code>_</code> in Anytype, <code>$:/</code> in TiddlyWiki, <code>:</code>-prefix attrs in Datascript). The reserved prefix is fine, but its discoverability matters: how does a user find <code>_tags/&lt;name&gt;</code> to edit a schema? Is there a UI surface, or is it documentation-only?</li>
+</ol>
+<hr>
+<h2>Sources</h2>
+<ul>
+<li><a href="https://help.obsidian.md/properties">Obsidian Help — Properties</a></li>
+<li><a href="https://help.obsidian.md/tags">Obsidian Help — Tags</a></li>
+<li><a href="https://forum.obsidian.md/t/settings-new-link-format-what-is-shortest-path-when-possible/6748">Obsidian forum — Settings: New Link Format: What is &quot;Shortest path when possible&quot;?</a></li>
+<li><a href="https://gist.github.com/dhpwd/9bb86c53b69cb63e09ccca42e3bf924c">obsidian_wikilink_rules.md (gist)</a></li>
+<li><a href="https://forum.obsidian.md/t/wikilinks-not-updated-on-file-rename-when-part-of-a-dataview-query/70043">Obsidian forum — Wikilinks not updated on file rename when part of a Dataview query</a></li>
+<li><a href="https://desktopcommander.app/blog/obsidian-bulk-rename-files/">Desktop Commander Blog — How to Bulk Rename Obsidian Files Without Breaking Every Link</a></li>
+<li><a href="https://deepwiki.com/logseq/logseq/3.2-property-management">Logseq DeepWiki — Property Management</a></li>
+<li><a href="https://deepwiki.com/logseq/logseq/4.2-database-schema-and-validation">Logseq DeepWiki — Database Schema and Validation</a></li>
+<li><a href="https://discuss.logseq.com/t/the-difference-between-page-links-tags-and-properties/8393">Logseq forum — The difference between page links, tags, and properties</a></li>
+<li><a href="https://www.zsolt.blog/2021/01/Roam-Data-Structure-Query.html">Zsolt Blog — Deep Dive into Roam's Data Structure</a></li>
+<li><a href="https://nesslabs.com/pages-tags-attributes-roam-research">Ness Labs — When to use pages, tags, or attributes in Roam Research?</a></li>
+<li><a href="https://developers.notion.com/reference/property-object">Notion — Property Object reference</a></li>
+<li><a href="https://www.notion.com/help/relations-and-rollups">Notion Help — Relations &amp; rollups</a></li>
+<li><a href="https://www.notion.com/help/sharing-and-permissions">Notion Help — Sharing &amp; permissions</a></li>
+<li><a href="https://www.simonesmerilli.com/life/notion-database-data-source">Notion Databases Explained + API Changes</a></li>
+<li><a href="https://tiddlywiki.com/dev/static/Datamodel.html">TiddlyWiki — Datamodel</a></li>
+<li><a href="https://tiddlywiki.com/static/Tagging.html">TiddlyWiki — Tagging</a></li>
+<li><a href="https://tiddlywiki.com/static/TiddlerFields.html">TiddlyWiki — TiddlerFields</a></li>
+<li><a href="https://deepwiki.com/anyproto/anytype-heart/3.1-object-types-and-relations">Anytype DeepWiki — Object Types and Relations</a></li>
+<li><a href="https://doc.anytype.io/anytype-docs/getting-started/types/relations">Anytype Docs — Properties</a></li>
+<li><a href="https://doc.anytype.io/anytype-docs/getting-started/vault-and-key/space">Anytype Docs — Channels (Spaces)</a></li>
+<li><a href="https://tana.inc/articles/intro-to-nodes-fields-and-supertags">Tana — Intro to nodes, fields, supertags</a></li>
+<li><a href="https://tana.inc/docs/fields">Tana — Fields</a></li>
+<li><a href="https://tana.inc/docs/supertags">Tana — Supertags</a></li>
+<li><a href="https://docs.capacities.io/reference/content-types">Capacities — Object Types</a></li>
+<li><a href="https://docs.capacities.io/reference/properties">Capacities — Properties</a></li>
+<li><a href="https://reflect.academy/using-backlinks-and-tags">Reflect Academy — Using backlinks and tags</a></li>
+<li><a href="https://github.com/athensresearch/athens">Athens Research GitHub (archived)</a></li>
+<li><a href="https://news.ycombinator.com/item?id=26316793">HN — Launch HN: Athens Research</a></li>
+<li><a href="https://schema.org/docs/datamodel.html">Schema.org — Data Model</a></li>
+<li><a href="https://schema.org/docs/schemas.html">Schema.org — Schemas</a></li>
+</ul>

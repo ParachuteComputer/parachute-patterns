@@ -23,7 +23,7 @@ When adding one:
 
 ## Adding a new audit class to `audit-canonical-refs.sh`
 
-Each architectural shift produces a new class of stale-reference pattern. When you spot one (during a migration, or via a bug report like hub#323 → hub#324, or via a bug-shape like the parachute-app#13 / parachute-runner#4 duplicate-port-row regression), add a grep block to the script:
+Each architectural shift produces a new class of stale-reference pattern. When you spot one (during a migration, or via a bug report like hub#323 → hub#324, or via a bug-shape like the parachute-surface#13 / parachute-runner#4 duplicate-port-row regression), add a grep block to the script:
 
 ```bash
 echo "--- '<pattern description>' ---"

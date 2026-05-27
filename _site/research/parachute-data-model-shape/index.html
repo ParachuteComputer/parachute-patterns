@@ -1,0 +1,330 @@
+<h1>Parachute data model — paths, tags, schemas, links, scope</h1>
+<blockquote>
+<p><strong>Note (2026-05-09):</strong> this doc predates vault v14 (2026-05-03) and the v17 consolidation (2026-05-09). The current tag/schema model is in <a href="../patterns/tag-data-model.md"><code>patterns/tag-data-model.md</code></a>; the MCP discovery shape is in <a href="../patterns/vault-mcp-discovery.md"><code>patterns/vault-mcp-discovery.md</code></a>. References to <code>tag_schemas</code>, <code>_tags/&lt;name&gt;</code> config notes, and &quot;schema-as-derived-from-note-body&quot; describe the pre-v14 architecture this doc helped motivate the move <em>away from</em>. Preserved as research history — read for the reasoning, not for current architecture.</p>
+</blockquote>
+<blockquote>
+<p>Architectural reflection. Not a pattern to adopt yet — a reading of the current state, a clarification of conceptual layers Aaron and team-lead have been conflating, and a survey of paths forward. Written 2026-05-03 in response to Aaron's request to &quot;make sure I'm understanding what we're doing even here.&quot;</p>
+<p>Living companion to: <code>research/tag-scoped-tokens-survey.md</code>, <code>research/knowledge-tool-data-models.md</code> (in flight).</p>
+<p><strong>Status: DRAFT — Aaron is reading.</strong></p>
+</blockquote>
+<hr>
+<h2>TL;DR</h2>
+<ul>
+<li><strong>A tag has a schema; tag is not the schema.</strong> A tag is an identity (a row in the <code>tags</code> table); the schema is OPTIONAL data attached to that tag (declared field shapes for indexed query). Aaron's recent framing is the precise one: &quot;tag has a schema.&quot;</li>
+<li><strong>Tags currently use <code>name</code> as primary key.</strong> No stable identity beyond the string. Renaming a tag means migrating every reference — <code>note_tags</code>, <code>tag_schemas</code>, links inside note bodies, scoped_tags JSON arrays, wikilink resolutions. Aaron's mental model assumed otherwise; reality must be reconciled before tag-rename-cascade is implemented.</li>
+<li><strong>Path is a single optional unique string.</strong> Notes can have a path or not. Aaron's <code>(folder, name)</code> split idea is one shape; current is path-as-blob.</li>
+<li><strong>Wikilinks resolve by note-id reference, not by name string.</strong> The <code>links</code> table stores <code>source_id</code> → <code>target_id</code> after wiki-form parsing. Rename of the target's path or name is silent for the link table — but the literal <code>[[Apples]]</code> text in the source's content still says &quot;Apples.&quot; Resolution at write time, not at read time.</li>
+<li><strong>The conceptual layers that have been conflated:</strong> identity (id-or-name), location (path or absent), label (name string for human/wikilink reference), shape (schema = field declarations), scope (token allowlist of tag names). At least five distinct concerns; the current model puts most of them on the same primary key.</li>
+<li><strong>The single most consequential decision in the next quarter:</strong> does tag get a stable ID separate from its name? If yes, rename becomes cheap and the cascade in patterns#26 §Lifecycle is implementable in a small fix-PR. If no, every &quot;rename&quot; is a multi-step data-migration with audit-log + transactional rollback.</li>
+</ul>
+<hr>
+<h2>1. Current state — actual vault schema (2026-05-03)</h2>
+<p>From <code>/Users/parachute/.parachute/vault/data/default/vault.db</code> (Aaron's running install at vault rc.29):</p>
+<h3>Tables</h3>
+<pre><code class="language-sql">CREATE TABLE notes (
+  id TEXT PRIMARY KEY,
+  content TEXT DEFAULT '',
+  path TEXT,                          -- nullable, unique-when-non-null
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  metadata TEXT DEFAULT '{}'          -- JSON
+);
+
+CREATE TABLE tags (
+  name TEXT PRIMARY KEY               -- ⚠ name is identity
+);
+
+CREATE TABLE tag_schemas (
+  tag_name TEXT PRIMARY KEY REFERENCES tags(name) ON DELETE CASCADE,
+  description TEXT,
+  fields TEXT                         -- JSON: { &quot;field_name&quot;: { &quot;type&quot;: &quot;string&quot;, ... }, ... }
+);
+
+CREATE TABLE note_tags (
+  note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  tag_name TEXT NOT NULL REFERENCES tags(name),  -- ⚠ ref by name
+  PRIMARY KEY (note_id, tag_name)
+);
+
+CREATE TABLE links (
+  source_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  target_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  relationship TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  metadata TEXT DEFAULT '{}',
+  UNIQUE(source_id, target_id, relationship)
+);
+</code></pre>
+<p>Plus: <code>attachments</code>, <code>tokens</code> (with <code>scoped_tags TEXT</code> JSON column post-vault Phase 1), <code>notes_fts*</code> (FTS5 sidecar for full-text search).</p>
+<h3>Live counts on Aaron's <code>default</code> vault</h3>
+<ul>
+<li>2280 notes</li>
+<li>46 tags</li>
+<li>10 tag_schemas (only ~22% of tags have a schema declared)</li>
+<li>2556 note_tags entries (~1.1 tags per note average; distribution likely skewed toward heavy-tagged notes)</li>
+<li>945 links</li>
+<li>295 attachments</li>
+</ul>
+<h3>Conventions encoded (NOT in the schema, but in code + docs)</h3>
+<ul>
+<li>Tag hierarchy via <code>/</code>-prefix: tags named <code>health/food</code> are conceptually descendants of <code>health</code>. Stored as flat strings; hierarchy is computed by string-split and cached.</li>
+<li><code>_tags/&lt;name&gt;</code> config notes: a note with path <code>_tags/health</code> is the OPERATOR-FACING way to author a tag's schema. The note's body / metadata declares <code>fields</code> for the tag. The schema row in <code>tag_schemas</code> is derived from this.</li>
+<li>Sub-tag schemas: <code>_tags/health/food</code> is the schema-author surface for tag <code>health/food</code>.</li>
+</ul>
+<hr>
+<h2>2. The conceptual layers (what's been getting conflated)</h2>
+<p>When Aaron and I have been saying &quot;tag is a schema&quot; or &quot;tag-as-channel&quot; or &quot;tag-scoped tokens&quot; we've been pointing at five distinct facets of the tag concept:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Concrete embodiment</th>
+<th>Question it answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Identity</strong></td>
+<td>A row in <code>tags</code> (today: <code>name TEXT PRIMARY KEY</code>)</td>
+<td>&quot;Is this the same tag as that one?&quot;</td>
+</tr>
+<tr>
+<td><strong>Label / name</strong></td>
+<td>The <code>name</code> column (today: also the PK)</td>
+<td>&quot;What does the user / agent type to refer to this tag?&quot;</td>
+</tr>
+<tr>
+<td><strong>Hierarchy position</strong></td>
+<td><code>/</code>-prefix in the name (<code>health/food</code> is below <code>health</code>)</td>
+<td>&quot;What other tags is this related to?&quot;</td>
+</tr>
+<tr>
+<td><strong>Schema</strong> (optional)</td>
+<td>A <code>tag_schemas</code> row, authored via <code>_tags/&lt;name&gt;</code> config note</td>
+<td>&quot;What indexed fields do notes with this tag carry?&quot;</td>
+</tr>
+<tr>
+<td><strong>Scope</strong></td>
+<td>A <code>tokens.scoped_tags</code> JSON array element (just shipped in vault Phase 1)</td>
+<td>&quot;Which tokens / agents can see/write notes with this tag?&quot;</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The conflation problem</strong>: today's schema makes the FIRST TWO collapse — name IS identity. So when you &quot;rename a tag,&quot; you're not just changing a label; you're changing identity, and every reference (note_tags, tag_schemas FK, scoped_tags JSON, link-text in notes, find-path edges) has to be migrated.</p>
+<p><strong>The architectural choice</strong> is whether to split identity from label. That has cascading consequences across all five layers.</p>
+<h3>Same conflation on the path side</h3>
+<p>Path has at least three distinct facets:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Concrete embodiment</th>
+<th>Question it answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Tree position</strong></td>
+<td>The slash-prefix part of <code>path</code> (e.g., <code>Memos/2026/05/</code>)</td>
+<td>&quot;Where in my file tree does this live?&quot;</td>
+</tr>
+<tr>
+<td><strong>Name</strong></td>
+<td>The leaf segment of <code>path</code> (e.g., <code>welcome</code>)</td>
+<td>&quot;What's it called for wikilink + display?&quot;</td>
+</tr>
+<tr>
+<td><strong>Tag-schema location</strong></td>
+<td>Notes whose path starts with <code>_tags/</code></td>
+<td>&quot;Is this note a schema declaration for tag X?&quot;</td>
+</tr>
+</tbody>
+</table>
+<p>These three are also collapsed today: path is one string; renaming a folder vs renaming a note vs renaming a schema all look the same.</p>
+<p>Aaron's idea (split path into <code>(folder, name)</code>) untangles the first two. The third is harder because it requires deciding whether <code>_tags/&lt;name&gt;</code> stays as a path-encoded convention or becomes a separate schema table with no path coupling.</p>
+<hr>
+<h2>3. Walking the use cases</h2>
+<p>Let me spell out what a few things actually mean against the current model. This makes the architectural choices concrete.</p>
+<h3>Use case A: &quot;Tag a note with <code>#health</code>&quot;</h3>
+<p>User adds <code>#health</code> to a note in their editor. What happens:</p>
+<ol>
+<li>The parser sees <code>#health</code> in the body, extracts the tag name.</li>
+<li>Vault upserts a <code>tags</code> row: <code>INSERT INTO tags(name) VALUES ('health') ON CONFLICT DO NOTHING</code>.</li>
+<li>Vault upserts a <code>note_tags</code> row: <code>(note_id, 'health')</code>.</li>
+<li>The literal text <code>#health</code> stays in the note body. It is the canonical reference to the tag at READ TIME.</li>
+</ol>
+<p>If <code>health</code> is later renamed to <code>wellness</code>:</p>
+<ul>
+<li>The <code>tags</code> row's PK changes (or row is deleted-and-re-inserted)</li>
+<li>All <code>note_tags</code> rows referencing 'health' need to be updated to 'wellness'</li>
+<li>All <code>tag_schemas</code> rows similarly</li>
+<li>All literal <code>#health</code> text in note bodies needs to be rewritten (otherwise next reparse re-creates the <code>health</code> tag)</li>
+<li>All <code>scoped_tags</code> JSON arrays with <code>'health'</code> → <code>'wellness'</code></li>
+<li>Audit log entry per cascade</li>
+</ul>
+<p>That's the implementation cost of rename today.</p>
+<h3>Use case B: &quot;Add a schema to <code>#health</code>&quot;</h3>
+<p>Operator creates a note at path <code>_tags/health</code> with a body declaring fields:</p>
+<pre><code class="language-yaml">---
+description: Health-related notes
+fields:
+  doctor: { type: string, indexed: true, description: &quot;Provider name&quot; }
+  date: { type: date, indexed: true, description: &quot;Date of event&quot; }
+---
+</code></pre>
+<p>What happens:</p>
+<ol>
+<li>The path <code>_tags/health</code> is recognized by the schema-detection logic (probably in <code>core/src/notes.ts</code> or a hook on note write).</li>
+<li>The note's metadata is parsed; the <code>fields</code> block is extracted.</li>
+<li>A <code>tag_schemas</code> row is inserted: <code>('health', '&lt;description&gt;', '&lt;json-of-fields&gt;')</code>.</li>
+<li>Future notes tagged <code>#health</code> get their <code>metadata</code> indexed against the declared fields.</li>
+</ol>
+<p>The tag itself is just <code>'health'</code> — the schema is data attached to the tag identity.</p>
+<h3>Use case C: &quot;Rename <code>#health</code> to <code>#wellness</code>&quot;</h3>
+<p>Today: substantial. See use case A's rename steps.</p>
+<p>In Aaron's preferred world (tags have stable IDs):</p>
+<ol>
+<li>The <code>tags</code> row's <code>name</code> field is updated. The tag's underlying ID is unchanged.</li>
+<li><code>note_tags</code>, <code>tag_schemas</code>, <code>scoped_tags</code> JSON — none of these need updating, because they reference by ID.</li>
+<li>Note body text <code>#health</code> → <code>#wellness</code> still needs rewriting (so re-parse doesn't re-create <code>health</code>). UNLESS the parser stores tag references by ID at parse time too — which is a much bigger change.</li>
+<li>The <code>_tags/health</code> path renames to <code>_tags/wellness</code> — IF the path is name-derived. (If path is operator-controlled and only convention-linked, the path can stay; the linkage is broken; UI refreshes.)</li>
+</ol>
+<p>The cheapest cascade in the stable-ID world is still: update <code>tags.name</code>, rewrite all <code>#name</code> text in bodies, rename <code>_tags/name</code> path. Not free, but bounded.</p>
+<h3>Use case D: &quot;Wikilink <code>[[Apples]]</code> resolves&quot;</h3>
+<p>User writes <code>[[Apples]]</code> in a note's body. What happens:</p>
+<ol>
+<li>At write time, vault's wikilink parser scans the body, finds <code>[[Apples]]</code>.</li>
+<li>It searches for a note named <code>Apples</code> — by path leaf? By a name field? Today, by path-suffix match (e.g., a note at path <code>Foods/Apples</code> would match).</li>
+<li>If found, a <code>links</code> row is created: <code>(source_id, target_id_of_Apples, 'wikilink', ...)</code>.</li>
+<li>If not found, the wikilink is &quot;dangling.&quot; Some tools auto-create a stub note; vault's behavior here is worth confirming.</li>
+</ol>
+<p>Rename impact:</p>
+<ul>
+<li>If you rename the note at <code>Foods/Apples</code> → <code>Foods/Pears</code>, the <code>links</code> row still points to the same <code>target_id</code> (correct — id is stable). But the LITERAL TEXT <code>[[Apples]]</code> in the source's body is now misleading — it says &quot;Apples&quot; but resolves to &quot;Pears.&quot;</li>
+<li>Obsidian's famous behavior: re-write all <code>[[Apples]]</code> → <code>[[Pears]]</code> in source bodies on rename. This is a real feature, not free.</li>
+</ul>
+<h3>Use case E: &quot;Token scoped to <code>#health</code> reads notes&quot;</h3>
+<p>This is what we just shipped (vault Phase 1 of patterns#24 / #26):</p>
+<ol>
+<li>Token has <code>scoped_tags = [&quot;health&quot;]</code> (root-only).</li>
+<li>On every read request, vault expands <code>[&quot;health&quot;]</code> via two mechanisms (per patterns#26 §Storage details):
+<ul>
+<li>Schema-driven: <code>getTagDescendants(&quot;health&quot;)</code> walks the <code>_tags/&lt;name&gt;</code> hierarchy cache → <code>{health, health/food, health/doctor, ...}</code> (only tags WITH declared schemas)</li>
+<li>String-form fallback: for each note tag <code>t</code>, if <code>t.split(&quot;/&quot;)[0] === &quot;health&quot;</code>, allow.</li>
+</ul>
+</li>
+<li>The note matches if any of its tags is allowed.</li>
+<li>Out-of-scope notes return 404 (no existence-leak).</li>
+</ol>
+<p>Rename impact: if <code>#health</code> is renamed to <code>#wellness</code> and the cascade (use case C) updates <code>scoped_tags</code> from <code>[&quot;health&quot;]</code> to <code>[&quot;wellness&quot;]</code>, the token continues to work. Without the cascade, the token sees nothing post-rename.</p>
+<hr>
+<h2>4. Open questions / tensions</h2>
+<h3>Q-IDENTITY: Should tags get a stable ID?</h3>
+<p><strong>Today</strong>: <code>tags(name TEXT PRIMARY KEY)</code>. Identity = name.</p>
+<p><strong>Alternatives</strong>:</p>
+<ul>
+<li><strong>A. Add stable <code>id</code>, keep name as queried-by surface.</strong> Migration: add <code>id INTEGER PRIMARY KEY</code> (or UUID), make <code>name</code> UNIQUE. Update <code>note_tags</code>, <code>tag_schemas</code>, link references to FK by id. Existing JSON in <code>scoped_tags</code> either migrates to id (would need parsing on every auth check) OR stays as name (rename cascade still has to update JSON).</li>
+<li><strong>B. Keep name-as-identity but make rename atomic.</strong> Wrap the multi-step rename in a transaction. Easier migration; harder rename (always touches lots of rows).</li>
+<li><strong>C. Hybrid: id-as-identity in the data model, name-as-surface for everything user-facing.</strong> Most expensive migration but cleanest long-term.</li>
+</ul>
+<p><strong>My read</strong>: A is the right move when we're ready to invest in it. C is over-engineering until we have a reason to detach name from API surface.</p>
+<h3>Q-PATH: Single string vs (folder, name) split?</h3>
+<p><strong>Today</strong>: <code>notes.path TEXT</code> — single string, optional, unique.</p>
+<p><strong>Aaron's idea</strong>: split into <code>folder TEXT</code> + <code>name TEXT</code>, unique on the pair.</p>
+<p><strong>Pros of split</strong>:</p>
+<ul>
+<li>Renaming the leaf (note name) without changing folder is one column update</li>
+<li>Folder-level operations become natural (list-by-folder, folder-default schema)</li>
+<li>Clarifies wikilink resolution: links resolve to a <code>name</code>, not a path-suffix</li>
+<li>Disentangles &quot;where&quot; from &quot;what's it called&quot;</li>
+</ul>
+<p><strong>Cons of split</strong>:</p>
+<ul>
+<li>Migration: parse 2280 existing path strings, split on last <code>/</code>. Existing API takes <code>path</code> as a single string — backwards-compat layer needed.</li>
+<li>Wikilink rename auto-follow gets MORE valuable + more complex (renaming the name needs to rewrite <code>[[name]]</code> in source bodies)</li>
+<li>Folder-as-permission-boundary becomes tempting — but that's another scope axis on top of tag-scope; consider before adopting</li>
+</ul>
+<h3>Q-SCHEMA-LOCATION: Are schemas authored as <code>_tags/&lt;name&gt;</code> notes, or in a dedicated schema table?</h3>
+<p><strong>Today</strong>: <code>_tags/&lt;name&gt;</code> notes. Operator authors a note; vault parses metadata; populates <code>tag_schemas</code>. This is the &quot;tags as config notes&quot; pattern Roam/Logseq pioneered.</p>
+<p><strong>Alternative</strong>: dedicated schema authoring surface. Move <code>_tags/&lt;name&gt;</code> from &quot;is a note in the path tree&quot; to &quot;is a row in <code>tag_schemas</code> with no path coupling.&quot; Operator authors via admin UI form, not via note-editing.</p>
+<p><strong>Trade-off</strong>: the current design lets operators version-control schemas via note history, link to schemas like any other note, share schemas via wikilink. The alternative is cleaner separation but loses these affordances.</p>
+<p><strong>My read</strong>: keep schemas as config notes for now; it's a productive conflation. If the (folder, name) split happens, the convention becomes <code>folder=_tags, name=&lt;tag&gt;</code> which preserves everything.</p>
+<h3>Q-RENAME: When a tag is renamed, what happens?</h3>
+<p>This was settled per patterns#26 §Lifecycle: cascade. Sub-tags + tokens + notes auto-update. <strong>But the implementation cost depends on Q-IDENTITY.</strong> If tags stay name-as-PK (today), every rename is a multi-table migration. If tags get stable IDs (Q-IDENTITY answer = A), rename is a single column update + body-text rewrite.</p>
+<h3>Q-WIKILINK-RESOLUTION: How do <code>[[X]]</code> references resolve, and what happens on rename?</h3>
+<p><strong>Today (need to confirm)</strong>: probably resolves by path-leaf match; <code>links</code> table stores resolved <code>target_id</code>. Rename of target: link FK stays valid; literal text in source becomes misleading.</p>
+<p><strong>The Obsidian behavior</strong>: auto-rewrite source bodies on target rename. This requires an event hook + body-text mutation. Not free, but it's a real feature operators expect.</p>
+<h3>Q-SCOPE-AXIS: Tags-only, or tags + paths + metadata?</h3>
+<p>Tag-scope shipped (vault Phase 1). The pattern doc (patterns#24/#26) explicitly defers metadata-scope (patterns#25), multi-vault (deferred), and path-scope (not even filed).</p>
+<p>The question: as Parachute evolves, will operators want to scope agents by:</p>
+<ul>
+<li>Tags only? (current design)</li>
+<li>Tags + folders/paths? (&quot;everything in <code>Work/</code>&quot;)</li>
+<li>Tags + sources? (&quot;everything Prism imported&quot;)</li>
+<li>Tags + time? (&quot;only notes from this month&quot;)</li>
+</ul>
+<p>These are orthogonal axes. patterns#24 chose tags-only because it's the most operator-natural axis. The architecture should not preclude adding more axes.</p>
+<hr>
+<h2>5. Paths forward — three coherent shapes</h2>
+<h3>Shape α: &quot;Stay with what works&quot;</h3>
+<p><strong>Keep</strong>: name-as-PK for tags, single-string path for notes, <code>_tags/&lt;name&gt;</code> for schemas, current tag-scope as the only scoping axis.</p>
+<p><strong>Acknowledge</strong>: rename-cascade is multi-step and slow; wikilink rename auto-follow needs a background pass; schema author-by-note coupling stays.</p>
+<p><strong>Investment</strong>: implement the rename cascade (vault#240) as a multi-table migration with proper transaction + audit log. ~2-3 day's work. Schema unchanged.</p>
+<p><strong>Why pick this</strong>: minimum disruption. Existing data + APIs unchanged. Future evolution comes through small additions (metadata scope per patterns#25, etc.) layered on top.</p>
+<h3>Shape β: &quot;Modest evolution — split path, stabilize tags&quot;</h3>
+<p><strong>Change</strong>:</p>
+<ul>
+<li>Add stable <code>tag_id INTEGER</code> to <code>tags</code>; migrate references to FK by id</li>
+<li>Split <code>notes.path</code> into <code>folder TEXT</code> + <code>name TEXT</code>; unique on the pair</li>
+<li><code>_tags/&lt;name&gt;</code> becomes <code>(folder='_tags', name='&lt;tag&gt;')</code></li>
+<li>Wikilinks resolve by <code>(name)</code> first, fall back to <code>(folder, name)</code> for disambiguation</li>
+</ul>
+<p><strong>Investment</strong>: substantial migration + API rewrite. ~1-2 weeks if focused.</p>
+<p><strong>Wins</strong>:</p>
+<ul>
+<li>Cheap rename for tags</li>
+<li>Clean folder-level ops (list, permissions, defaults)</li>
+<li>Wikilink resolution clarified</li>
+<li>Backwards-compat layer for path-as-string callers</li>
+</ul>
+<p><strong>Why pick this</strong>: Aaron's instinct is correct; the path namespace conflation IS uncomfortable and grows worse over time. Get ahead of it before the vault grows past 10k notes.</p>
+<h3>Shape γ: &quot;Bigger reshape — typed objects with relations&quot;</h3>
+<p><strong>Change</strong>: lean toward an Anytype/Tana-style typed-object model. Notes become &quot;objects of type X&quot;; types declare their schema; relations replace ad-hoc links + tags.</p>
+<p><strong>Investment</strong>: this is a major rewrite (~4-6 weeks); affects every API and the SPA admin surface.</p>
+<p><strong>Wins</strong>:</p>
+<ul>
+<li>Cleaner data model long-term</li>
+<li>Better support for future patterns (typed agents, typed permissions, typed-relations)</li>
+</ul>
+<p><strong>Why pick this</strong>: only if Aaron wants Parachute to be more like Anytype than Obsidian. Big bet.</p>
+<p><strong>My recommendation</strong>: not now. Stay with Obsidian-shaped (notes-as-files-with-tags-and-links) until the operator pain demands more.</p>
+<hr>
+<h2>6. What I'd recommend</h2>
+<p><strong>For the next 1-2 quarters</strong>: Shape α (stay with what works) + targeted improvements:</p>
+<ol>
+<li><strong>Implement vault#240 (tag rename cascade)</strong> as a multi-table migration with audit log. Don't restructure the schema first; do the cascade in name-as-PK mode and accept the cost.</li>
+<li><strong>Implement wikilink rename auto-follow</strong> if it's not already there. Rename should rewrite source bodies. Vault tentacle to confirm current state and file an issue if it's not implemented.</li>
+<li><strong>Defer Shape β until Aaron has a concrete operator-pain scenario</strong> — e.g., a real-world rename storm, or a folder-permission requirement. The (folder, name) split is the right direction but premature without driving force.</li>
+<li><strong>Don't pursue Shape γ.</strong> Anytype/Tana shape would be a different product.</li>
+</ol>
+<p><strong>For the architecture-level decisions (Q-IDENTITY, Q-PATH, Q-WIKILINK-RESOLUTION)</strong>: file as design issues for Q4 2026 reviews. Today's data scale (2280 notes, 46 tags) doesn't yet apply real pressure to these.</p>
+<hr>
+<h2>7. Open questions for Aaron</h2>
+<ol>
+<li><strong>Tag identity</strong>: do you want me to file a design exploration for &quot;stable tag IDs&quot; (Q-IDENTITY shape A), or stay with name-as-PK and just implement the cascade?</li>
+<li><strong>Path split timing</strong>: vault#238 is filed but has no design doc or PR. Do you want me to draft a design doc for it now, or wait until you have a concrete pain point that pushes for it?</li>
+<li><strong>Wikilink rename auto-follow</strong>: I haven't confirmed whether vault implements this today. Want me to check + file an issue if not?</li>
+<li><strong>Tag-schema authoring location</strong>: stay with <code>_tags/&lt;name&gt;</code> as config notes (current), or move to a dedicated schema-authoring surface? Current convention is productive but couples schema to path.</li>
+<li><strong>Schemas without tags?</strong> (Edge case worth deciding.) Today every schema is tag-bound. Do we ever want schemas as standalone things (e.g., a &quot;person&quot; schema that's referenced from multiple tags)?</li>
+</ol>
+<hr>
+<h2>Companions</h2>
+<ul>
+<li><code>research/tag-scoped-tokens-survey.md</code> — industry survey on tag-scoped tokens (already merged)</li>
+<li><code>research/knowledge-tool-data-models.md</code> — broader survey on how Obsidian / Logseq / Notion / Anytype / TiddlyWiki handle paths/tags/schemas/links/permissions (in flight; complementary)</li>
+<li><code>patterns/tag-scoped-tokens.md</code> — canonical token-scope design (just merged)</li>
+<li><code>patterns/module-json-extensibility.md</code> — module protocol</li>
+<li><code>patterns/oauth-scopes.md</code> — OAuth scope shape</li>
+</ul>
+<hr>
+<p><em>Reading guide for Aaron: skim §1 to confirm the current schema matches your mental model. Read §2 carefully — the conceptual layers — and push back if any feels wrong. §4 is the questions; §6 is my lean. §5 is alternatives.</em></p>

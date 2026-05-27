@@ -1,0 +1,66 @@
+<h1>Report contract</h1>
+<h2>[DRAFT] — <code>/report</code> slash command is in flight (octopus-polish)</h2>
+<h2>Convention</h2>
+<p>When a tentacle (or any agent) finishes a unit of work, it reports back in
+a structured shape — not narrative. The shape is the same whether the
+consumer is Uni's central source, the Octopus UI, or the vault.</p>
+<pre><code>## TL;DR
+&lt;1–2 sentences: what changed&gt;
+
+## Details
+- &lt;bullets of concrete outcomes, with file paths or PR links&gt;
+
+## Decisions / open questions
+- &lt;anything that needs a human to steer&gt;
+
+## Follow-ups
+- &lt;work that's queued but not done&gt;
+</code></pre>
+<h2><code>/report</code> slash command</h2>
+<p>The intended ergonomic surface: a tentacle types <code>/report</code> and is prompted
+(by the harness) to fill in the above sections. The harness then:</p>
+<ol>
+<li>Sends the structured block back to the team-lead via <code>SendMessage</code>.</li>
+<li>Optionally persists to vault as <code>uni/handoff</code> (path
+<code>Uni/Handoffs/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;</code>), controlled by the spawn brief.</li>
+<li>Optionally forwards a TL;DR to Telegram, controlled by the spawn brief.</li>
+</ol>
+<p>&quot;Controlled by the spawn brief&quot; means the tentacle's spawn prompt includes
+a <code>Report contract:</code> section with <code>persistToVault: yes|no</code> and
+<code>telegram: yes|no</code> so the tentacle knows its report discipline without
+asking each time.</p>
+<p>Implementation tracked in the octopus-polish work. Until it lands, tentacles
+produce the same structured shape manually in their SendMessage response.</p>
+<h2>Why</h2>
+<ul>
+<li><strong>Synthesis stays cheap.</strong> A parent agent ingesting structured markdown
+can skim it in one pass. Narrative responses force re-reading.</li>
+<li><strong>Vault-friendly.</strong> The same block drops into a handoff note with zero
+reformatting.</li>
+<li><strong>Stops drift.</strong> Without a contract, each tentacle invents its own shape
+and the team-lead's context fragments.</li>
+</ul>
+<h2>Rules</h2>
+<ul>
+<li>Reports are <strong>structured, not narrative.</strong> If you catch yourself writing
+more than a paragraph in prose, you're missing the sections.</li>
+<li><strong>TL;DR first, always.</strong> The team-lead and Aaron may read nothing else.</li>
+<li><strong>Link, don't paste.</strong> Reference PR URLs, commit SHAs, file paths. Don't
+quote diffs into the report.</li>
+<li><strong>No emoji or decoration</strong> unless the audience explicitly wants it
+(rarely). Match Parachute's tone: precise, not precious.</li>
+</ul>
+<h2>Spawn-brief section</h2>
+<p>The block that goes into every tentacle spawn prompt, inherited from
+UnforcedAGI conventions:</p>
+<pre><code class="language-markdown">## Report contract
+- When done (or blocked), SendMessage team-lead with a structured report.
+- Persist to vault: yes | no  (path: Uni/Handoffs/&lt;date&gt;-&lt;slug&gt;, tag: uni/handoff)
+- Telegram: yes | no  (TL;DR only)
+</code></pre>
+<h2>Open questions</h2>
+<ul>
+<li>Push vs pull: should the team-lead explicitly request a report, or should
+the tentacle send one unprompted at each work-block boundary? Current
+practice is the latter. Keep until it causes noise.</li>
+</ul>

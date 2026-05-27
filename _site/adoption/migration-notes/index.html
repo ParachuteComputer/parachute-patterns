@@ -1,0 +1,906 @@
+<h1>Migration notes</h1>
+<p>Running log of pattern changes and the repos that need to follow. Newest
+entries on top. Each entry: date, change, affected repos, status.</p>
+<hr>
+<h2>2026-05-15 — governance.md gains Rule 4 (PR cadence)</h2>
+<p><strong>Change:</strong> <a href="../patterns/governance.md"><code>governance.md</code></a> extended from
+three rules to four. New <strong>Rule 4 — PR cadence: bundle by session/theme,
+not by issue.</strong> The unit of review is the PR; the unit of change is the
+commit. One PR per coherent session of work; multiple commits inside it;
+reviewer reads commit-by-commit. Bundle when changes share a theme or
+touch overlapping files; split only on genuinely independent surfaces,
+urgent-ship-needed-while-sibling-in-design, or ~800-1000 LOC ceiling.</p>
+<p><strong>Why now.</strong> Overnight 2026-05-13 cron loop cost Aaron 6 merge-clicks
+across 4 repos when 3-4 would have sufficed — repeated PRs in the same
+repo on the same theme that could have stacked as commits in one bundle.
+Earlier shipping practice had drifted toward one-PR-per-issue as a
+mistaken corollary of the <code>feedback_serial_pr_flow</code> memory; that memory
+is about <em>parallelism</em> (don't open N PRs against shared files
+concurrently), not about <em>granularity</em>. Rule 4 names the distinction
+explicitly so future readers don't conflate them. Drafted 2026-05-13,
+landed 2026-05-15 — entry dated per landing.</p>
+<p>Header bumped from &quot;Three rules&quot; to &quot;Four rules.&quot; Existing rules
+(no-auto-merge / RC versioning / patterns check) are unchanged.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — rule landed (this PR).</li>
+<li>All Parachute repos with shipping tentacles (<code>parachute-hub</code>,
+<code>parachute-vault</code>, <code>parachute-notes</code>, <code>parachute-scribe</code>,
+<code>parachute-agent</code>, <code>parachute.computer</code>) — adopt the bundle-by-session
+default on next session of work. No code-side change required; the
+shift is in tentacle briefing + reviewer dispatch shape (one PR per
+session theme, commits-as-narrative inside).</li>
+<li>Tentacle briefs should reflect the new default: when a session has
+multiple related issues to address, dispatch one bundle PR with the
+set of issues named in body + closed-by lines, rather than one PR per
+issue.</li>
+</ul>
+<p><strong>Status:</strong> doc-only refresh. No code-side behavior change; the shift
+is in how team-lead briefs tentacles and dispatches PRs going forward.</p>
+<hr>
+<h2>2026-05-12 — <code>guides/building-a-surface.md</code> lands (patterns#58)</h2>
+<p><strong>Change:</strong> new guide
+<a href="../guides/building-a-surface.md"><code>building-a-surface.md</code></a> — the
+builder-facing companion to
+<a href="../guides/multi-writer-workspace.md"><code>multi-writer-workspace.md</code></a>.
+Captures parachute-notes' implementation patterns so the next surface
+builder doesn't reinvent: OAuth code-flow with PKCE + DCR + refresh
+rotation, vault discovery via <code>/.well-known/parachute.json</code>, the
+services catalog on the token, REST + MCP query operators + cost knobs,
+optimistic concurrency on writes (<code>if_updated_at</code> + 409/428), atomic
+<code>append</code> / <code>prepend</code> / <code>content_edit</code>, batch transactions, the
+surface-declares-schema pattern (cross-link <a href="https://github.com/ParachuteComputer/parachute-patterns/issues/57"><code>patterns#57</code></a>),
+and the cross-cutting concerns Notes worked out from scratch
+(reachability three-state machine, retry-with-backoff configured against
+real error classes, auth-halt as a distinct axis from reachability,
+offline-first with <code>force: true</code> on stale drains, cross-tab sync,
+specific error UX).</p>
+<p>Heavy on runnable code snippets adapted from
+<code>parachute-notes/src/lib/vault/</code> (the working prototype). Five worked
+examples: minimal read-only dashboard, write-flow with OC + autosave,
+schema-ensure on connect, offline-queued capture, the page-load
+discovery + auth + first-fetch sequence.</p>
+<p>Cross-linked bidirectionally with
+<code>guides/multi-writer-workspace.md</code> so a reader landing on either guide
+finds the other in the Cross-links section.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — guide landed (this PR). No code-side changes.</li>
+<li><code>parachute.computer</code> — link to the guide from &quot;for developers&quot; /
+&quot;how do I build on parachute&quot; pages once they exist. Nice-to-have, not
+a required follow-up.</li>
+<li><code>parachute-notes</code> — implicit prototype reference throughout. If notes'
+<code>src/lib/vault/</code> API shifts substantially, this guide's code snippets
+should be re-synced. Tracked here for visibility.</li>
+<li><code>parachute-hub</code>, <code>parachute-vault</code>, <code>parachute-scribe</code>,
+<code>parachute-agent</code> — no immediate change. Linking from per-repo
+READMEs to the guide is welcome but optional.</li>
+</ul>
+<p><strong>Status:</strong> doc-only. No vault / hub / surface behavior changed; the
+guide tracks shipped reality and explicitly flags what's not yet
+supported (abstract surface SDK is research; HTTP_API.md doc refresh
+pending in vault#315; <code>validation_status</code> REST/MCP parity gap at
+vault#287; cross-origin DCR auto-approve at hub#201).</p>
+<p>Tracking issue <a href="https://github.com/ParachuteComputer/parachute-patterns/issues/58"><code>patterns#58</code></a>
+can close on merge.</p>
+<hr>
+<h2>2026-05-12 — <code>tag-scoped-tokens.md</code> refresh (patterns#17)</h2>
+<p><strong>Change:</strong> <a href="../patterns/tag-scoped-tokens.md"><code>tag-scoped-tokens.md</code></a>
+reframed from proposal-flavored prose to shipped-reality documentation.
+Concrete edits:</p>
+<ul>
+<li>Top-line &quot;Status: shipped&quot; banner with the canonical vault implementation
+link (<a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/src/tag-scope.ts"><code>src/tag-scope.ts</code></a>)
+and the vault#241 / rc.30 (2026-05-03) landing reference.</li>
+<li>Convention section reframed: the two axes (OAuth <code>vault:&lt;name&gt;:&lt;verb&gt;</code>
+scope claim + <code>scoped_tags</code> per-token attribute) are separate by design.
+The colon-syntax shape proposed in patterns#17's title was rejected;
+rationale in §&quot;Why not extend the OAuth scope string.&quot;</li>
+<li>Auth-check pseudocode aligned to the real <code>scoped_tags</code> field name
+(was <code>tagAllowlist</code>) and routed through the actual function names
+(<code>expandTokenTagScope</code>, <code>noteWithinTagScope</code>).</li>
+<li>§&quot;Hierarchy match semantics&quot; cites the full resolver chain with file:line
+refs (<code>expandTokenTagScope</code> → <code>Store.expandTagsWithDescendants</code> →
+<code>getTagDescendants</code>).</li>
+<li>§Lifecycle updated: tag-rename cascade is the shipped reality (<code>vault#275</code>,
+merged 2026-05-09 inside the bundled vault sprint — documented in this
+file's 2026-05-09 entry, item 4), replacing the originally-specced
+fail-closed 409 design that was carried in <code>vault#240</code>. Tag-delete still
+fails closed; the doc now distinguishes rename (cascade — identity-as-meaning
+preserved) from delete/merge (fail-closed — destructive op, dependency
+must be acknowledged).</li>
+<li>§&quot;How it composes&quot; dropped reference to retired tools
+(<code>update-note-schema</code>, <code>set-schema-mapping</code> — retired in vault#269).</li>
+<li>§Adoption table converted from &quot;Phase 1&quot; framing to status-of-each-module,
+with the rename-cascade row added.</li>
+<li>New cross-link to <a href="../guides/multi-writer-workspace.md"><code>guides/multi-writer-workspace.md</code></a>
+§2 (operator-facing worked example).</li>
+<li>Removed the standalone two-line &quot;Storage&quot; stub that duplicated
+§&quot;Storage details&quot; further down.</li>
+</ul>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — doc refreshed (this PR). No code-side changes.</li>
+<li><code>parachute-vault</code>, <code>parachute-hub</code>, <code>parachute-notes</code>, <code>parachute-agent</code>
+— no follow-up required. Doc tracks reality; reality is already shipped.</li>
+<li>Tracking issue <a href="https://github.com/ParachuteComputer/parachute-patterns/issues/17"><code>patterns#17</code></a>
+can close on merge — the doc now answers the issue.</li>
+</ul>
+<p><strong>Status:</strong> doc-only refresh. No <code>tag-scoped-tokens</code> behavior changed; the
+edits track the as-shipped surface vault has carried since 2026-05-03.</p>
+<hr>
+<h2>2026-05-12 — <code>guides/multi-writer-workspace.md</code> lands</h2>
+<p><strong>Change:</strong> new <code>guides/</code> directory + first guide
+<a href="../guides/multi-writer-workspace.md"><code>multi-writer-workspace.md</code></a>. The
+canonical &quot;how do we build a team knowledge graph on parachute-vault?&quot;
+reference. Covers the mental model (workspace atop journal; parachute's
+grain), the multi-writer foundation (hub-as-AS, per-vault scopes,
+<code>scoped_tags</code>, optimistic concurrency, atomic append/prepend), tag-schema
+declaration via <code>update-tag</code>, writing patterns (<code>create-note</code>,
+<code>update-note</code> with path-as-id, batch, the sync-from-external-source
+options), querying + traversal, bidirectional Obsidian sync, voice +
+attachments via scribe, agent-as-writer patterns, the trigger framework,
+the template convention, public projection (single-note today; surface
+direction for richer), what's coming, and an end-to-end worked example
+of a 3-human + 1-agent content team setup.</p>
+<p>Establishes <code>guides/</code> as a new directory for long-form reference docs
+that explain <em>how to use</em> the patterns together — distinct from
+<code>patterns/</code> (single-concept conventions) and <code>research/</code> (in-flight
+design notes).</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — guide landed (this PR). New <code>guides/</code> directory.
+README mentions the new directory.</li>
+<li><code>parachute.computer</code> — link to the guide from any &quot;for developers&quot;
+/ &quot;how do I build on parachute&quot; page once it exists. No immediate
+change required.</li>
+<li><code>parachute-vault</code>, <code>parachute-hub</code>, <code>parachute-scribe</code>,
+<code>parachute-agent</code> — README links to the guide where the repo's own
+docs reference multi-writer concerns. Low priority; nice-to-have, not
+a required follow-up.</li>
+</ul>
+<p><strong>Status:</strong> doc-only; no pattern conformance changes required of
+downstream repos. The guide is the canonical reference when its content
+conflicts with older partial answers in individual pattern docs.</p>
+<hr>
+<h2>2026-05-10 — <code>module.json</code> gains <code>uiUrl</code> for dynamic discovery rendering</h2>
+<p><strong>Change:</strong> new pattern doc
+<a href="../patterns/module-ui-declaration.md"><code>module-ui-declaration.md</code></a>. One
+optional top-level <code>module.json</code> field — <code>uiUrl?: string</code> — declares
+where a module's user-facing UI lives. Hub's discovery page reads it
+(via <code>/.well-known/parachute.json</code>) and renders one tile per declaring
+service, picking up <code>displayName</code> + <code>tagline</code> for the copy. Modules
+without <code>uiUrl</code> are still registered and routable; they just don't
+render a clickable card.</p>
+<p>Resolution: path form (<code>&quot;/notes&quot;</code>) is a path on <strong>hub's origin</strong> and
+hub renders the link as <code>&lt;hub-origin&gt;${uiUrl}</code> regardless of where the
+module itself is hosted — distinct from <code>managementUrl</code>'s relative
+form, which resolves against the module's own well-known origin.
+Absolute URL is used verbatim; omitted = no tile rendered.</p>
+<p>Today the hub's discovery page hardcodes <code>SERVICE_LABELS</code> + <code>SERVICE_ORDER</code></p>
+<ul>
+<li>a vault-name filter at the top of
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/hub.ts"><code>parachute-hub/src/hub.ts</code></a>;
+which-services-have-UIs and what-they're-called are baked in, and only
+the mount path comes from <code>services.json</code>. With <code>uiUrl</code> in <code>module.json</code>,
+that hardcoding retires.</li>
+</ul>
+<p><code>uiUrl</code> is the discovery-side peer of <code>managementUrl</code> (added 2026-05-02
+for hub admin pages' &quot;Manage <code>&lt;name&gt;</code>&quot; link rendering). They serve
+different surfaces — discovery vs. hub admin pages — and a service may
+declare both, one, or neither.</p>
+<p>The first cut at the discovery section split tiles into &quot;Use&quot; vs
+&quot;Admin&quot;; that broke down because real service UIs combine use, config,
+and admin in one surface. Aaron's call: services declare what their UI
+<em>is</em>; hub renders one link per service.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — pattern doc landed (this PR). No code change.</li>
+<li><code>parachute-notes</code> — declare <code>uiUrl: &quot;/notes&quot;</code> in
+<code>.parachute/module.json</code>. One PR.</li>
+<li><code>parachute-agent</code> — declare <code>uiUrl: &quot;/agent&quot;</code> in
+<code>.parachute/module.json</code>. One PR.</li>
+<li><code>parachute-vault</code>, <code>parachute-scribe</code> — no immediate change. Vault
+intentionally omits <code>uiUrl</code> (vault content is browsed via Notes;
+vault keeps its per-instance <code>managementUrl: &quot;/admin&quot;</code> for the
+hub's vault-list page). Scribe omits today (CLI/API only) and adds
+the field whenever a UI ships.</li>
+<li><code>parachute-hub</code> — read <code>uiUrl</code> from each module's well-known entry
+and render the discovery section dynamically. Retire the hardcoded
+<code>SERVICE_LABELS</code> map + <code>SERVICE_ORDER</code> array + <code>isVaultName</code> filter
+in <code>src/hub.ts</code>. Retire the <code>module-manifest.ts</code> parser's
+silent-ignore of unknown top-level fields for <code>uiUrl</code> (read it
+through <code>composeServiceSpec</code> so it lands in <code>services.json</code> and
+flows to <code>/.well-known/parachute.json</code>). One PR.</li>
+</ul>
+<p>Backwards-compatible with both directions: hub before its consumer
+update silently ignores the new field; modules before their <code>module.json</code>
+updates simply don't render tiles (same as today's hardcoded omission).
+The two sides can land in either order.</p>
+<p><strong>Status:</strong> pattern doc landed (this PR). Module + hub PRs pending.</p>
+<hr>
+<h2>2026-05-09 — Tag schema inheritance, <code>_default</code>, rename cascade, MCP discovery (vault)</h2>
+<p><strong>Change:</strong> <a href="../patterns/tag-data-model.md"><code>tag-data-model.md</code></a> refreshed
+top-to-bottom and <a href="../patterns/vault-mcp-discovery.md"><code>vault-mcp-discovery.md</code></a>
+added, reflecting four vault PRs that landed today against vault 0.4.1-rc.4:</p>
+<ol>
+<li><a href="https://github.com/ParachuteComputer/parachute-vault/pull/269"><code>vault#269</code></a> (<code>f7c47f1</code>) — audit-driven cleanup. Ripped <code>note_schemas</code> + <code>schema_mappings</code> tables and the six MCP tools that authored them (<code>update-note-schema</code>, <code>delete-note-schema</code>, <code>list-note-schemas</code>, <code>set-schema-mapping</code>, <code>delete-schema-mapping</code>, <code>synthesize-notes</code>). MCP tool count: 16 → 9. Schema migration v16 → v17. The 2026-05-03 <code>_schemas/*</code> retirement entry below is now superseded — that subsystem existed for ~6 days before being consolidated back onto <code>tags.fields</code>.</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-vault/pull/272"><code>vault#272</code></a> (<code>fc8db55</code>) — multi-inheritance via <code>tags.parent_names</code>. A child tag inherits all ancestors' <code>fields</code> recursively (cycle-safe). <code>_default</code> is the implicit universal parent: when a <code>_default</code> row exists, its <code>fields</code> apply to every note as a low-precedence fallback (appended last in the resolver walk; never auto-written into any <code>parent_names</code> array). Conflict resolution: first-in-walk wins; the loser surfaces as a <code>schema_conflict</code> warning on <code>validation_status.warnings</code> (joins <code>type_mismatch</code> and <code>enum_mismatch</code>). <code>getTagDescendants(&quot;_default&quot;)</code> returns every tag, so <code>query-notes { tag: &quot;_default&quot; }</code> means &quot;every note.&quot;</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-vault/pull/273"><code>vault#273</code></a> (<code>4ca781f</code>) — <code>vault-info</code> expanded with full schema projection (<code>tags</code>, <code>effective_parents</code>, <code>effective_fields</code>, <code>relationships</code>, <code>indexed_fields</code>, <code>query_hints</code>, optional <code>stats</code>). MCP <code>getServerInstruction</code> rewritten to render the same projection as a markdown brief at session <code>initialize</code>. Both surfaces tag-scope-filtered (symmetric — neither leaks out-of-scope tags). Single source: <code>core/src/vault-projection.ts::buildVaultProjection</code>.</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-vault/pull/275"><code>vault#275</code></a> (<code>5a278cc</code>) — full transactional tag-rename cascade. Single <code>BEGIN IMMEDIATE</code>, ROLLBACK on any throw. Pre-flight collision check returns <code>{error: &quot;target_exists&quot;, conflicting: [...]}</code> without touching the DB. Cascades through <code>tags.name</code> PK + sub-tag prefixes (recursive), <code>note_tags.tag_name</code>, <code>tags.parent_names</code> JSON, <code>tokens.scoped_tags</code> JSON, <code>indexed_fields.declarer_tags</code> JSON, note body content (<code>#oldname</code> / <code>[[_tags/oldname]]</code>), and <code>_tags/&lt;oldname&gt;</code> paths. Returns structured cascade stats. Replaces the prior fail-closed 409 on token-referenced tags.</li>
+</ol>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — <code>tag-data-model.md</code> rewritten to describe the
+shipped model (multi-inheritance, <code>_default</code>, schema_conflict warning,
+rename cascade); migration history section added recording the
+three-step arc (vault#245 → vault#249 → vault#269+#272). New
+<code>vault-mcp-discovery.md</code> covers the projection + brief shape and the
+scope-filtering symmetry.</li>
+<li><code>parachute-vault</code> — already shipped today; this patterns PR catches the
+doc up to reality. Future-work issues filed against vault for auto-init
+/ title-templates / named-queries / AI commands (separate tracker).</li>
+<li><code>parachute-notes</code> / clients — no breaking change. The Notes UI still
+reads tag schema via <code>list-tags { include_schema: true }</code> (unchanged
+surface). Clients integrating MCP get the new connect-time brief
+automatically. Clients that called the now-deleted note-schema /
+schema-mapping / synthesize-notes MCP tools must migrate to writing
+<code>fields</code> on tag records via <code>update-tag</code> (or <code>_default</code> for the
+universal-fallback case).</li>
+</ul>
+<p><strong>Status:</strong> patterns refresh: this PR. Vault implementation: complete in
+0.4.1-rc.4.</p>
+<hr>
+<h2>2026-05-08 — <code>publicExposure</code> is a hub-side per-request layer-gate</h2>
+<p><strong>Change:</strong> <a href="../patterns/module-json-extensibility.md"><code>module-json-extensibility.md</code></a>
+refreshed — the <code>hasAuth</code> section's runtime description was stale.
+<code>publicExposure</code> is now enforced <strong>per request, in hub</strong>, not at expose
+time. Every reverse-proxied request is tagged with the layer it arrived
+on (<code>loopback</code> / <code>tailnet</code> / <code>public</code>) and hub consults the target
+service's <code>publicExposure</code> to decide whether to proxy or 404. The expose
+surface collapses to a single hub catchall on the tailnet; per-service
+expose toggles are no longer independent state.</p>
+<p>Access matrix codified by <a href="https://github.com/ParachuteComputer/parachute-hub/pull/187">parachute-hub#187</a>:</p>
+<table>
+<thead>
+<tr>
+<th><code>publicExposure</code></th>
+<th>Loopback</th>
+<th>Tailnet</th>
+<th>Public</th>
+<th>Gated by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&quot;allowed&quot;</code></td>
+<td>reaches</td>
+<td>reaches</td>
+<td>reaches</td>
+<td>service's own auth</td>
+</tr>
+<tr>
+<td><code>&quot;loopback&quot;</code></td>
+<td>reaches</td>
+<td>404</td>
+<td>404</td>
+<td>hub layer-gate</td>
+</tr>
+<tr>
+<td><code>&quot;auth-required&quot;</code></td>
+<td>reaches</td>
+<td>reaches</td>
+<td>reaches</td>
+<td>service's own auth</td>
+</tr>
+</tbody>
+</table>
+<p><code>&quot;allowed&quot;</code> and <code>&quot;auth-required&quot;</code> produce identical hub behavior; the
+distinction is documentary intent. <code>&quot;loopback&quot;</code> is the only value that
+withholds non-loopback traffic. The pre-#187 wording — &quot;treated as
+loopback at expose time until the operator opts in explicitly&quot; —
+described an at-expose-time filtering model that no longer matches the
+runtime; scrubbed.</p>
+<p>Closes <a href="https://github.com/ParachuteComputer/parachute-patterns/issues/39"><code>parachute-patterns#39</code></a>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — pattern doc updated (this PR). No code change.</li>
+<li><code>parachute-hub</code> — already shipped the runtime in
+<a href="https://github.com/ParachuteComputer/parachute-hub/pull/187"><code>#187</code></a>.
+Pattern doc now matches.</li>
+<li>Module authors (vault, scribe, notes, agent, third-party) — no
+manifest change required. <code>hasAuth</code> semantics are unchanged; only the
+doc's description of how hub honors the derived <code>publicExposure</code> is
+refreshed.</li>
+</ul>
+<p><strong>Status:</strong> complete on 2026-05-08.</p>
+<hr>
+<h2>2026-05-04 — <code>paraclaw</code> renamed to <code>parachute-agent</code></h2>
+<p><strong>Change:</strong> the exploration package previously called <code>paraclaw</code> is
+renamed to <code>parachute-agent</code> for naming-pattern cohesion with the rest
+of the ecosystem (<code>parachute-vault</code>, <code>parachute-hub</code>, <code>parachute-scribe</code>,
+<code>parachute-notes</code>). Surfaces:</p>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>From</th>
+<th>To</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Repo</td>
+<td><code>ParachuteComputer/paraclaw</code></td>
+<td><code>ParachuteComputer/parachute-agent</code></td>
+</tr>
+<tr>
+<td>npm</td>
+<td><code>paraclaw</code> (unpublished)</td>
+<td><code>@openparachute/agent</code></td>
+</tr>
+<tr>
+<td>CLI binary</td>
+<td><code>claw</code></td>
+<td><code>parachute-agent</code></td>
+</tr>
+<tr>
+<td>Mount path</td>
+<td><code>/claw</code></td>
+<td><code>/agent</code></td>
+</tr>
+<tr>
+<td>Service registry name (services.json key)</td>
+<td><code>claw</code></td>
+<td><code>agent</code></td>
+</tr>
+<tr>
+<td>Display name</td>
+<td><code>Paraclaw</code></td>
+<td><code>Parachute Agent</code></td>
+</tr>
+<tr>
+<td>Container labels</td>
+<td><code>paraclaw-install=…</code></td>
+<td><code>parachute-agent-install=…</code></td>
+</tr>
+<tr>
+<td>OAuth scopes</td>
+<td><code>claw:read</code> / <code>claw:write</code> / <code>claw:admin</code></td>
+<td><code>agent:read</code> / <code>agent:write</code> / <code>agent:admin</code></td>
+</tr>
+</tbody>
+</table>
+<p>The friendly informal handle <code>claw</code> is retained for local-dev tooling
+(<code>.claude/skills/claw</code>, <code>scripts/claw</code>). This rename is for the formal
+published surfaces — pattern docs use <code>parachute-agent</code> / <code>agent</code>
+consistently going forward.</p>
+<p>Since <code>paraclaw</code> was never published to npm, no <code>claw:*</code> tokens exist
+in the wild — the OAuth scope namespace flip is a cosmetic rename, not
+a breaking change for any minted bearer.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-agent</code> (was <code>paraclaw</code>) — full source rename in the
+upstream repo (separate PR there).</li>
+<li><code>parachute-hub</code> — <code>SERVICE_SPECS</code> entry renamed; on hub start, a
+one-shot migration in <code>services-manifest.ts</code> rewrites <code>services.json</code>
+rows whose key was <code>claw</code> to <code>agent</code> (separate PR there).</li>
+<li><code>parachute.computer</code> — site copy updated (separate PR there).</li>
+<li><code>parachute-patterns</code> — this scrub: <code>oauth-scopes.md</code> (registered
+scope namespace), <code>tag-data-model.md</code> (adoption row),
+<code>tag-scoped-tokens.md</code> (use-case copy + adoption row + follow-up),
+<code>module-json-extensibility.md</code> (one rationale line),
+<code>research/tag-scoped-tokens-survey.md</code> (one informal mention).
+Historical migration-notes entries left in place as point-in-time
+records — readers should interpret pre-2026-05-04 references to
+<code>paraclaw</code> / <code>claw:*</code> as the package now known as <code>parachute-agent</code>.</li>
+</ul>
+<p><strong>Status:</strong> patterns scrub: this PR. Cross-repo PRs landing on
+2026-05-04 ahead of tomorrow afternoon's publish.</p>
+<hr>
+<h2>2026-05-03 — <code>_schemas/*</code> retirement to <code>note_schemas</code> + <code>schema_mappings</code> (vault)</h2>
+<blockquote>
+<p><strong>Superseded 2026-05-09 by vault#269.</strong> The <code>note_schemas</code> + <code>schema_mappings</code> two-table subsystem and the six MCP tools introduced here were ripped six days later when an audit found zero operator use of the path-prefix mapping kind, and tag-mapped schemas were fully redundant with <code>tags.fields</code>. Note-validation now lives on <code>tags.fields</code> with <code>_default</code> as the universal-fallback ancestor. See the 2026-05-09 entry above. Entry kept for migration history.</p>
+</blockquote>
+<p><strong>Change:</strong> <a href="../patterns/tag-data-model.md"><code>tag-data-model.md</code></a> approach extended to note-validation schemas. Companion to the tag-data-model reshape (#245). Retires the <code>_schemas/&lt;name&gt;</code> config-note pattern + the singleton <code>_schema_defaults</code> note in favor of two SQL tables: <code>note_schemas (name PK, fields JSON, description, required JSON)</code> for schema definitions, and <code>schema_mappings (schema_name FK, match_kind ENUM 'path_prefix' | 'tag', match_value)</code> for the path-prefix + tag-based mapping rules.</p>
+<p>Schema migration v14 → v15: additive; data migration copies existing <code>_schemas/&lt;name&gt;</code> notes' metadata + <code>_schema_defaults</code> mappings → new tables. Migration is transactional (BEGIN IMMEDIATE / COMMIT or ROLLBACK), idempotent on re-runs, and verified on byte-identical copies of all three of Aaron's real DBs.</p>
+<p>New MCP/HTTP authoring surface: <code>update-note-schema</code> / <code>delete-note-schema</code> / <code>list-note-schemas</code> / <code>set-schema-mapping</code> / <code>delete-schema-mapping</code>. MCP tool count: 10 → 16.</p>
+<p>Tag-scope auth-check is threaded through <code>handleNoteSchemas</code> consistent with the <code>handleTags</code> precedent — tag-scoped tokens cannot enumerate or write <code>tag</code>-kind mappings outside their allowlist. <code>path_prefix</code> mappings are orthogonal to tag scope (no filter applied). String-form fallback honored.</p>
+<p><code>_schemas/&lt;name&gt;</code> notes + <code>_schema_defaults</code> note left in place post-migration as harmless historical record.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — adopted in <a href="https://github.com/ParachuteComputer/parachute-vault/pull/249"><code>vault#249</code></a>, shipped at rc.33</li>
+<li><code>parachute-patterns</code> — <code>tag-scoped-tokens.md</code> had stale references to <code>_schemas/&lt;name&gt;</code> notes scrubbed out alongside this entry (same patterns PR)</li>
+<li><code>parachute-notes</code> / clients — Notes app and other vault clients should migrate any direct reads/writes against <code>_schemas/&lt;name&gt;</code> paths to the new MCP/HTTP surface; legacy reads still work for backwards-compat but won't reflect the latest schema state</li>
+</ul>
+<p><strong>Status:</strong> Shipped. Arc complete (tag-data-model + schemas-retirement landed across vault#245 + vault#249).</p>
+<hr>
+<h2>2026-05-03 — Tag data model reshape (vault)</h2>
+<p><strong>Change:</strong> <a href="../patterns/tag-data-model.md"><code>tag-data-model.md</code></a> introduced.
+Retires the notes-as-config pattern for tag concerns: collapses
+<code>tags + tag_schemas + _tags/&lt;name&gt;</code> into a single row on <code>tags</code> carrying
+<code>description</code>, <code>fields</code>, <code>relationships</code>, and <code>parent_names</code> columns. Adds
+typed-relationship declarations (named cardinality vocabulary: <code>one</code>,
+<code>optional</code>, <code>many</code>, <code>many-required</code>) — declared but not enforced in Phase 1.
+The hierarchy resolver swaps its data source from <code>_tags/*</code> notes to the
+new <code>parent_names</code> column; cache invalidation moves to <code>tags</code> row writes.
+Companion retirement of <code>_schemas/*</code> pattern (note-validation defaults)
+folds in the same sprint.</p>
+<p><strong>Why:</strong> notes are user content; system configuration belongs in tables.
+The historical config-as-note convention pre-dated tags being first-class
+SQL identities and conflated &quot;what is a note&quot; with &quot;what is system
+configuration.&quot; Vault is SQLite, not files-on-disk; export logic can derive
+markdown from tables when needed.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — implementation pending in vault#244 (single PR on
+<code>ag-unforced-dev</code>); schema migration v13 → v14 + data migration from
+<code>tag_schemas</code> and <code>_tags/*</code> notes</li>
+<li><code>parachute-patterns</code> — <code>tag-scoped-tokens.md</code> §Storage details still
+describes cache invalidation as firing on <code>_tags/*</code> writes; post-migration
+it fires on <code>tags</code> row writes. Update on next patterns PR alongside the
+vault implementation merge</li>
+</ul>
+<p><strong>Status:</strong> Design merged via patterns#29. Implementation shipped in <a href="https://github.com/ParachuteComputer/parachute-vault/pull/245"><code>vault#245</code></a> at rc.31. Companion <code>_schemas/*</code> retirement shipped at rc.33 via vault#249 — see entry above. Arc complete.</p>
+<hr>
+<h2>2026-05-03 — Tag-scoped tokens Phase 1 (vault)</h2>
+<p><strong>Change:</strong> <a href="../patterns/tag-scoped-tokens.md"><code>tag-scoped-tokens.md</code></a> Phase 1
+lands in vault — per-token <code>scoped_tags</code> (whitelist of tag roots; absent =
+unrestricted) enforced on read and write across HTTP and MCP. Schema
+migration v13 adds the <code>scoped_tags TEXT</code> column on <code>tokens</code> (JSON array,
+nullable). Auth checks the parsed allowlist with a <strong>string-form fallback</strong>
+on the raw root: <code>t.split(&quot;/&quot;)[0]</code> is matched against the token's raw scope
+list, so an orphan sub-tag (one without a <code>tag_schemas</code> row for its root)
+stays accessible to a token scoped to that root — fail-open on the read
+path so missing schema rows can never silently hide notes. Mint validation
+rejects path-form scopes (<code>vault:foo/bar:read</code>) — only roots are
+mintable. Tag-dependency 409 guards on <code>DELETE /tags/:name</code>,
+<code>POST /tags/merge</code>, and <code>POST /tags/:name/rename</code> (and the MCP <code>delete-tag</code>
+tool) refuse the operation when any live token references the tag, returning
+<code>{error_type: &quot;tag_in_use_by_tokens&quot;, tag, referenced_by: [{id, label}]}</code> —
+fail-closed so token authorities can't be silently invalidated by a
+schema-side rename or delete. Out-of-scope reads return 404 (not 403);
+out-of-scope writes return 403 <code>tag_scope_violation</code>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — adopted in
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/241"><code>#241</code></a>
+(rc.30, merged 2026-05-03). Reference: <code>src/tag-scope.ts</code>
+(<code>noteWithinTagScope</code> / <code>tagsWithinScope</code> / <code>filterNotesByTagScope</code>),
+<code>src/token-store.ts</code> (<code>findTokensReferencingTag</code>), <code>src/mcp-tools.ts</code>
+(<code>applyTagDependencyGuards</code> always-on wrapper, <code>applyTagScopeWrappers</code>
+scoped-only). Phase 2 (rename cascade across token rows + path-form
+scope semantics) tracked in
+<a href="https://github.com/ParachuteComputer/parachute-vault/issues/240"><code>#240</code></a>.</li>
+<li><code>paraclaw</code> — Phase 2 work; will gain a parallel <code>claw:</code> scope-tag
+vocabulary once vault Phase 2 ships. No code change required for
+Phase 1.</li>
+<li><code>parachute-notes</code> — no change. PWA reads/writes go through the
+existing token; out-of-scope cells materialize as 404 from vault.</li>
+<li><code>parachute-hub</code> — no OAuth-layer change. <code>vault:&lt;name&gt;:&lt;verb&gt;</code> scope
+shape unchanged; tag scoping is a vault-internal token attribute,
+not exposed in OAuth picker UI for Phase 1.</li>
+</ul>
+<p><strong>Status:</strong> Phase 1 complete on 2026-05-03 (vault rc.30). Phase 2
+(cascade + path-form) deferred pending data-model architecture doc.</p>
+<hr>
+<h2>2026-05-02 — <code>module.json</code> gains <code>managementUrl</code></h2>
+<p><strong>Change:</strong> <a href="../patterns/module-json-extensibility.md"><code>module-json-extensibility.md</code></a>
+adds one optional field — <code>managementUrl?: string</code> — declaring where a
+module's admin UI lives.</p>
+<ul>
+<li>Relative path (e.g. <code>&quot;/admin&quot;</code>) — hub resolves against the module's
+well-known origin (<code>&lt;module-url&gt;&lt;managementUrl&gt;</code>).</li>
+<li>Full absolute URL — hub uses verbatim.</li>
+<li>Absent — no link rendered (CLI-only management, or no admin surface).</li>
+</ul>
+<p>Aaron's call recorded 2026-05-02: per-module admin UIs live with the
+modules. Hub stays a thin directory + link-out; each module owns its
+admin surface end-to-end. Avoids hub leaking module-internal API shapes
+(vault's name list, scribe's job queue, etc.) into the portal.
+Backwards-compatible — same rule as <code>hasAuth</code> / <code>init</code> / <code>urlForEntry</code>:
+absent = &quot;not present&quot;. Continues the schema work from
+<a href="https://github.com/ParachuteComputer/parachute-patterns/pull/19"><code>parachute-patterns#19</code></a>.
+Closes <a href="https://github.com/ParachuteComputer/parachute-patterns/issues/20"><code>parachute-patterns#20</code></a>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — pattern doc updated (this PR). No code change.</li>
+<li><code>parachute-vault</code> — will declare <code>managementUrl: &quot;/admin&quot;</code> once
+vault-side SPA Phase A ships
+(<a href="https://github.com/ParachuteComputer/parachute-vault/issues/216"><code>parachute-vault#216</code></a>).</li>
+<li><code>parachute-hub</code> — reads <code>managementUrl</code> from each module's well-known
+doc and renders a &quot;Manage <displayName>&quot; link on the vault list /
+directory page
+(<a href="https://github.com/ParachuteComputer/parachute-hub/issues/158"><code>parachute-hub#158</code></a>).</li>
+<li><code>parachute-scribe</code>, <code>parachute-notes</code>, <code>paraclaw</code> — opportunity to
+adopt later (each can ship its own admin UI if/when one materializes;
+not on the immediate roadmap).</li>
+</ul>
+<p><strong>Status:</strong> pattern doc landed (this PR). Vault adoption + hub render
+PRs pending.</p>
+<hr>
+<h2>2026-04-30 — <code>module.json</code> gains <code>hasAuth</code>, <code>init</code>, <code>urlForEntry</code></h2>
+<p><strong>Change:</strong> <a href="../patterns/module-json-extensibility.md"><code>module-json-extensibility.md</code></a>
+adds three optional fields so the canonical schema can carry behaviors
+hub's transitional <code>FIRST_PARTY_FALLBACKS.extras</code> block currently holds:</p>
+<ul>
+<li><code>hasAuth: boolean</code> — module is itself an OAuth resource server. Drives
+the default <code>publicExposure</code> for <code>kind: &quot;api&quot; | &quot;tool&quot;</code> services.</li>
+<li><code>init: { command: [string, ...string[]] }</code> — post-install one-shot.
+Safety constraint: <code>command[0]</code> must equal a bin from the installed
+npm package (rejects e.g. <code>[&quot;rm&quot;, &quot;-rf&quot;, &quot;/&quot;]</code> at install time).</li>
+<li><code>urlForEntry.perConsumer.&lt;consumerId&gt;: { appendPath? | replaceWith? }</code>
+— declarative URL adjustment per well-known consumer (today's only
+case: claude.ai → vault gets <code>/mcp</code> appended).</li>
+</ul>
+<p>Aaron's call recorded 2026-04-30: <strong>path 1 (extend the schema) over
+path 2 (codify a permanent extras lane)</strong>. Closes
+<a href="https://github.com/ParachuteComputer/parachute-hub/issues/100"><code>parachute-hub#100</code></a>.
+Backwards-compatible — every new field is optional with a sensible
+&quot;absent&quot; default, so existing <code>module.json</code> files stay valid.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-patterns</code> — pattern doc updated (this PR). No code change.</li>
+<li><code>parachute-hub</code> — needs a parser update in <code>src/module-manifest.ts</code>
+(read the three new fields, route them through <code>composeServiceSpec</code>)
+and an install-time bin-name check for <code>init.command[0]</code> (resolved
+via the installed package's <code>package.json</code> <code>bin</code> field). Tracked by
+hub#100.</li>
+<li><code>parachute-vault</code> — emit <code>hasAuth: true</code>, <code>init: { command: [&quot;parachute-vault&quot;, &quot;init&quot;] }</code>, and <code>urlForEntry.perConsumer[&quot;claude.ai&quot;]: { appendPath: &quot;/mcp&quot; }</code> in <code>.parachute/module.json</code>. One PR.</li>
+<li><code>parachute-scribe</code> — omit <code>hasAuth</code> (absent = <code>false</code>, the conservative
+default until <code>SCRIBE_AUTH_TOKEN</code> ships); emit <code>urlForEntry.perConsumer</code>
+if needed. One PR.</li>
+<li><code>parachute-notes</code> — emit baseline fields (no <code>hasAuth</code>, no <code>init</code>).
+One PR.</li>
+<li><code>parachute-hub</code> (cleanup) — delete each module's <code>FALLBACK:</code> entry in
+<code>src/service-spec.ts</code> once its upstream <code>module.json</code> ships the
+equivalent declarations. One PR per module.</li>
+</ul>
+<p><strong>Status:</strong> pattern doc landed (<code>parachute-patterns#19</code>). Downstream
+parser + emit + retirement PRs pending.</p>
+<hr>
+<h2>2026-04-28 — Vault scopes are resource-bound (<code>vault:&lt;name&gt;:&lt;verb&gt;</code>)</h2>
+<p><strong>Change:</strong> the hub's OAuth picker rewrites an unnamed <code>vault:&lt;verb&gt;</code>
+request to <code>vault:&lt;picked&gt;:&lt;verb&gt;</code> before issuing the auth code; vault
+rejects bare <code>vault:&lt;verb&gt;</code> from hub-issued JWTs and strict-checks
+<code>aud=vault.&lt;name&gt;</code> on each request. <code>pvt_*</code> tokens unaffected (legacy
+direct-token path bypasses JWT validation). Closes the design discussion
+in <a href="https://github.com/ParachuteComputer/parachute-vault/pull/179"><code>parachute-vault#179</code></a>;
+landed in <a href="https://github.com/ParachuteComputer/parachute-vault/pull/180"><code>parachute-vault#180</code></a>
+and <a href="https://github.com/ParachuteComputer/parachute-hub/pull/95"><code>parachute-hub#95</code></a>.
+Pattern doc: <a href="../patterns/oauth-scopes.md"><code>oauth-scopes.md</code></a>.</p>
+<p>Also captured in the same pattern update:</p>
+<ul>
+<li><code>claw:read</code> / <code>claw:write</code> / <code>claw:admin</code> registered (paraclaw vocabulary
+with admin ⊇ write ⊇ read inheritance).</li>
+<li><code>parachute:host:admin</code> introduced as the first <strong>non-requestable</strong>
+operator-only scope (cross-vault host admin, used for hub-orchestrated
+vault provisioning via <code>POST /vaults</code>).</li>
+</ul>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — reference implementation (PR #180 + #184 + #187).
+Hub-JWT bearers now go through resource-bound + audience-bound
+enforcement.</li>
+<li><code>parachute-hub</code> — picker UI + <code>POST /vaults</code> + <code>NON_REQUESTABLE_SCOPES</code>
+enforcement (PR #95). Operator tokens auto-include
+<code>parachute:host:admin</code> on next mint.</li>
+<li><code>parachute-notes</code> / <code>paraclaw</code> / <code>parachute-scribe</code> — no current code
+carries hardcoded <code>vault:read|write|admin</code> strings (verified at write
+time). New OAuth flows will pick up the picker rewrite automatically.
+Watch for any future hardcoded scope literal — they'd start receiving
+401s from JWT-validating vault paths.</li>
+<li>Existing <code>pvt_*</code> tokens keep working without change (different code
+path, no audience check). Operator-token rotation needed to pick up
+<code>parachute:host:admin</code> (run <code>parachute auth rotate-operator</code>).</li>
+</ul>
+<p><strong>Status:</strong> complete on 2026-04-28.</p>
+<hr>
+<h2>2026-04-26 — Hub is the OAuth issuer</h2>
+<p><strong>Change:</strong> the hub origin is the canonical OAuth issuer for the
+ecosystem. Vault still implements the OAuth endpoints, but advertises
+the hub as <code>issuer</code> (and stamps it into token <code>iss</code> claims) whenever
+the request reaches it via the hub origin. Falls back to the
+vault-local URL on direct loopback. See
+<a href="../patterns/hub-as-issuer.md"><code>patterns/hub-as-issuer.md</code></a>; pairs
+with <a href="../patterns/oauth-scopes.md"><code>patterns/oauth-scopes.md</code></a>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — already implements the contract. Reference:
+<code>resolveOAuthCoordinates</code> in <code>src/oauth.ts</code>, landed in
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/147">#147</a>
+and refined in
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/152">#152</a>.</li>
+<li><code>parachute-hub</code> (renamed from <code>parachute-cli</code> —
+<a href="https://github.com/ParachuteComputer/parachute-cli/issues/55">cli#55</a>)
+— derives the canonical hub origin in <code>src/hub-origin.ts</code> and passes
+it through as <code>PARACHUTE_HUB_ORIGIN</code> on <code>expose up</code> / <code>start</code>.</li>
+<li><code>parachute-scribe</code>, <code>parachute-channel</code>, future modules — when they
+begin OAuth enforcement, validate <code>iss</code> against the hub origin (not
+their own URL). No code change needed before they implement OAuth.</li>
+<li>Phase B2 cutover (hub becomes IdP itself) tracked in
+<a href="https://github.com/ParachuteComputer/parachute-hub/issues/58">hub#58</a>
+and
+<a href="https://github.com/ParachuteComputer/parachute-vault/issues/169">vault#169</a>.</li>
+</ul>
+<p><strong>Status:</strong> Phase 0+1 complete on 2026-04-20. Phase B2 in design.</p>
+<hr>
+<h2>2026-04-26 — Well-known discovery URLs follow RFC 8414 §3.1</h2>
+<p><strong>Change:</strong> OAuth metadata for an issuer with a path component lives
+at <code>&lt;origin&gt;/.well-known/&lt;type&gt;/&lt;issuer-path&gt;</code> (path-insertion), not
+<code>&lt;issuer&gt;/.well-known/&lt;type&gt;</code> (path-append). Vault serves both for
+client compatibility, but path-insertion is the canonical advertised
+form. See
+<a href="../patterns/well-known-discovery-rfc.md"><code>patterns/well-known-discovery-rfc.md</code></a>;
+pairs with <a href="../patterns/hub-as-issuer.md"><code>patterns/hub-as-issuer.md</code></a>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — already conforms. Path-insertion routes added
+in <a href="https://github.com/ParachuteComputer/parachute-vault/pull/149">#149</a>
+after the <code>/vault/&lt;name&gt;/</code> URL migration; path-append routes have
+been there since launch. Reference: top of <code>route()</code> in
+<code>src/routing.ts</code>.</li>
+<li><code>parachute-hub</code> (renamed from <code>parachute-cli</code> —
+<a href="https://github.com/ParachuteComputer/parachute-cli/issues/55">cli#55</a>)
+— picks this up when the hub becomes the IdP itself in Phase B2
+(<a href="https://github.com/ParachuteComputer/parachute-hub/issues/58">hub#58</a>).
+Hub origin has no path component, so insertion and append collapse
+to the same <code>/.well-known/&lt;type&gt;</code> URL — the distinction only
+matters for issuers with a path.</li>
+<li><code>parachute-scribe</code>, <code>parachute-channel</code>, future modules — when they
+begin serving OAuth metadata, serve both shapes for any path-rooted
+issuer they advertise.</li>
+</ul>
+<p><strong>Status:</strong> complete for vault on 2026-04-20 (PR #149). Other modules
+not yet OAuth-enforcing.</p>
+<hr>
+<h2>2026-04-26 — Parallel cross-repo PRs documented</h2>
+<p><strong>Change:</strong> new pattern doc
+<a href="../patterns/parallel-cross-repo-PRs.md"><code>patterns/parallel-cross-repo-PRs.md</code></a>.
+When a single conceptual change spans multiple Parachute repos, the
+team-lead briefs each steward in parallel and each steward opens its
+own PR independently. No master PR, no orchestration branch, no
+&quot;merge X first&quot; instructions. The composition is parallel-safe by
+design — additive contracts, backwards-compatible shape changes, or
+symmetric contracts that exist on both sides. Captures the shipping
+shape already used for OAuth Phase 0 (4 simultaneous PRs) and
+stateless-scribe.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li>Team-lead / patterns steward — adopt the convention going forward;
+use it to scope multi-repo changes before briefing the stewards.</li>
+<li>Tentacle stewards — each PR's description references the shared
+design doc / brief note; no cross-PR coordination mid-flight.</li>
+<li>Future ecosystem-wide changes — design parallel-safe scope first,
+brief stewards in parallel second.</li>
+</ul>
+<p><strong>Status:</strong> convention documented on 2026-04-26. Already in active
+use during launch-week shipping (OAuth Phase 0, stateless scribe);
+this writes it down.</p>
+<hr>
+<h2>2026-04-26 — Reviewer-agent convention documented</h2>
+<p><strong>Change:</strong> new pattern doc
+<a href="../patterns/reviewer-agent.md"><code>patterns/reviewer-agent.md</code></a>. For PRs
+touching auth / scope / schema / public API / module-protocol /
+inter-service contracts, the team-lead runs a fresh-spawn <code>reviewer</code>
+agent against the diff before recommending merge. Convention, not
+enforcement; pairs with <a href="../patterns/governance.md"><code>governance.md</code></a>
+Rule 1 (every PR reviewed by a team-lead role and merged by a human).
+The reviewer agent's value is the fresh-context pass — both steward
+and team-lead are anchored to what they meant the change to do; a
+fresh agent reads the diff cold against named patterns / RFCs /
+surrounding code and surfaces the gap.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li>Team-lead / patterns steward — adopt the convention going forward;
+cite reviewer findings in the verification summary.</li>
+<li>Future PRs in the listed change-classes — should expect a reviewer
+pass.</li>
+</ul>
+<p><strong>Status:</strong> convention documented on 2026-04-26. Already in informal
+use during launch-week shipping; this writes it down.</p>
+<hr>
+<h2>2026-04-26 — Module JSON extensibility (target convention)</h2>
+<p><strong>Change:</strong> new pattern doc
+<a href="../patterns/module-json-extensibility.md"><code>patterns/module-json-extensibility.md</code></a>
+— third-party modules declare themselves via a <code>.parachute/module.json</code>
+file shipped in the npm package; <code>name</code> / <code>manifestName</code> /
+<code>displayName</code> / <code>tagline</code> / <code>kind</code> / <code>port</code> / <code>paths</code> / <code>health</code> /
+<code>startCmd</code> / <code>scopes</code> / <code>dependencies</code>. <strong>No <code>@openparachute/</code> scope or
+<code>parachute-*</code> prefix required</strong> — the contract is what makes a module
+a Parachute module, not its name. <strong>Status: target, not yet
+implemented in <code>parachute install</code>.</strong> Today the hub uses a hardcoded
+<code>SERVICE_SPECS</code> fallback — a first-party shortcut, not an
+architectural limit.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-hub</code> — needs the <code>module.json</code> reader / validator /
+installer step before this is real. Tracked as Phase 3 work in the
+design doc. Hardcoded <code>SERVICE_SPECS</code> retires (or shrinks to a
+transitional fallback) when <code>module.json</code> lands.</li>
+<li><code>parachute-vault</code>, <code>parachute-notes</code>, <code>parachute-scribe</code>,
+<code>parachute-channel</code> — when the convention lands, ship
+<code>.parachute/module.json</code> matching what each currently asserts
+through <code>SERVICE_SPECS</code>. No runtime change.</li>
+<li>Third-party authors — the canonical shape, today, is in
+<a href="https://github.com/ParachuteComputer/parachute.computer/blob/main/design/2026-04-20-module-architecture.md"><code>parachute.computer/design/2026-04-20-module-architecture.md</code></a>
+(extensibility section). The pattern doc is the durable reference.</li>
+</ul>
+<p><strong>Status:</strong> convention documented; hub implementation deferred to
+Phase 3.</p>
+<hr>
+<h2>2026-04-26 — Mount-path convention documented</h2>
+<p><strong>Change:</strong> new pattern doc
+<a href="../patterns/mount-path-convention.md"><code>patterns/mount-path-convention.md</code></a>.
+Frontend modules are served at a subpath under the ecosystem origin
+(today: <code>/notes/</code>), declared once via Vite <code>base</code> and read by everyone
+through <code>import.meta.env.BASE_URL</code>. Three coordinated downstream
+consumers — Vite asset URLs, React Router <code>basename</code>, PWA manifest
+<code>scope</code> / <code>start_url</code> / <code>id</code>. Internal routes are mount-relative
+(<code>/n/:id</code>, not <code>/notes/n/:id</code>); the router's basename does the
+prefixing. OAuth redirect URIs read <code>BASE_URL</code> so the callback resolves
+under the deployed mount. Override knob: <code>VITE_BASE_PATH</code>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-notes</code> — reference implementation, already conformant.
+Refactor sequence: PR
+<a href="https://github.com/ParachuteComputer/parachute-notes/pull/49">#49</a>
+(move <code>base</code> to <code>/notes</code>) → PR
+<a href="https://github.com/ParachuteComputer/parachute-notes/pull/50">#50</a>
+(drop <code>/notes/</code> from internal routes) → PR
+<a href="https://github.com/ParachuteComputer/parachute-notes/pull/54">#54</a>
+(deep-link shim for pre-refactor bookmarks). Architecture writeup at
+the top of <code>parachute-notes/CLAUDE.md</code> already forward-references
+this doc.</li>
+<li>Future Parachute frontends (PWAs / SPAs) — adopt the same shape: pick
+a stable slug, set Vite <code>base</code>, write mount-relative routes, mirror
+the manifest. Hub catalog (<code>/.well-known/parachute.json</code>) auto-renders
+any frontend module that publishes a <code>services.json</code> entry with
+<code>kind: &quot;frontend&quot;</code>.</li>
+<li>Third-party frontends — same contract. Standard SPA-under-subpath
+hygiene; nothing Parachute-specific.</li>
+</ul>
+<p><strong>Status:</strong> complete on 2026-04-26 for <code>parachute-notes</code>. Pattern doc
+captures live behavior; no service-side changes required.</p>
+<hr>
+<h2>2026-04-26 — Service-to-service auth is a single-validator seam</h2>
+<p><strong>Change:</strong> inter-service calls (vault → scribe today; future pairs
+later) authenticate via a bearer token validated by a single
+function on the callee — <code>validateToken(token) → {valid, scopes}</code>.
+The CLI mints the secret on install and writes it to both ends. The
+upgrade path to hub-issued JWTs in Phase B2 is a body-swap of that
+one function; callers and callees don't change. See
+<a href="../patterns/service-to-service-auth.md"><code>patterns/service-to-service-auth.md</code></a>;
+pairs with <a href="../patterns/hub-as-issuer.md"><code>patterns/hub-as-issuer.md</code></a>
+and <a href="../patterns/oauth-scopes.md"><code>patterns/oauth-scopes.md</code></a>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-hub</code> — already implements the trust broker in
+<code>src/auto-wire.ts</code> (mints <code>SCRIBE_AUTH_TOKEN</code>, writes to vault <code>.env</code>
+and scribe <code>config.json</code>, idempotent, restarts vault). No code
+change needed; pattern documents what's there.</li>
+<li><code>parachute-scribe</code> — already implements the validator seam in
+<code>src/auth.ts</code>. Returns scopes-on-success even on the shared-secret
+path so the JWT swap is callable-compatible.</li>
+<li><code>parachute-vault</code> — caller-side resolver in <code>src/scribe-env.ts</code>
+handles canonical <code>SCRIBE_AUTH_TOKEN</code> + deprecated <code>SCRIBE_TOKEN</code>
+with a one-shot warning.</li>
+<li>Phase B2 cutover (<code>validateToken</code> body becomes JWT verify; shared
+scope-guard library) tracked in
+<a href="https://github.com/ParachuteComputer/parachute-hub/issues/59">hub#59</a>.</li>
+<li>Future inter-service pairs — declare the env var name in
+<code>.parachute/module.json</code> and <code>auto-wire</code> provisions on install.</li>
+</ul>
+<p><strong>Status:</strong> Phase 0+1 complete on 2026-04-23 for the vault↔scribe
+pair. Phase B2 in design.</p>
+<hr>
+<h2>2026-04-26 — Writes require <code>if_updated_at</code> (or explicit <code>force: true</code>)</h2>
+<p><strong>Change:</strong> Parachute write APIs require an <code>if_updated_at</code>
+precondition by default; <code>force: true</code> is the explicit opt-out.
+Conflicts return a structured 409 (<code>error_type: &quot;conflict&quot;</code> +
+<code>current_updated_at</code> / <code>your_updated_at</code> / <code>path</code> / <code>note_id</code>);
+missing precondition returns a structured 428 (RFC 6585,
+<code>error_type: &quot;precondition_required&quot;</code>). Single-resource reads
+always include <code>updated_at</code> so the next write has a token. See
+<a href="../patterns/optimistic-concurrency.md"><code>patterns/optimistic-concurrency.md</code></a>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — reference implementation.
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/153">#153</a>
+landed required <code>if_updated_at</code> + the structured conflict shape.
+Both HTTP (<code>src/routes.ts</code>) and MCP (<code>src/mcp-http.ts</code>) tool
+surfaces enforce identically.</li>
+<li><code>parachute-notes</code> — must forward <code>if_updated_at</code> from PWA edits to
+vault writes; don't strip it. PWA's local store should hold the
+last-seen <code>updated_at</code> per note.</li>
+<li>Future API-surface modules — adopt the same shape on every mutating
+endpoint over a database-backed resource. Pattern doc has the rules.</li>
+</ul>
+<p><strong>Status:</strong> complete for vault on 2026-04-23 (PR #153). Notes adoption
+ongoing — confirm on next touch.</p>
+<hr>
+<h2>2026-04-26 — Context-in-payload pattern documented</h2>
+<p><strong>Change:</strong> new pattern doc
+<a href="../patterns/context-in-payload.md"><code>patterns/context-in-payload.md</code></a>. The
+provider pre-fetches narrowly-scoped context (a few dozen names) and ships
+it inline in the trigger payload — multipart <code>context</code> part for attachment
+sends, top-level <code>context: {...}</code> field for JSON sends. The consumer is
+stateless: parses tolerantly and never calls back into the provider. Empty
+payload → no part attached. Reference pair: <code>parachute-vault</code> →
+<code>parachute-scribe</code> for transcription proper-noun correction (vault
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/156">#156</a>).</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — already conformant. <code>src/context.ts</code>
+(<code>fetchContextEntries</code>, <code>appendContextPart</code>) implements the provider
+side; trigger config exposes <code>include_context</code> (predicate list with
+<code>tag</code> / <code>exclude_tag</code> / <code>include_metadata</code>).</li>
+<li><code>parachute-scribe</code> — already conformant. <code>src/context.ts</code>
+(<code>parseContextPayload</code>, <code>buildProperNounsBlockFromEntries</code>) implements
+the tolerant consumer side.</li>
+<li>Future modules taking context-relevant free-text (cleanup, summarization,
+classification) — adopt the same <code>entries[]</code> shape on receive. Future
+context-providing modules — emit the exact same shape, do not fork into a
+per-provider schema.</li>
+</ul>
+<p><strong>Status:</strong> complete on 2026-04-26. Pattern doc captures live behavior; no
+service-side changes required.</p>
+<hr>
+<h2>2026-04-25 — CLI is the port authority at install time</h2>
+<p><strong>Change:</strong> <code>parachute install</code> now picks each service's port up front and
+writes <code>PORT=&lt;n&gt;</code> into <code>~/.parachute/&lt;svc&gt;/.env</code>. Idempotent — an existing
+<code>PORT</code> in <code>.env</code> wins, so re-installs and user-edited ports survive
+upgrades. See <a href="../patterns/cli-as-port-authority.md"><code>patterns/cli-as-port-authority.md</code></a>;
+pairs with <a href="../patterns/canonical-ports.md"><code>patterns/canonical-ports.md</code></a>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-cli</code> — implemented in
+<a href="https://github.com/ParachuteComputer/parachute-cli/pull/54">#54</a>
+(closes #53). Helper: <code>src/port-assign.ts</code>. Hook: <code>src/commands/install.ts</code>.</li>
+<li><code>parachute-vault</code>, <code>parachute-notes</code>, <code>parachute-scribe</code>,
+<code>parachute-channel</code> — no service-side changes required. Each already
+reads <code>PORT</code> from env with a compiled-in fallback; the CLI's <code>.env</code>
+value is merged into the spawn env by <code>lifecycle.start</code>. Confirm the
+pattern on the next touch and add a comment if a service hard-codes its
+port instead of reading env.</li>
+<li>Third-party / future modules — same contract: read <code>PORT</code> from env, fall
+back compiled-in, no integration with the CLI required.</li>
+</ul>
+<p><strong>Status:</strong> complete for committed-core services on 2026-04-25.</p>
+<hr>
+<h2>2026-04-15 — <code>parachute-*</code> bin naming</h2>
+<p><strong>Change:</strong> all Parachute executables adopt the <code>parachute-&lt;module&gt;</code> prefix
+(see <code>naming/bins.md</code>). The umbrella <code>parachute</code> bin is reserved for
+<code>@openparachute/cli</code>.</p>
+<p><strong>Affected:</strong></p>
+<ul>
+<li><code>parachute-vault</code> — renamed <code>parachute</code> → <code>parachute-vault</code> in
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/134">#134</a> (2026-04-21).</li>
+<li><code>parachute-scribe</code> — renamed <code>scribe</code> → <code>parachute-scribe</code> in
+<a href="https://github.com/ParachuteComputer/parachute-scribe/pull/9">#9</a> (2026-04-22).</li>
+<li><code>parachute-narrate</code> — not yet published; will ship as
+<code>parachute-narrate</code> from day one.</li>
+<li><code>parachute-channel</code> — conformant (<code>parachute-channel</code>, <code>parachute-channel-bridge</code>).</li>
+<li><code>parachute-agents</code> — conformant (<code>parachute-agent</code>, <code>parachute-agent-ui</code>).</li>
+<li><code>tailshare</code> — exempt; not a Parachute-branded tool.</li>
+</ul>
+<p><strong>Status:</strong> complete for shipped modules. Narrate to follow on first publish.</p>
+<hr>
+<h2>2026-04-15 — parachute-patterns repo created</h2>
+<p><strong>Change:</strong> this repo exists. Conventions that were implicit across the
+ecosystem (naming, brand palette, agent schema, modularity principle, etc.)
+are now written down.</p>
+<p><strong>Affected:</strong> every Parachute repo eventually needs a README link back to
+this repo (<code>adoption/checklist.md</code>). Non-urgent — add as repos get touched.</p>
+<p><strong>Status:</strong> in progress.</p>
+<hr>
+<h2>Template</h2>
+<pre><code>## YYYY-MM-DD — &lt;one-line change&gt;
+
+**Change:** what changed and why. Link to the pattern file.
+
+**Affected:** which repos need to follow and what specifically each needs
+to do.
+
+**Status:** DRAFT | in progress | complete.
+</code></pre>

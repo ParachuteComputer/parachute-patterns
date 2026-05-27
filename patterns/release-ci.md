@@ -169,7 +169,7 @@ Pilot: parachute-hub (landed 2026-05-24, hub#359). Per-repo rollout
 [parachute-patterns#91](https://github.com/ParachuteComputer/parachute-patterns/issues/91).
 
 Each rollout adapts hub's workflow + RELEASING.md, plus an `NPM_TOKEN`
-secret added by the operator before the first tag push. `parachute-app`
+secret added by the operator before the first tag push. `parachute-surface`
 publishes from `packages/app-host` (multi-package workspace); other
 modules are single-package. None except hub need the `publish-image`
 job today.

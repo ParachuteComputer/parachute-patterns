@@ -1,0 +1,227 @@
+<h1>Tag data model</h1>
+<blockquote>
+<p>One-line summary: a tag is a single SQL row carrying its identity, description, indexed fields, declared typed relationships, and parent-tag pointers. Schemas inherit through <code>parent_names</code>; <code>_default</code> is the implicit universal parent. No notes-as-config for tag concerns. Vault is SQLite; tags belong in tables.</p>
+</blockquote>
+<h2>Convention</h2>
+<p>The vault <code>tags</code> table holds everything about a tag in one row:</p>
+<pre><code class="language-sql">CREATE TABLE tags (
+  name TEXT PRIMARY KEY,
+  description TEXT,                  -- markdown blurb describing the tag
+  fields TEXT,                       -- JSON: indexed metadata fields per `query-operators.md`
+  relationships TEXT,                -- JSON: typed-link declarations per §Typed relationships below
+  parent_names TEXT,                 -- JSON array of parent tag names (multi-inheritance, see §Schema inheritance)
+  created_at TEXT NOT NULL,
+  updated_at TEXT
+);
+</code></pre>
+<p><strong>One tag = one row.</strong> No sidecar table for fields. No sidecar table for note-validation defaults. No config notes for hierarchy parents. Authoring is via direct API (<code>update-tag</code> MCP tool / vault admin SPA).</p>
+<p>The legacy <code>tag_schemas</code> sidecar table, the <code>_tags/&lt;name&gt;</code> config-note pattern, the <code>_schemas/*</code> notes-as-config pattern, and the short-lived <code>note_schemas</code> + <code>schema_mappings</code> two-table subsystem are all retired in favor of in-table state on <code>tags</code>. See §Migration history.</p>
+<h2>Why</h2>
+<p><strong>Notes are content; system configuration is in tables.</strong> Vault is a SQLite-backed agent-native knowledge graph, not a markdown-files-on-disk system. Configuration-as-data via &quot;edit a <code>_tags/&lt;name&gt;</code> note&quot; was historical accretion — it predates having a SQL identity for tags at all. Now that tags are first-class rows, the schema-on-tag and hierarchy-on-tag concerns belong as columns on that row, not as parsed JSON in another note's metadata.</p>
+<p>The conflation between &quot;this is a note&quot; and &quot;this is system configuration&quot; was creating real confusion (see <code>parachute-patterns/research/parachute-data-model-shape.md</code>). Drawing the line cleanly: notes carry user content. Anything else is a SQL table or a column.</p>
+<h2>Typed relationships</h2>
+<p>A tag declares the <strong>expected</strong> typed-link shapes for notes carrying that tag. The declaration is informational — used by agents to understand what links a typed note &quot;should&quot; have, and used by the UI to surface affordances. It is <strong>not enforced</strong> at write time (see §Future evolution).</p>
+<p>Schema shape (stored as JSON in <code>tags.relationships</code>):</p>
+<pre><code class="language-json">{
+  &quot;author&quot;: {
+    &quot;target_tag&quot;: &quot;person&quot;,
+    &quot;cardinality&quot;: &quot;one&quot;,
+    &quot;description&quot;: &quot;the book's author&quot;
+  },
+  &quot;genre&quot;: {
+    &quot;target_tag&quot;: &quot;genre&quot;,
+    &quot;cardinality&quot;: &quot;many&quot;,
+    &quot;description&quot;: &quot;thematic category&quot;
+  },
+  &quot;publisher&quot;: {
+    &quot;target_tag&quot;: &quot;publisher&quot;,
+    &quot;cardinality&quot;: &quot;optional&quot;,
+    &quot;description&quot;: &quot;publishing house&quot;
+  }
+}
+</code></pre>
+<h3>Cardinality vocabulary</h3>
+<p>Four named values, chosen for AI legibility (LLMs parse named cardinalities more reliably than <code>&quot;1..*&quot;</code> style numerics):</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&quot;one&quot;</code></td>
+<td>Exactly one link of this relationship is expected (1)</td>
+</tr>
+<tr>
+<td><code>&quot;optional&quot;</code></td>
+<td>Zero or one (0..1)</td>
+</tr>
+<tr>
+<td><code>&quot;many&quot;</code></td>
+<td>Zero or more (0..*)</td>
+</tr>
+<tr>
+<td><code>&quot;many-required&quot;</code></td>
+<td>One or more (1..*)</td>
+</tr>
+</tbody>
+</table>
+<p>Stored verbatim as the JSON string. Agents reading the schema understand intent without parsing UML notation.</p>
+<h3>Relationships compose with the existing <code>links</code> table</h3>
+<p>The vault <code>links</code> table already stores edges as <code>(source_id, target_id, relationship)</code>. The tag's declared relationships are the <strong>expected shape</strong>; actual links live in the <code>links</code> table. The schema declaration:</p>
+<ul>
+<li>Tells agents what to look for (&quot;this <code>#book</code> should have an <code>author</code> link to a <code>#person</code>&quot;)</li>
+<li>Tells the UI what affordances to surface (an &quot;Add author&quot; button on a <code>#book</code> note's edit view)</li>
+<li>Stays informational — doesn't reject writes if a <code>#book</code> note has no author</li>
+</ul>
+<p>Future enforcement (see §Future evolution) layers validation on top.</p>
+<h2>Hierarchy via <code>parent_names</code></h2>
+<p>Tag hierarchy lives as a column on the tag row.</p>
+<pre><code class="language-sql">-- example data:
+INSERT INTO tags (name, parent_names) VALUES
+  ('voice',        '[&quot;manual&quot;, &quot;note&quot;]'),     -- voice descends from manual + note
+  ('manual',       '[&quot;note&quot;]'),                -- manual descends from note
+  ('note',         '[]'),                      -- root
+  ('health/food',  '[]');                      -- string-form sub-tag has no explicit parent
+</code></pre>
+<p>The <code>getTagDescendants</code> resolver walks the <code>parent_names</code> graph backwards (build child→parent index, invert to parent→children, transitive closure). Functionally equivalent to the historical <code>_tags/*</code> scanner; mechanically simpler.</p>
+<p><strong>Cache invalidation moves with the data source.</strong> Pre-migration the resolver invalidated on <code>_tags/*</code> note writes. The trigger now is <code>tags</code> row writes (specifically when <code>parent_names</code> changes). Same cache-key shape; only the write-side hook differs.</p>
+<p>The string-form sub-tag fallback (per <code>patterns/tag-scoped-tokens.md</code> §Storage details) STILL applies — <code>health/food</code> matches a <code>[health]</code>-allowlisted token via <code>rootOf(&quot;health/food&quot;) = &quot;health&quot;</code>, regardless of whether <code>parent_names</code> is set. The two mechanisms (parent_names-driven hierarchy + string-form fallback) coexist.</p>
+<h2>Schema inheritance</h2>
+<p>Schema inheritance is real: a tag's effective field map is its own <code>fields</code> ∪ every ancestor's <code>fields</code>, with <strong>first-in-walk</strong> precedence. Shipped in vault#272 (closed vault#270).</p>
+<h3>Walk semantics</h3>
+<p>For a note carrying tags <code>[A, B, ...]</code>, the resolver visits, in order:</p>
+<ol>
+<li>Each note tag, then its <code>parent_names</code> (depth-first, declaration order), cycle-protected via a visited Set.</li>
+<li>The implicit universal parent <code>_default</code> (see below), appended last.</li>
+</ol>
+<p>The first specification encountered for any field name wins. Operator-controlled precedence is therefore &quot;first-in-<code>parent_names</code>-array wins&quot; — a tag's earlier parents outrank its later parents.</p>
+<p>Conflicts (same field declared by two ancestors with diverging <code>type</code> or <code>enum</code>) surface as advisory <code>schema_conflict</code> warnings on the response's <code>validation_status.warnings</code>. The warning carries:</p>
+<ul>
+<li><code>field</code> — the contested field name</li>
+<li><code>schema</code> — the tag whose declaration won</li>
+<li><code>loser_schema</code> — the tag whose declaration was overridden (set only on <code>schema_conflict</code>)</li>
+<li><code>reason: &quot;schema_conflict&quot;</code></li>
+<li><code>message</code> — human-readable</li>
+</ul>
+<p><code>schema_conflict</code> joins the existing <code>type_mismatch</code> and <code>enum_mismatch</code> warning reasons. Validation remains advisory: writes are never blocked. Schemas guide; they don't gate.</p>
+<h3><code>_default</code> is the implicit universal parent</h3>
+<p>A tag named <code>_default</code> is special at <em>resolution</em> time only — it's never auto-written into any <code>parent_names</code> array, never auto-applied at the storage layer.</p>
+<ul>
+<li>When a <code>_default</code> row exists in <code>tags</code>, it's appended to every note's effective ancestor walk (including untagged notes). Its <code>fields</code> apply to every note as a low-precedence fallback.</li>
+<li>Because <code>_default</code> is appended <strong>last</strong>, any field a real tag declares wins over <code>_default</code>'s declaration of the same field.</li>
+<li><code>getTagDescendants(&quot;_default&quot;)</code> returns every tag — used by <code>query-notes { tag: &quot;_default&quot; }</code> to mean &quot;every note.&quot;</li>
+<li>When <code>_default</code> is <em>not</em> declared as a tag row, the magic is inert. The behavior is opt-in via <code>update-tag</code> like any other tag.</li>
+</ul>
+<p><code>_default</code> can technically carry its own <code>parent_names</code> and the resolver handles it (cycle guard + visited Set), but the resulting interaction is non-obvious. Treat <code>_default</code> as a root tag in normal use.</p>
+<p>This collapses the prior <code>note_schemas</code> + <code>schema_mappings</code> two-table design into a single mechanism: instead of mapping schemas to notes by path-prefix or tag, schemas live on tags and inherit, with <code>_default</code> covering the universal-fallback case that <code>_schema_defaults</code> used to handle. Zero operator vaults used the path-prefix mapping kind, and tag-mapped schemas were fully redundant with <code>tags.fields</code> — see vault#267 for the audit.</p>
+<h3>Field reuse across tags</h3>
+<p>The &quot;discoverable shared field&quot; pattern (Tana §8.1.b in <code>research/tana-deep-dive.md</code>) is implicitly delivered through inheritance: a tag with <code>parent_names: [&quot;task&quot;]</code> inherits task's <code>due</code>, <code>assignee</code>, etc., without redeclaring them. A field shared across many sibling tags becomes an ancestor-tag concern: declare once on the parent, every child inherits.</p>
+<h2>Tag rename is a transactional cascade</h2>
+<p>Renaming a tag (<code>task</code> → <code>todo</code>, say) is a single transactional cascade across every surface where the old name lives. Shipped in vault#275 (closed vault#240 + vault#247). Replaces the prior fail-closed 409 on token-referenced tags.</p>
+<p>Surfaces touched by the cascade:</p>
+<ol>
+<li><code>tags.name</code> PK row.</li>
+<li>Sub-tag rows: <code>task/work</code> → <code>todo/work</code>, recursively (sub-tags follow their root).</li>
+<li><code>note_tags.tag_name</code> FK references for every renamed name.</li>
+<li><code>tags.parent_names</code> JSON arrays in OTHER tag rows.</li>
+<li><code>tokens.scoped_tags</code> JSON arrays.</li>
+<li><code>indexed_fields.declarer_tags</code> JSON arrays.</li>
+<li>Note body <code>content</code>: <code>#oldname[/...]</code> references rewritten to <code>#newname[/...]</code>. <code>[[_tags/oldname]]</code> wikilinks rewritten.</li>
+<li><code>_tags/&lt;oldname&gt;...</code> paths (post-v14 these are inert historical breadcrumbs, but renaming for hygiene keeps the vault internally consistent).</li>
+</ol>
+<p><strong>Atomicity:</strong> a single <code>BEGIN IMMEDIATE</code> transaction. Any failure rolls back the entire cascade — no half-applied state. Pre-flight collision check covers the root rename and every sub-tag rename, so a partway-through <code>UNIQUE</code> violation can't happen.</p>
+<p><strong>Pre-flight conflict surface:</strong> if any new name already exists as a tag and isn't itself being renamed away, the call returns <code>{error: &quot;target_exists&quot;, conflicting: [...]}</code> without touching the database.</p>
+<p><strong>Reported stats:</strong> the result includes per-surface counts (<code>renamed</code>, <code>sub_tags_renamed</code>, <code>parent_refs_updated</code>, <code>tokens_updated</code>, <code>indexed_field_declarers_updated</code>, <code>notes_rewritten</code>, <code>paths_renamed</code>) so REST/MCP responses describe what changed without a re-scan.</p>
+<p><strong>Cache invalidation:</strong> both <code>_tagHierarchy</code> and <code>_schemaConfig</code> caches bust after the cascade, since <code>parent_names</code> and the tag-set both change.</p>
+<h2>MCP discovery surface</h2>
+<p>How an AI client learns the vault's schema shape lives in <a href="./vault-mcp-discovery.md"><code>vault-mcp-discovery.md</code></a>. Short version: the same projection (tags-with-schemas + indexed fields + query hints) is rendered as markdown at MCP <code>initialize</code> and returned as JSON from the <code>vault-info</code> tool — both surfaces scope-filtered when the caller is tag-scoped.</p>
+<h2>Authoring surface</h2>
+<pre><code>MCP tool: update-tag
+HTTP:     PUT /vault/&lt;name&gt;/api/tags/&lt;tag&gt;
+SPA:      vault admin tag editor
+</code></pre>
+<p>All three write to the same <code>tags</code> row. <code>update-tag</code> accepts <code>{ description, fields, relationships, parent_names }</code> and upserts.</p>
+<p>There is no path that authors tag state by editing a markdown note. The <code>_tags/&lt;name&gt;</code> and <code>_schemas/*</code> config-note conventions are retired.</p>
+<h2>Migration history</h2>
+<p>The model arrived in three steps; this section records the arc so the migration-notes entries make sense.</p>
+<ol>
+<li><strong>2026-05-03 — <code>tag_schemas</code> + <code>_tags/*</code> retirement</strong> (vault#245, schema v13 → v14). Added <code>description</code>, <code>fields</code>, <code>relationships</code>, <code>parent_names</code> columns on <code>tags</code>. Lifted data from the <code>tag_schemas</code> sidecar and <code>_tags/&lt;name&gt;</code> config notes. Dropped <code>tag_schemas</code>. Left <code>_tags/&lt;name&gt;</code> notes in place as historical breadcrumbs.</li>
+<li><strong>2026-05-03 — <code>_schemas/*</code> retirement</strong> (vault#249, schema v14 → v15). Lifted <code>_schemas/&lt;name&gt;</code> notes and the <code>_schema_defaults</code> mapping note into a new <code>note_schemas</code> + <code>schema_mappings</code> two-table subsystem. MCP tool count went 10 → 16 with <code>update-note-schema</code>, <code>delete-note-schema</code>, <code>list-note-schemas</code>, <code>set-schema-mapping</code>, <code>delete-schema-mapping</code>, <code>synthesize-notes</code>.</li>
+<li><strong>2026-05-09 — <code>note_schemas</code> + <code>schema_mappings</code> ripped</strong> (vault#269, schema v16 → v17). Audit found zero operator use of the path-prefix mapping kind, and tag-mapped schemas were redundant with <code>tags.fields</code>. Subsystem removed entirely; the six new MCP tools deleted; tool count went 16 → 9. Note-validation now lives where tag-validation lives: on <code>tags.fields</code>, with <code>_default</code> as the universal-fallback (vault#272, same-day).</li>
+</ol>
+<p>The arc is one-way. Aaron approved the irreversible migrations 2026-05-03 (steps 1+2) and 2026-05-09 (step 3); the cleaner break beats keeping the subsystem alongside.</p>
+<h2>Adoption</h2>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>vault</strong></td>
+<td>Shipped: schema v17, single-table tag model, multi-inheritance with <code>_default</code> magic, transactional rename cascade. See <code>core/src/schema-defaults.ts</code>, <code>core/src/notes.ts</code>, <code>core/src/vault-projection.ts</code>.</td>
+</tr>
+<tr>
+<td><strong>parachute-agent</strong></td>
+<td>No change — parachute-agent doesn't touch tag schema state</td>
+</tr>
+<tr>
+<td><strong>hub</strong></td>
+<td>No change</td>
+</tr>
+<tr>
+<td><strong>notes</strong></td>
+<td>The Notes UI surfaces tag schemas (declared fields + relationships) in note-edit views; tracked in the notes repo</td>
+</tr>
+</tbody>
+</table>
+<h2>Future evolution</h2>
+<table>
+<thead>
+<tr>
+<th>Extension</th>
+<th>Sketch</th>
+<th>When to revisit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Relationship enforcement</strong></td>
+<td>Validate at write time that a <code>#book</code> note has an <code>author</code> link with cardinality <code>one</code>. Returns 400 on missing required relationship.</td>
+<td>When operator pain emerges from notes lacking expected relationships</td>
+</tr>
+<tr>
+<td><strong>Reverse-relationship inference</strong></td>
+<td><code>#book</code> declares <code>author → person</code>. Vault auto-infers <code>person → book</code> reverse with relationship <code>wrote</code>.</td>
+<td>Phase 2 if helpful for query semantics</td>
+</tr>
+<tr>
+<td><strong><code>required</code> field markers</strong></td>
+<td>Re-introduce required/optional on field specs (the prior <code>note_schemas</code> table carried this).</td>
+<td>When a real &quot;missing field&quot; pain point emerges; advisory-only by default</td>
+</tr>
+<tr>
+<td><strong>Schema versioning</strong></td>
+<td>Optional <code>schema_version</code> field on tag rows; track migrations across schema changes</td>
+<td>When a real schema-evolution incident happens</td>
+</tr>
+<tr>
+<td><strong>Relationship typing per-link</strong> (multiple authors with different roles)</td>
+<td>Extend <code>links.metadata</code> JSON with <code>{ role: &quot;primary-author&quot; }</code> shape</td>
+<td>When use-case appears</td>
+</tr>
+</tbody>
+</table>
+<h2>Adoption notes</h2>
+<ul>
+<li>Aaron approved the original design 2026-05-03 in the architecture-review thread; the multi-inheritance + <code>_default</code> extension and the rename cascade landed 2026-05-09.</li>
+<li>The retirement of config-as-note for tag concerns is a real simplification, not just refactor — the conceptual layer &quot;what is a note&quot; gets clearer.</li>
+<li>Tag rename is now operator-friendly across all surfaces (vault#275 — superseded the earlier fail-closed 409 on token-referenced tags).</li>
+<li>Companion docs: <code>patterns/vault-mcp-discovery.md</code> (how clients see the schema), <code>research/parachute-data-model-shape.md</code> (architectural reflection), <code>research/tana-deep-dive.md</code> (typed-graph context), <code>patterns/tag-scoped-tokens.md</code> (token-scope concerns layered on this model).</li>
+</ul>
+<p><em>Last updated: 2026-05-09 — current with vault 0.4.1-rc.4.</em></p>

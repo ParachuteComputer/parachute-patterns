@@ -1,0 +1,158 @@
+<h1>Context in payload</h1>
+<h2>Convention</h2>
+<p>When one Parachute service triggers another and the receiving service
+needs <em>contextual</em> knowledge (e.g. &quot;who are the people the speaker
+typically talks about?&quot;), the <strong>provider</strong> pre-fetches that context
+and ships it <strong>inline in the payload</strong>. The <strong>consumer</strong> is stateless
+with respect to it — the consumer never calls back into the provider
+to look anything up.</p>
+<p>The reference example: vault → scribe transcription. Vault knows the
+speaker's people / projects / aliases. Vault attaches a <code>context.json</code>
+part to the audio upload. Scribe uses it as-is for proper-noun
+correction in cleanup, then forgets about it.</p>
+<h2>Why</h2>
+<ul>
+<li><strong>No backchannel.</strong> A consumer that calls back into the provider
+during request handling creates an inverted dependency, an extra
+round-trip per request, and a credential-management problem on
+the consumer side. Sending context inline collapses all three.</li>
+<li><strong>Stateless consumers.</strong> Scribe doesn't know what a &quot;vault&quot; is.
+Future consumers (transcription from a microphone app, from a phone
+recording, from a browser extension) ship the same shape from
+whatever source they have. The receiver doesn't care where the
+entries came from.</li>
+<li><strong>Provider owns the predicate.</strong> The provider (which has the data)
+decides what's relevant — by tag, by metadata whitelist, by recency
+if it grows that knob — and never exposes its query language to the
+consumer.</li>
+<li><strong>Caller-agnostic shape.</strong> The shape is dumb on purpose:
+<code>{entries: [{name, ...whitelisted_fields}]}</code>. A receiver written
+for vault works for any future provider that emits the same shape.</li>
+</ul>
+<h2>Shape</h2>
+<h3>What the provider sends</h3>
+<pre><code class="language-json">{
+  &quot;entries&quot;: [
+    { &quot;name&quot;: &quot;Margaret&quot;,         &quot;summary&quot;: &quot;Close friend&quot;,   &quot;aliases&quot;: [&quot;Marg&quot;] },
+    { &quot;name&quot;: &quot;Learn Vibe Build&quot;, &quot;summary&quot;: &quot;6-week cohort&quot;,  &quot;aliases&quot;: [&quot;LVB&quot;, &quot;Learn by Build&quot;] }
+  ]
+}
+</code></pre>
+<ul>
+<li><code>name</code> (required) — canonical display form, typically the source's
+basename (a note path's filename without extension, in vault's case).</li>
+<li>Other fields — whitelisted metadata carried through unchanged. The
+consumer treats these as opaque strings/values; only <code>name</code> has
+cross-service semantic meaning.</li>
+</ul>
+<h3>How the provider attaches it</h3>
+<p>Multipart: a <code>context</code> part with <code>content-type: application/json</code>.</p>
+<pre><code class="language-ts">form.append(
+  &quot;context&quot;,
+  new Blob([JSON.stringify(payload)], { type: &quot;application/json&quot; }),
+  &quot;context.json&quot;,
+);
+</code></pre>
+<p>JSON-bodied requests inline <code>context: {...}</code> as a top-level field.
+Trigger config in vault selects either shape via
+<code>send: &quot;attachment&quot; | &quot;json&quot;</code>.</p>
+<p>Empty payload → <strong>no part attached</strong>. Don't send a zero-entries part
+the receiver would have to special-case.</p>
+<p>Reference:
+<a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/src/context.ts"><code>parachute-vault/src/context.ts</code></a>
+(<code>fetchContextEntries</code>, <code>appendContextPart</code>).</p>
+<h3>Provider predicate config</h3>
+<p>The provider's user-facing config picks what to include. Vault's
+shape (in <code>vault.yaml</code> / trigger <code>action.include_context</code>):</p>
+<pre><code class="language-yaml">include_context:
+  - tag: person
+    exclude_tag: archived
+    include_metadata: [summary, aliases]
+  - tag: project
+    include_metadata: [summary, aliases]
+</code></pre>
+<p>Each predicate is a query (scoped by <code>tag</code>, optionally excluding
+<code>exclude_tag</code>) plus a metadata-key whitelist. Fields not in
+<code>include_metadata</code> are dropped before send.</p>
+<h3>How the consumer parses it</h3>
+<p>Tolerant parser. Malformed payload → log + fall through to &quot;no
+context&quot;, <strong>not</strong> 400 the whole request.</p>
+<pre><code class="language-ts">// parachute-scribe/src/context.ts
+export function parseContextPayload(raw: unknown): ContextPayload | null {
+  // Accepts string OR pre-parsed object; null on malformed.
+  // Filters entries that lack a non-empty `name`.
+}
+</code></pre>
+<p>Reference:
+<a href="https://github.com/ParachuteComputer/parachute-scribe/blob/main/src/context.ts"><code>parachute-scribe/src/context.ts</code></a>
+(<code>parseContextPayload</code>, <code>buildProperNounsBlockFromEntries</code>).</p>
+<p>The consumer's job once parsed is shape-driven, not provider-aware.
+Scribe renders entries into a &quot;Known names in this context&quot; prompt
+block; a different consumer would render them differently. The
+provider doesn't try to format for the consumer.</p>
+<h2>Rules</h2>
+<ul>
+<li><strong>Provider pre-fetches; consumer never calls back.</strong> This is the
+core invariant. A consumer that reaches into the provider is
+outside the pattern — refactor or document why.</li>
+<li><strong>Empty payload → no part / no field.</strong> Don't send <code>{entries: []}</code>.
+Don't send a multipart part with <code>null</code>. Absence is the empty case.</li>
+<li><strong><code>name</code> is required, everything else is whitelisted opaque.</strong>
+Adding a new field is allowed (consumers ignore unknown keys);
+removing or renaming <code>name</code> is a breaking change.</li>
+<li><strong>Provider config controls what's sent.</strong> Don't bake &quot;always send
+people + projects&quot; into provider code. The trigger / worker config
+declares predicates explicitly so the operator can see it.</li>
+<li><strong>Consumer parser is tolerant.</strong> Malformed entries are dropped; a
+malformed payload as a whole produces &quot;no context&quot; rather than a
+request failure. Transcription should not fail because some unrelated
+metadata key contained bad UTF-8.</li>
+<li><strong>Same shape across providers.</strong> Whatever ships next as a
+context-providing service must ship the <em>exact</em> same JSON shape.
+Don't fork &quot;vault context&quot; into a vault-specific schema; the
+shape is the contract.</li>
+</ul>
+<h2>Where this applies</h2>
+<ul>
+<li><strong><code>parachute-vault</code> → <code>parachute-scribe</code></strong> — reference pair. Vault
+PR
+<a href="https://github.com/ParachuteComputer/parachute-vault/pull/156">#156</a>
+(&quot;feat(scribe): vault is now the context provider for
+transcription&quot;). Trigger config supports <code>include_context</code>; the
+transcription worker reads <code>transcription.context</code> from <code>vault.yaml</code>
+and includes the same payload.</li>
+<li><strong><code>parachute-scribe</code></strong> — implements the consumer side. Knows
+nothing about vault. Any future module sending audio with a
+<code>context</code> part gets the same proper-noun-correction behavior.</li>
+<li><strong>Future modules</strong> — any service that takes context-relevant
+free-text (cleanup, summarization, classification, retrieval) is a
+candidate consumer. Adopt the same <code>entries[]</code> shape; let any
+context-providing module front it.</li>
+</ul>
+<h2>What this isn't</h2>
+<ul>
+<li><strong>A general-purpose retrieval API.</strong> This pattern carries
+pre-selected, narrowly-scoped entries (a few dozen names, not a
+whole vault). For arbitrary retrieval, use MCP — the consumer
+becomes an MCP client and pulls what it needs, with auth.</li>
+<li><strong>An auth or trust mechanism.</strong> The context payload is in the
+request body, alongside the actual workload. It piggybacks on
+whatever inter-service auth
+(<a href="./service-to-service-auth.md"><code>service-to-service-auth.md</code></a>)
+already protects the request.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li><strong>Versioning.</strong> Today there's no <code>version</code> field on the payload —
+shape is &quot;v1 forever.&quot; If/when a v2 lands (e.g. typed entries,
+embedding vectors), we'll need a discriminator. Defer until the
+second shape is real.</li>
+<li><strong>Size limits.</strong> No explicit cap today. A 500-entry vault is fine
+on loopback; 50,000-entry would be a problem. Provider-side
+predicates are the throttle for now (operators choose narrow tags).
+A future hard cap with truncation order may be needed.</li>
+<li><strong>Ordering / ranking.</strong> Today predicates run in declaration order;
+duplicates dedupe by first match. No relevance scoring. If consumers
+start to care (most-recent-first, query-similarity-first), the
+predicate shape grows.</li>
+</ul>

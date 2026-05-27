@@ -1,0 +1,36 @@
+<h1>Frontmatter lint rules</h1>
+<h2>[DRAFT]</h2>
+<p>Shared linting for markdown files with YAML frontmatter. Applies to agent
+markdown (<code>@openparachute/agent</code>), memory files (<code>~/.claude/projects/.../memory/*.md</code>),
+and any future markdown-with-frontmatter surface.</p>
+<h2>Rules (apply to any frontmatter we author)</h2>
+<ol>
+<li><strong>Opening <code>---</code> and closing <code>---</code> on their own lines.</strong> No content on the
+same line as the fence.</li>
+<li><strong>2-space indent, no tabs.</strong> YAML parsers differ on tabs; avoid the class
+entirely.</li>
+<li><strong>Strings containing <code>:</code> must be quoted.</strong> Example:
+<code>description: &quot;Runs at 9:00 daily&quot;</code>.</li>
+<li><strong>Dates are ISO-8601</strong> (<code>2026-04-15</code> or <code>2026-04-15T12:00:00Z</code>).</li>
+<li><strong>Arrays prefer block form</strong> when more than 2 items; inline <code>[a, b]</code> is
+fine for short lists.</li>
+<li><strong>Unknown top-level keys are warnings, not errors.</strong> The canonical schemas
+(agent markdown, memory entries) should grow deliberately; a warning
+flags drift without blocking.</li>
+</ol>
+<h2>Schemas that live elsewhere</h2>
+<ul>
+<li>Agent markdown: <code>schemas/agent-markdown.md</code> → Zod in
+<a href="https://github.com/ParachuteComputer/parachute-agents/blob/main/src/agents.ts">parachute-agents/src/agents.ts</a>.</li>
+<li>Memory files (user / feedback / project / reference): Uni's auto-memory
+convention in the UnforcedAGI global CLAUDE.md.</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li>No shared lint tool has been built. <code>gray-matter</code> + a schema is the
+obvious path. If/when we ship one, it lives in <code>@openparachute/cli</code> as
+<code>parachute lint</code> and points at the schemas above.</li>
+<li>Should memory files have a shared Zod schema too, matching the
+<code>name/description/type/...</code> frontmatter Uni writes? Probably yes — file
+an issue when someone hits an inconsistency.</li>
+</ul>

@@ -1,32 +1,32 @@
 # Runtime tenancy contract
 
-> Hosts that serve tenants (parachute-app serving hosted UIs, future
+> Hosts that serve tenants (parachute-surface serving hosted UIs, future
 > tenancy contexts) inject structured environment metadata into the
 > tenant's runtime. Tenants READ from explicit metadata rather than
 > guessing from URL patterns or filesystem layout. Same architectural
 > shape across every host↔tenant relationship in Parachute. Third side
 > of the triad with [`module-surfaces.md`](./module-surfaces.md) (what
 > backend modules expose) and
-> [`app-bundle-shape.md`](./app-bundle-shape.md) (what frontend app
+> [`surface-bundle-shape.md`](./surface-bundle-shape.md) (what frontend app
 > bundles ship).
 
 ## The convention (TL;DR)
 
 The host injects, the tenant reads. For HTML tenants — the current
-canonical case, parachute-app serving SPA bundles — the contract is
+canonical case, parachute-surface serving SPA bundles — the contract is
 meta tags plus a `<base>` element in the served HTML:
 
 ```html
 <head>
-  <base href="/app/<name>/">                              <!-- browser URL resolution -->
-  <meta name="parachute-mount" content="/app/<name>">     <!-- runtime code reads this -->
+  <base href="/surface/<name>/">                              <!-- browser URL resolution -->
+  <meta name="parachute-mount" content="/surface/<name>">     <!-- runtime code reads this -->
   <meta name="parachute-hub" content="https://...">       <!-- hub origin for OAuth discovery -->
   <meta name="parachute-vault" content="/vault/<name>">   <!-- when operator's session is vault-bound -->
   <meta name="parachute-tenant-id" content="<name>">      <!-- tenant's logical name within this host -->
 </head>
 ```
 
-Tenants consume via `@openparachute/app-client`:
+Tenants consume via `@openparachute/surface-client`:
 
 ```ts
 import {
@@ -34,7 +34,7 @@ import {
   getHubOrigin,
   getVaultPath,
   getTenantId,
-} from '@openparachute/app-client';
+} from '@openparachute/surface-client';
 ```
 
 The helpers read the meta tags, return typed values, and throw clear
@@ -61,14 +61,14 @@ concerns — DOM-level URL resolution vs. JavaScript-level configuration.
 ## Why the contract exists — the constraint that produced it
 
 Implicit conventions don't generalize. Notes-ui learned this when
-shipped under parachute-app: initially the bundle had `/notes/` baked
+shipped under parachute-surface: initially the bundle had `/notes/` baked
 in via `VITE_BASE_PATH`, which broke when the operator chose a custom
-mount (`parachute-app add notes-ui --name my-notes` → `/app/my-notes/`).
+mount (`parachute-surface add notes-ui --name my-notes` → `/surface/my-notes/`).
 
 The first fix
 ([notes#159](https://github.com/ParachuteComputer/parachute-notes/pull/159))
 was runtime mount detection via regex against `window.location.pathname`
-matching the KNOWN Parachute mount patterns (`/app/<name>` or `/notes`).
+matching the KNOWN Parachute mount patterns (`/surface/<name>` or `/notes`).
 That worked for the immediate ship but required the bundle to know
 Parachute's mount conventions — fragile, brittle to new conventions,
 and demanded a bundle update every time the convention shifted.
@@ -79,17 +79,17 @@ host said, with no shared assumption about path shape.
 
 ## Examples and reference implementations
 
-- **parachute-app → hosted UIs** — primary case.
-  [parachute-app#21](https://github.com/ParachuteComputer/parachute-app/issues/21)
+- **parachute-surface → hosted UIs** — primary case.
+  [parachute-surface#21](https://github.com/ParachuteComputer/parachute-surface/issues/21)
   implements the producer side (meta-tag + `<base>` injection in the
   HTML response from the app-host HTTP server).
-  [parachute-app#22](https://github.com/ParachuteComputer/parachute-app/issues/22)
-  ships `@openparachute/app-client` — the consumer-side library with
+  [parachute-surface#22](https://github.com/ParachuteComputer/parachute-surface/issues/22)
+  ships `@openparachute/surface-client` — the consumer-side library with
   typed helpers.
 - **parachute-notes / notes-ui** — first canonical consumer.
   [notes#159](https://github.com/ParachuteComputer/parachute-notes/pull/159)
   shipped the interim regex-based runtime detection; the next iteration
-  consumes `@openparachute/app-client` and reads the injected meta tags
+  consumes `@openparachute/surface-client` and reads the injected meta tags
   directly. PWA service worker scope mismatch handling is tracked at
   [notes#160](https://github.com/ParachuteComputer/parachute-notes/issues/160).
 
@@ -115,12 +115,12 @@ shape is the same.
 - **Regex on `window.location.pathname`** to detect mount — works for
   known patterns, breaks for arbitrary mounts. Pattern docs explicitly
   DEPRECATE this for new code. The notes-ui regex was an interim
-  during the 0.1.1 ship; it phases out as `@openparachute/app-client`
+  during the 0.1.1 ship; it phases out as `@openparachute/surface-client`
   lands.
 - **Bundling the mount at build time** — couples the bundle to one
   mount, breaks the operator-chooses-mount design. Apps MUST be
   mount-agnostic — see
-  [`app-bundle-shape.md`](./app-bundle-shape.md)'s Mount-agnosticism
+  [`surface-bundle-shape.md`](./surface-bundle-shape.md)'s Mount-agnosticism
   section.
 - **Asking the host via a custom HTTP endpoint** — adds latency, breaks
   offline-first SPAs, requires the tenant to be online to know its own
@@ -130,9 +130,9 @@ shape is the same.
 ## What this looks like for the operator
 
 A Parachute operator never thinks about this contract. They install an
-app via `parachute-app add @openparachute/notes-ui` (default mount
-`/app/notes/`) or `parachute-app add @openparachute/notes-ui --name
-my-notes` (custom mount `/app/my-notes/`). The app works at either
+app via `parachute-surface add @openparachute/notes-ui` (default mount
+`/surface/notes/`) or `parachute-surface add @openparachute/notes-ui --name
+my-notes` (custom mount `/surface/my-notes/`). The app works at either
 mount with the same built bundle because the host injects mount-specific
 metadata at HTML-serve time.
 
@@ -145,7 +145,7 @@ the operator and to the human user of the resulting UI.
   surfaces. The producer side of the host-as-module equation: every
   host that injects tenant runtime metadata is itself a module
   exposing the canonical surfaces.
-- [`app-bundle-shape.md`](./app-bundle-shape.md) — what app bundles
+- [`surface-bundle-shape.md`](./surface-bundle-shape.md) — what app bundles
   ship + the mount-agnosticism requirement that this contract makes
   possible.
 - [`mount-path-convention.md`](./mount-path-convention.md) — sibling
@@ -154,12 +154,12 @@ the operator and to the human user of the resulting UI.
 - [`module-protocol.md`](./module-protocol.md) — the runtime contracts
   every backend module implements. Runtime-tenancy-contract is the
   symmetric "what the host gives the tenant."
-- [`parachute-app/packages/app-host/src/http-server.ts`](https://github.com/ParachuteComputer/parachute-app/blob/main/packages/app-host/src/http-server.ts)
+- [`parachute-surface/packages/app-host/src/http-server.ts`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/app-host/src/http-server.ts)
   — where the host implements the injection (per
-  [parachute-app#21](https://github.com/ParachuteComputer/parachute-app/issues/21)).
-- `parachute-app/packages/app-client/src/mount.ts` (forthcoming) —
+  [parachute-surface#21](https://github.com/ParachuteComputer/parachute-surface/issues/21)).
+- `parachute-surface/packages/surface-client/src/mount.ts` (forthcoming) —
   where the tenant-side helpers live (per
-  [parachute-app#22](https://github.com/ParachuteComputer/parachute-app/issues/22)).
+  [parachute-surface#22](https://github.com/ParachuteComputer/parachute-surface/issues/22)).
 
 ## History
 
@@ -169,9 +169,9 @@ the operator and to the human user of the resulting UI.
   ([notes#159](https://github.com/ParachuteComputer/parachute-notes/pull/159)).
 - **2026-05-23** — This pattern doc codifies the explicit-injection
   contract.
-  [parachute-app#21](https://github.com/ParachuteComputer/parachute-app/issues/21)
+  [parachute-surface#21](https://github.com/ParachuteComputer/parachute-surface/issues/21)
   and
-  [parachute-app#22](https://github.com/ParachuteComputer/parachute-app/issues/22)
+  [parachute-surface#22](https://github.com/ParachuteComputer/parachute-surface/issues/22)
   implement the producer and consumer sides; closes
   [parachute-patterns#81](https://github.com/ParachuteComputer/parachute-patterns/issues/81).
 - **Forthcoming** — Vault and Hub join the contract as their tenancy

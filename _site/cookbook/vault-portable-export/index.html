@@ -1,0 +1,178 @@
+<h1>Vault portable-markdown export</h1>
+<blockquote>
+<p>One-line summary: a lossless portable-markdown export of a parachute-vault that round-trips by design — same format every Obsidian/Logseq/Foam/Quartz/Dendron-shaped tool already consumes, but with IDs, typed links, tag schemas, and indexed metadata preserved so re-import reconstructs byte-equivalent vault state.</p>
+</blockquote>
+<p>This entry is a cookbook recipe — concrete patterns for using the export primitive in the wild. For the format spec, the <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/CLAUDE.md">vault README's <em>Portable markdown export</em> section</a> and the code at <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts"><code>core/src/portable-md.ts</code></a> are authoritative.</p>
+<h2>When to reach for it</h2>
+<ul>
+<li><strong>Git-as-projection.</strong> Vault is the source of truth; a git repo of the export is a deterministic projection (audit, time-travel, browseable, code-review-able). Mutation in vault → re-run export → commit. Mutation in git is a one-way fork.</li>
+<li><strong>Disaster-recovery snapshot.</strong> Periodic full export to a separate disk (or off-host) gives a tool-independent restore path. Pair with <code>parachute-vault import &lt;dir&gt; --blow-away --yes</code> to replay back to byte-equivalent state.</li>
+<li><strong>Vault migration.</strong> Moving from one parachute-vault host to another (local → VPS, or vice versa). Export from source, blow-away-import on the destination.</li>
+<li><strong>Offline editing.</strong> Drop the export into Obsidian/Logseq/Quartz/Dendron, edit, re-import. Round-trip preserves IDs and typed links — the consumer doesn't need to know about either.</li>
+<li><strong>Sharing a knowledge graph as static files.</strong> Hand someone a directory. They can read it with <code>less</code> or open it in any markdown tool. No vault required.</li>
+<li><strong>Static-site generation.</strong> Quartz, Hugo, Eleventy. The export is just markdown + YAML.</li>
+</ul>
+<p>Use the legacy <code>core/src/obsidian.ts</code> only if you specifically need the flat-frontmatter shape (no IDs, no <code>metadata:</code> block). It's deprecated — preserved for callers that were already wired into it.</p>
+<h2>CLI surface</h2>
+<pre><code class="language-bash"># Full export — every note, every schema-carrying tag.
+parachute-vault export &lt;dir&gt;
+
+# Pick a non-default vault. (Defaults to the vault named `default` — use
+# `--vault &lt;name&gt;` if your vault has a different name.)
+parachute-vault export &lt;dir&gt; --vault &lt;name&gt;
+
+# Incremental — only notes whose updated_at &gt;= ISO timestamp.
+# Useful as the &quot;since-cursor&quot; half of a projection cadence.
+parachute-vault export &lt;dir&gt; --since 2026-05-12T00:00:00Z
+</code></pre>
+<p>Output (per <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts"><code>exportVaultToDir</code></a> in <code>core/src/portable-md.ts</code>):</p>
+<pre><code>&lt;dir&gt;/
+  .parachute/
+    vault.yaml                # vault meta + export_format_version
+    schemas/&lt;tag&gt;.yaml        # one file per schema-carrying tag
+    attachments/&lt;id&gt;/...      # binary files, keyed by export-time att.id
+  &lt;note.path&gt;.md              # one file per pathed note
+  _unpathed/&lt;note-id&gt;.md      # one file per pathless note
+</code></pre>
+<p>The sidecar directory is named <code>.parachute</code> so that walkers which skip dot-prefixed directories (including vault's own <code>walkMarkdownFiles</code>, Obsidian, Logseq, most SSGs) won't accidentally treat schemas or vault-meta as notes.</p>
+<p><strong>Both export and import shipped.</strong> rc.10 added export; rc.11 closed the round-trip with lossless import:</p>
+<pre><code class="language-bash">parachute-vault import &lt;dir&gt;                     # upsert notes/tags/schemas by ID
+parachute-vault import &lt;dir&gt; --blow-away         # drop + replay → byte-equivalent state
+parachute-vault import &lt;dir&gt; --blow-away --yes   # same; skip the confirm prompt (CI / cron)
+</code></pre>
+<p><code>--blow-away</code> confirms by default — a yes/no prompt that defaults NO, so an accidental Enter cancels rather than proceeds. Pass <code>--yes</code> for unattended runs. The wipe deletes through the public Store API (<code>deleteNote</code>, <code>deleteTag</code>) so attachment-deleted and tag-deleted hooks fire and orphan-attachment cleanup runs the same way as a manual delete.</p>
+<h2>Per-note frontmatter</h2>
+<p>Fixed top-level key order, alpha-sorted nested keys — byte-identical re-emit of an unchanged vault is a guarantee, not a coincidence:</p>
+<pre><code class="language-yaml">---
+id: 01HGZ9...                      # ULID — durable across path renames
+path: Inbox/2026-05-12-meeting     # omit for pathless notes (filed under _unpathed/&lt;id&gt;.md)
+tags:
+  - donor-pipeline
+  - meeting
+metadata:                          # nested alpha-sorted
+  priority: high
+  state: drafted
+links:                             # typed (non-wikilink) relationships
+  - relationship: derived-from
+    target: 01HGZA...
+attachments:                       # ref by basename; binary copied to .parachute/attachments/&lt;id&gt;/
+  - id: att_01HGZB...
+    mime_type: audio/mp4
+    path: 2026-05-12/audio.m4a
+created_at: 2026-05-12T10:00:00.000Z
+updated_at: 2026-05-12T11:23:45.123Z
+---
+
+Note body. [[Wikilinks]] are preserved verbatim — they're the source of
+truth for that link kind, so re-imports recover them from the content.
+</code></pre>
+<p>Key-order is fixed in <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts"><code>FRONTMATTER_KEY_ORDER</code></a>: <code>id</code> → <code>path</code> → <code>tags</code> → <code>metadata</code> → <code>links</code> → <code>attachments</code> → <code>created_at</code> → <code>updated_at</code>. Empty collections are omitted (no <code>metadata: {}</code> noise, no <code>tags: []</code>).</p>
+<h2>Per-tag sidecar schemas</h2>
+<p>For every tag that declares at least one of <code>description</code> / <code>fields</code> / <code>relationships</code> / <code>parent_names</code>, the export writes <code>.parachute/schemas/&lt;tag&gt;.yaml</code>:</p>
+<pre><code class="language-yaml">description: A donor pipeline opportunity. State machine: prospect → engaged → committed.
+fields:
+  amount:
+    type: number
+  state:
+    type: enum
+    values: [prospect, engaged, committed]
+name: donor-pipeline
+parent_names:
+  - workspace-root
+relationships:
+  derived-from:
+    target_tag: meeting
+</code></pre>
+<p>Just-a-name tags (no schema content) don't get a file. Tag names containing <code>/</code> (sub-tag hierarchy) get <code>/</code> replaced with <code>__</code> in the filename only — the canonical name lives inside the file's <code>name:</code> key, so the round-trip recovers the slash form.</p>
+<h2>What round-trips losslessly</h2>
+<p>Exporting a vault, blowing it away, and re-importing the export reproduces byte-equivalent vault state across:</p>
+<ul>
+<li><strong>IDs.</strong> ULIDs survive. Wikilinks resolve by path or ID; typed <code>links</code> resolve by ID. Renaming a note's path doesn't break inbound links.</li>
+<li><strong>Typed links.</strong> Non-wikilink relationships (<code>derived-from</code>, <code>cites</code>, anything custom) serialized in the <code>links:</code> block. Sorted by <code>(relationship, target)</code> for stable output.</li>
+<li><strong>Tag schemas.</strong> Description, fields, relationships, parent_names — the full schema layer reconstructs from the sidecar.</li>
+<li><strong>Indexed metadata.</strong> Whatever your tag schemas index, the values come back in the same shape (booleans as <code>true</code>/<code>false</code>, numbers bare, strings quoted only when ambiguous).</li>
+<li><strong>Multi-line strings.</strong> Metadata values that contain newlines/tabs/control characters are double-quoted with YAML escape sequences (<code>\n</code>, <code>\xNN</code>) so the whole value stays on one physical YAML line. Single-quoted multi-line splits the parser — caught and pinned in vault#317 F1.</li>
+<li><strong>Wikilinks in content.</strong> Preserved verbatim. They're the content's job; the parser does not strip or rewrite them.</li>
+<li><strong>Attachments.</strong> Frontmatter <code>attachments[].path</code> carries the original vault-internal path (relative to <code>assetsDir</code>); the binary is copied under <code>.parachute/attachments/&lt;att-id&gt;/&lt;basename&gt;</code>. Import restores the binary to the original path. <em>Caveat:</em> attachment IDs re-mint on import (no <code>restoreAttachment(id, ...)</code> Store surface yet), so round-trip with attachments produces byte-different <code>attachments[].id</code> values between original and re-export. Refs still resolve by <code>(note_id, path)</code>; operators expecting strict byte-equivalence including att-IDs should know.</li>
+<li><strong>Idempotency.</strong> Re-export an unchanged vault → byte-identical bytes (modulo <code>exported_at</code> in <code>vault.yaml</code>, which callers wanting strict byte-equivalence can pin via the <code>exportedAt</code> API option). Clean git diffs.</li>
+</ul>
+<h2>Recipe: nightly git projection</h2>
+<p>The webhook-driven version of Gitcoin Brain's vault-as-primary / git-as-projection architecture. One trigger, one cron, one git repo.</p>
+<p><strong>1.</strong> In <code>~/.parachute/vault/config.yaml</code>, register a webhook trigger that fires on every note mutation in the namespaces you want projected. (Vault's <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/README.md#webhook-triggers">trigger framework</a> is declarative — see the README for predicate fields.)</p>
+<pre><code class="language-yaml">triggers:
+  - name: git-projection-nudge
+    events: [created, updated]
+    when:
+      tags: [commitment, decision, donor-pipeline]  # high-stakes tags
+    action:
+      webhook: http://localhost:7777/projection-nudge
+      send: json
+</code></pre>
+<p>The receiver doesn't have to do work synchronously — it just records &quot;vault dirty since T&quot; in a small state file. Sub-second response keeps vault's two-phase trigger marker cycling promptly: <code>&lt;name&gt;_pending_at</code> is written on entry and cleared once <code>&lt;name&gt;_rendered_at</code> is written on success.</p>
+<p><strong>2.</strong> Wire the projection itself as a cron job (or a debounced consumer of the nudge endpoint, your call) that exports the vault since the last cursor and commits the diff:</p>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+PROJECTION_DIR=&quot;$HOME/projections/team-brain&quot;
+CURSOR_FILE=&quot;$PROJECTION_DIR/.parachute/.last-cursor&quot;
+mkdir -p &quot;$PROJECTION_DIR/.parachute&quot;
+
+SINCE=&quot;$(cat &quot;$CURSOR_FILE&quot; 2&gt;/dev/null || echo '1970-01-01T00:00:00Z')&quot;
+NOW=&quot;$(date -u +%FT%TZ)&quot;
+
+parachute-vault export &quot;$PROJECTION_DIR&quot; --since &quot;$SINCE&quot;
+
+cd &quot;$PROJECTION_DIR&quot;
+git add -A
+if ! git diff --cached --quiet; then
+  git commit -m &quot;projection: vault changes since $SINCE&quot;
+  git push
+fi
+echo &quot;$NOW&quot; &gt; &quot;$CURSOR_FILE&quot;
+</code></pre>
+<p>Notes on this shape:</p>
+<ul>
+<li>The cursor lives <em>inside</em> the projection's sidecar so it's co-located with the export but excluded from re-imports (its filename starts with <code>.</code>, so the directory walker skips it).</li>
+<li><code>--since</code> is best-effort incremental — a tombstone (deleted note) doesn't surface here; full periodic exports (weekly) catch deletions and orphan files. Schedule a <code>parachute-vault export &lt;dir&gt;</code> (no <code>--since</code>) on top of the incremental cadence for that reason.</li>
+<li>A full export with the <code>git add -A</code> shape above will also produce deletions in the git tree for any note removed from vault, which is the projection-correct behavior.</li>
+<li>For multi-vault servers, run one projection per vault into one repo each. Mixing vaults in one projection directory loses the 1:1 correspondence.</li>
+</ul>
+<h2>Recipe: cold-storage backup</h2>
+<p>Disaster-recovery snapshot. Run on a different schedule than git projection (e.g. weekly) so the backup isn't a chain of incremental diffs — each backup is a self-contained restore point.</p>
+<pre><code class="language-bash">SNAPSHOT=&quot;$HOME/backups/vault-$(date -u +%Y%m%d).tar.zst&quot;
+TMP=&quot;$(mktemp -d)&quot;
+parachute-vault export &quot;$TMP&quot;
+tar --zstd -cf &quot;$SNAPSHOT&quot; -C &quot;$TMP&quot; .
+rm -rf &quot;$TMP&quot;
+</code></pre>
+<p>Restore: untar somewhere, then <code>parachute-vault import &lt;untarred-dir&gt; --blow-away --yes</code>. The format is also human-recoverable without vault — every note is a markdown file with YAML frontmatter, so even a worst-case &quot;we lost the vault binary too&quot; recovers manually.</p>
+<h2>Edge cases / gotchas</h2>
+<ul>
+<li><strong>Path traversal is refused, not aborted.</strong> A note with <code>path: &quot;../../escape&quot;</code> would otherwise write outside the export directory. <code>exportVaultToDir</code> resolves the candidate path against the export root and refuses the write with a <code>console.warn</code>, then keeps going. Partial export beats no export. Self-inflicted at the vault level (operator owns the data), but real for programmatic callers ingesting from external systems. See <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts"><code>isWithinDir</code></a> and the F3 fix in vault#317.</li>
+<li><strong>Pathless notes land in <code>_unpathed/</code>.</strong> Notes without a <code>path:</code> go to <code>_unpathed/&lt;note-id&gt;.md</code> so they don't collide with each other and so a user importing into Obsidian sees them in one folder rather than scattered at the root.</li>
+<li><strong><code>exported_at</code> is the one timestamp that won't be byte-identical across runs.</strong> It lives in <code>.parachute/vault.yaml</code>. Callers wanting strict byte-equivalence (tests, fixture diffing) pass <code>exportedAt</code> to the <code>exportVaultToDir</code> API; the CLI always stamps live. If you're git-projecting and want minimal diff noise, the <code>vault.yaml</code> file changing every run is the cost.</li>
+<li><strong>Schema drift on import.</strong> <code>import</code> without <code>--blow-away</code> warns on schema conflicts (export claims <code>fields.amount.type: number</code>, vault already has <code>fields.amount.type: string</code>). <code>--blow-away</code> replays the export's schemas exactly. Choose the verb that matches your intent.</li>
+<li><strong><code>--since</code> regenerates schemas every run, even if no tag schema changed.</strong> The filter only narrows the <em>notes</em> set; schema sidecars are always written fully. For a git-projection cadence that produces tight diffs, expect schema files to surface in incremental commits even when the underlying schemas are unchanged.</li>
+<li><strong>The hand-rolled YAML parser is intentionally narrow.</strong> It handles the subset of YAML the emitter produces plus the legacy Obsidian shapes the importer needs. It does <em>not</em> handle anchors, references, multi-document streams, or YAML 1.2 <code>\u&lt;4hex&gt;</code>/<code>\U&lt;8hex&gt;</code> escapes — none of which the emitter produces. If you hand-edit sidecar <code>.yaml</code> files, stay inside that subset.</li>
+<li><strong>The 1M-note bulk-load ceiling.</strong> <code>exportVaultToDir</code> materializes the full vault in memory before iterating. Defensive — the cap is a follow-up at vault#317 F5 if a real &gt;&gt;100k-note workload surfaces.</li>
+</ul>
+<h2>Worked example — Gitcoin Brain</h2>
+<p>The Gitcoin Brain build (week-1 architecture, <code>from_parachute_round_2.md</code> Ask 1) is the load-bearing use case this primitive was reframed and extended for. Their model: vault is the source of truth for live state; a git repo of the export is the projection. Audit, recovery, time-travel, browseable code-review-style diff history — every property of &quot;the team brain in git&quot; without paying the dual-write tax of git-as-primary.</p>
+<p>Concretely, the Gitcoin team:</p>
+<ol>
+<li>Run vault as the primary write surface (REST + MCP + Notes + Telegram).</li>
+<li>Wire a webhook trigger on high-stakes tags (commitments, decisions, donor pipeline) that nudges a projection daemon.</li>
+<li>Run <code>parachute-vault export &quot;$PROJECTION_DIR&quot; --since &quot;$CURSOR&quot;</code> on the nudge (debounced) and a full export weekly.</li>
+<li>Commit + push to a private git repo. Diffs are reviewable; history is the audit trail; restoration is <code>parachute-vault import &quot;$PROJECTION_DIR&quot; --blow-away --yes</code>.</li>
+</ol>
+<p>When the export primitive isn't right for them — when a Gitcoin-specific format or a richer drift signal matters — they build a sidecar and contribute the pattern back. Generic patterns extracted up to parachute; specific dashboards stay in Gitcoin's app code. The Round-2 reply spells the boundary out.</p>
+<h2>Cross-references</h2>
+<ul>
+<li><strong>Format spec</strong> — <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.ts"><code>core/src/portable-md.ts</code></a> (emitter + parser), <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/core/src/portable-md.test.ts"><code>core/src/portable-md.test.ts</code></a> for behavior examples.</li>
+<li><strong>CLI</strong> — <code>parachute-vault export &lt;dir&gt;</code> in <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/src/cli.ts"><code>src/cli.ts</code></a>.</li>
+<li><strong>Vault changelog</strong> — <code>0.4.4-rc.9</code> through <code>0.4.4-rc.11</code> in <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a> cover PR 1, the reviewer fold, and PR 2 (lossless import + <code>--blow-away</code>).</li>
+<li><strong>Webhook triggers</strong> — <a href="https://github.com/ParachuteComputer/parachute-vault/blob/main/README.md#webhook-triggers">vault README §Webhook triggers</a>.</li>
+<li><strong>Tag data model</strong> — <a href="../patterns/tag-data-model.md"><code>patterns/tag-data-model.md</code></a>. What gets serialized into <code>.parachute/schemas/&lt;tag&gt;.yaml</code>.</li>
+<li><strong>Multi-writer workspace guide</strong> — <a href="../guides/multi-writer-workspace.md"><code>guides/multi-writer-workspace.md</code></a>. The operator's-side view of how a team-shape vault accumulates the content the export then projects.</li>
+<li><strong>Tracking issue</strong> — <a href="https://github.com/ParachuteComputer/parachute-vault/issues/308">vault#308</a> (umbrella; PR 1 = vault#317, PR 2 = vault#319).</li>
+</ul>
+<p><em>Last updated: 2026-05-13 — current with vault 0.4.4-rc.11 (vault#308 fully shipped; export + lossless import on <code>main</code>).</em></p>

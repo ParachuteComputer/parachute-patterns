@@ -1,0 +1,348 @@
+<h1>OAuth DCR approval lifecycle</h1>
+<h2>Convention</h2>
+<p>The hub is the OAuth issuer (<a href="./hub-as-issuer.md"><code>hub-as-issuer.md</code></a>) and
+the gatekeeper for which OAuth clients exist on the install. <strong>Every
+public Dynamic Client Registration (RFC 7591) lands as <code>pending</code>.</strong> A
+pending client cannot exchange auth codes; it cannot reach <code>/oauth/token</code>.
+The operator must explicitly grant approval via one of four paths before
+the client can complete a flow. Same-origin SPAs (running at the hub's
+origin) auto-approve when the operator's session cookie is present and
+the request's <code>Origin</code> matches the issuer. Cross-origin SPAs (or
+fresh-cache scenarios where the session isn't on the registration POST)
+hit an inline approve button on the <code>/oauth/authorize</code> pending page —
+one click and the flow continues.</p>
+<p>The authoritative implementation is in
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts"><code>parachute-hub/src/oauth-handlers.ts</code></a>
+(<code>handleRegister</code>, <code>handleApproveClientPost</code>, <code>originMatchesIssuer</code>) and
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/clients.ts"><code>parachute-hub/src/clients.ts</code></a>
+(<code>approveClient</code>, <code>listClientsByStatus</code>). The browser surface is
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-ui.ts"><code>parachute-hub/src/oauth-ui.ts</code></a>
+(<code>renderApprovePending</code>). The CLI surface is
+<a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/auth.ts"><code>parachute-hub/src/commands/auth.ts</code></a>
+(<code>auth pending-clients</code>, <code>auth approve-client</code>, <code>auth revoke-grant</code>).
+This doc captures the lifecycle and the <em>why</em>; if it disagrees with
+the code, the code wins and this doc is wrong.</p>
+<h2>Lifecycle</h2>
+<p>Two related-but-distinct lifecycles run alongside each other: the
+<strong>client</strong> lifecycle (does this <code>client_id</code> exist on this hub, and is it
+allowed to complete a flow?) and the <strong>grant</strong> lifecycle (has the
+operator consented to <em>this</em> client requesting <em>these</em> scopes?). The
+diagram conflated them in an earlier draft; they're separate.</p>
+<h3>Client lifecycle</h3>
+<pre><code>            register (no auth)
+public DCR ─────────────────────► pending
+                                     │
+                                     │ operator demonstrates authority
+                                     ▼
+                                 approved        (terminal)
+</code></pre>
+<ul>
+<li><strong><code>pending</code> is the default</strong> for any client registered via public DCR
+(<code>POST /oauth/register</code> with no auth headers).</li>
+<li><strong><code>pending</code> → <code>approved</code> is one-way and operator-driven.</strong> No automatic
+promotion from a passive event (time, request volume, anything).</li>
+<li><strong><code>approved</code> is terminal in the type system.</strong> <code>ClientStatus</code> is
+<code>&quot;pending&quot; | &quot;approved&quot;</code> — there is no <code>removed</code> status. Client
+deletion is a row-delete on the <code>clients</code> table, performed by direct
+<code>hub.db</code> edit (no <code>parachute auth</code> command exists for full client
+deletion yet — file an issue if needed).</li>
+<li>A pending client hitting <code>/oauth/token</code> gets <code>invalid_client</code> per RFC
+6749. A pending client hitting <code>/oauth/authorize</code> gets the
+human-readable &quot;App not yet approved&quot; page (with or without an inline
+approve button — see &quot;Inline approve button&quot; below).</li>
+</ul>
+<h3>Grant lifecycle</h3>
+<pre><code>                                       parachute auth revoke-grant
+operator consents at /oauth/authorize ─────────────────────────────► (no grant row)
+                  │                                                       │
+                  ▼                                                       │
+              grant row in `grants` table                                 │
+              (user_id, client_id, scopes)                                │
+                  ▲                                                       │
+                  └─────── operator re-consents on next /oauth/authorize ─┘
+</code></pre>
+<ul>
+<li><strong>A grant</strong> is a row in the <code>grants</code> table keyed by
+<code>(user_id, client_id)</code>, recording the scopes the operator approved.</li>
+<li><strong><code>parachute auth revoke-grant &lt;client_id&gt;</code></strong> deletes the grant row
+(see <a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/grants.ts"><code>grants.ts:revokeGrant</code></a>).
+It does <strong>not</strong> change the client's status — the client stays
+<code>approved</code>. The next time the operator runs the OAuth flow with that
+client, <code>/oauth/authorize</code> re-prompts for consent and a fresh grant
+row is created.</li>
+<li><strong>Revoking a grant does not invalidate already-issued tokens.</strong> Token
+revocation is a separate operation via <code>/oauth/revoke</code> (and any future
+CLI wrapper).</li>
+</ul>
+<h3>Revocation, distinguished</h3>
+<ul>
+<li><strong>Client revocation</strong> is operator-explicit via direct <code>hub.db</code> row
+delete on the <code>clients</code> table (no <code>parachute auth</code> command exists for
+client deletion). After deletion the <code>client_id</code> no longer exists; any
+use of it gets <code>invalid_client</code>.</li>
+<li><strong>Grant revocation</strong> uses <code>parachute auth revoke-grant &lt;client_id&gt;</code>
+and removes the consent grant — the client stays approved; the next
+OAuth flow re-prompts consent.</li>
+</ul>
+<h2>Four paths to <code>approved</code></h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Trigger</th>
+<th>Code</th>
+<th>Originating PR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Operator-bearer header</strong></td>
+<td><code>Authorization: Bearer &lt;hub-admin-token&gt;</code> (with <code>hub:admin</code> scope) on <code>POST /oauth/register</code></td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts"><code>oauth-handlers.ts:handleRegister</code></a> — bearer branch</td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/issues/74">hub#74</a></td>
+</tr>
+<tr>
+<td><strong>Same-origin session cookie + matching Origin</strong></td>
+<td>Hub session cookie present on <code>POST /oauth/register</code> AND request <code>Origin</code> matches <code>deps.issuer</code></td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts"><code>oauth-handlers.ts:handleRegister</code></a> — cookie branch + <code>originMatchesIssuer</code></td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/pull/200">hub#200</a></td>
+</tr>
+<tr>
+<td><strong>Inline approve button</strong></td>
+<td>Operator browser navigates to <code>/oauth/authorize</code> for a pending client; session detected → approve form rendered → operator clicks → <code>POST /oauth/authorize/approve</code></td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-handlers.ts"><code>oauth-handlers.ts:handleApproveClientPost</code></a> + <a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/oauth-ui.ts"><code>oauth-ui.ts:renderApprovePending</code></a></td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/pull/209">hub#209</a></td>
+</tr>
+<tr>
+<td><strong>CLI</strong></td>
+<td><code>parachute auth approve-client &lt;id&gt;</code> (operator with shell access to the hub install)</td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/commands/auth.ts"><code>commands/auth.ts</code></a> + <a href="https://github.com/ParachuteComputer/parachute-hub/blob/main/src/clients.ts"><code>clients.ts:approveClient</code></a></td>
+<td><a href="https://github.com/ParachuteComputer/parachute-hub/issues/74">hub#74</a></td>
+</tr>
+</tbody>
+</table>
+<p>The four paths exist because the operator demonstrates authority in
+different contexts and the right friction profile is different in each:</p>
+<ul>
+<li><strong>Operator-bearer</strong> — scripted / automation. The install path uses this
+so <code>parachute install vault</code> can self-register a first-party module
+without a human follow-up. Trust comes from possession of an
+operator-token with <code>hub:admin</code> scope.</li>
+<li><strong>Cookie + Origin</strong> — operator's own SPA on the hub's own origin.
+Requiring approval here is friction without benefit: the operator is
+<em>already</em> the operator, the SPA is <em>their</em> SPA. Trust comes from the
+session cookie + the same-origin gate (CSRF defense).</li>
+<li><strong>Inline button</strong> — operator's browser, pending client (cross-origin
+SPA, fresh cache, redirect_uri changed). The friction event is rare
+but real. Trust comes from triple-belt: CSRF token + active session +
+Origin/Referer match.</li>
+<li><strong>CLI</strong> — headless / multi-machine / SSH-only contexts. Trust comes
+from shell access to the hub install (= already trusted).</li>
+</ul>
+<h2>Security model</h2>
+<p>Each path has a different gate, sized to the context:</p>
+<ul>
+<li><strong>Operator-bearer.</strong> Bearer token validated as <code>hub:admin</code>-scoped via
+the hub's normal scope check (see <a href="./oauth-scopes.md"><code>oauth-scopes.md</code></a>
+for scope semantics). If a bearer is presented but invalid or
+insufficiently-scoped, registration fails loudly with the RFC 6750
+shape — not a silent fall-through to <code>pending</code>. A caller who tried to
+authenticate but failed wants to know why.</li>
+<li><strong>Cookie + Origin.</strong> Three-belt defense:
+<ol>
+<li>Live (un-expired) session row keyed by the <code>parachute_hub_session</code>
+cookie.</li>
+<li>Request <code>Origin</code> (or <code>Referer</code> fallback) matches <code>deps.issuer</code> —
+<code>originMatchesIssuer</code>. URL.origin compares scheme + host + port.
+Opaque-origin requests (sandboxed iframes, <code>data:</code>/<code>file:</code>
+documents) send <code>Origin: null</code> literally; this is parsed as a
+malformed URL and rejected with the same shape as cross-origin.</li>
+<li>The session cookie itself is <code>SameSite=Lax</code>, so the browser blocks
+it from cross-site POSTs in the first place. The <code>originMatchesIssuer</code>
+check is the server-side belt for the cases where Lax doesn't cover
+us (curl probes, privacy-extension Origin stripping). A request
+with neither <code>Origin</code> nor <code>Referer</code> is treated as suspicious and
+rejected.</li>
+</ol>
+</li>
+<li><strong>Inline button.</strong> Same triple-belt as the cookie path, plus a CSRF
+token (double-submit cookie). The token is minted at GET render time
+and embedded in the form. Plus <code>return_to</code> is validated as a
+hub-relative <code>/oauth/authorize?...</code> path — open-redirect defense, plus
+it prevents the endpoint being used as a generic redirect-after-approve
+gadget. The operator sees <code>client_id</code>, <code>client_name</code>, <code>redirect_uris</code>,
+and the requested scopes before clicking.</li>
+<li><strong>CLI.</strong> Assumes the operator has shell access to the hub install.
+The threat model treats shell access as already trusted — anything
+the CLI can do, anything else on the same shell can do. The CLI path
+exists to <em>enable</em> operators (headless boxes, scripts), not to gate
+them.</li>
+</ul>
+<p>The shared invariant: <strong>a client only becomes <code>approved</code> after the
+operator has demonstrated authority via one of the four paths.</strong>
+There is no path that promotes a client without an explicit operator
+action.</p>
+<h2>The deliberate non-fix: cross-origin auto-approve</h2>
+<p>The interesting part of this pattern is what it <em>doesn't</em> do. A
+cross-origin SPA — the agent's container UI talking to a tailnet hub,
+or notes-via-cloudflare talking to the same — cannot auto-approve via
+the cookie path. The &quot;fix&quot; looks straightforward (add CORS headers,
+let the cookie ride) and was repeatedly tempting; we explicitly chose
+not to ship it.</p>
+<p>Four browser/policy gaps compound:</p>
+<ol>
+<li><strong><code>SameSite=Lax</code></strong> on the session cookie blocks the cookie from
+cross-origin POSTs by browser policy. This is a deliberate cookie
+property, not a bug.</li>
+<li><strong>No CORS</strong> on <code>/oauth/register</code> — no <code>Access-Control-Allow-Origin</code>,
+no <code>Access-Control-Allow-Credentials</code>. Adding them would invite
+third-party origins into the registration surface.</li>
+<li><strong>No OPTIONS preflight</strong> handler on <code>/oauth/register</code>. A
+credentialed cross-origin POST would preflight and fail.</li>
+<li><strong><code>originMatchesIssuer</code></strong> explicitly rejects cross-origin <code>Origin</code>
+values as a CSRF defense — even if the cookie <em>did</em> arrive, the
+server-side belt would reject the request.</li>
+</ol>
+<p>Four options were considered (2026-05-08 design conversation):</p>
+<ul>
+<li><strong>A1 — first-party origin allowlist alone.</strong> Add a list of trusted
+origins; if <code>Origin</code> matches one, treat as same-origin for the cookie
+check. <strong>Eliminated:</strong> doesn't actually work. The cookie's
+<code>SameSite=Lax</code> blocks the cookie <em>before</em> the server-side check runs.
+The allowlist would never see a cookie to validate.</li>
+<li><strong>A2 — second cookie with <code>SameSite=None; Secure</code> for DCR.</strong>
+Mint a separate cookie with relaxed cross-site policy, scoped only
+to the DCR endpoint. Works in principle. <strong>Costs:</strong> expands the
+cookie surface (now there are two session-equivalent cookies),
+breaks HTTP loopback dev (Secure requires HTTPS), broader CSRF
+target (cross-site POSTs can ride the new cookie even with the
+origin allowlist on top).</li>
+<li><strong>A3 — same-origin relay popup.</strong> SPA opens a hub-origin popup, the
+popup does the registration with the normal cookie (now same-origin),
+the popup <code>postMessage</code>s the <code>client_id</code> back. Robust to future
+browser changes, no new cookie surface. <strong>Costs:</strong> moderate code
+(popup orchestration on both sides), popup UX (can be blocked, can
+be confusing), still asynchronous on first run.</li>
+<li><strong>A4 — inline approve button on <code>/oauth/authorize</code> for pending
+clients with operator session.</strong> The cross-origin DCR still leaves
+the client <code>pending</code>. The operator's browser then navigates the
+OAuth flow normally; the pending-client page detects their session
+and offers a one-click approve. <strong>Picked.</strong></li>
+</ul>
+<p>A4 won because:</p>
+<ol>
+<li><strong>The friction event is rare.</strong> Operators only see the approve
+button on first registration of a fresh client — browser cache
+clear, redirect_uri change, fresh device, new SPA. Not on every
+load (SPAs cache <code>client_id</code> in localStorage; see &quot;For SPA
+developers&quot; below). One click on a rare event is a fine ceiling.</li>
+<li><strong>The security model is unchanged.</strong> A4's inline approval requires
+the same operator authority as the CLI approve. We're not weakening
+the gate; we're just rendering it where the operator already is.</li>
+<li><strong>Small code surface.</strong> Roughly 50 lines in the handler plus a
+form section in the existing pending-client page, plus tests.</li>
+<li><strong>Doesn't depend on browser policy</strong> that may tighten further.
+<code>SameSite=Lax</code> and CORS rules are moving target; A4 is independent
+of both.</li>
+</ol>
+<p>If a future scenario justifies cross-origin auto-approve — e.g.,
+agent deployed at a separate hostname with high client-registration
+churn — A2 or A3 can be layered on top of A4 without removing it.
+A4 is the floor; the others would be additive.</p>
+<p><a href="https://github.com/ParachuteComputer/parachute-hub/issues/201">hub#201</a>
+tracked the original cross-origin auto-approve attempt and is closed
+as deferred; this section is the canonical record of why.</p>
+<h2>For SPA developers</h2>
+<ul>
+<li><strong>Same-origin SPA</strong> (your SPA loads from the hub's origin — e.g.
+Notes at <code>&lt;hub&gt;/notes/</code>): no special handling required. <code>fetch</code>
+defaults send the cookie. Just <code>POST /oauth/register</code> normally; the
+client lands <code>approved</code> if the operator's logged in.</li>
+<li><strong>Cross-origin SPA</strong> (your SPA at a different origin): expect the
+inline approve button on the operator's first run. Don't try to
+bypass it. <strong>Don't add <code>credentials: 'include'</code></strong> thinking it solves
+the problem — it doesn't (see the deferred section above; the gates
+are deeper than CORS).</li>
+<li><strong>Either way: cache your <code>client_id</code> in localStorage.</strong> Re-registering
+on every page load both wastes a round-trip and re-triggers the
+approve gate. Re-register only when <code>redirect_uri</code> changes (e.g.
+the SPA moved hosts).</li>
+</ul>
+<h2>For operators</h2>
+<ul>
+<li><strong>First time you link an SPA to a vault</strong>, expect either silent
+auto-approve (same-origin, you're logged in) or a one-click approve
+page.</li>
+<li><strong>&quot;App not yet approved&quot; with a button</strong> → that's the inline approve
+UX. Review the <code>client_id</code> / <code>client_name</code> / <code>redirect_uris</code> / scopes
+shown, then click &quot;Approve and continue.&quot;</li>
+<li><strong>&quot;App not yet approved&quot; without a button</strong> → you're not logged into
+the hub in this browser. Visit <code>/admin/login</code>, sign in, then retry
+the SPA — or use the CLI path.</li>
+<li><strong>Headless contexts</strong>: <code>parachute auth approve-client &lt;id&gt;</code>. List
+pending clients with <code>parachute auth pending-clients</code> to find the
+id.</li>
+<li><strong>Revoke when needed</strong>: <code>parachute auth revoke-grant &lt;client_id&gt;</code> —
+removes the consent grant so the next flow re-prompts. To delete
+the client entirely, edit <code>hub.db</code> directly (no CLI command for full
+deletion yet — issue if needed).</li>
+</ul>
+<h2>Where this applies</h2>
+<ul>
+<li><strong><code>parachute-hub</code></strong> — implements all four paths and the lifecycle.
+Single source of truth for client status.</li>
+<li><strong><code>parachute-vault</code></strong> — Phase 0+1 issues OAuth on behalf of the hub
+(see <a href="./hub-as-issuer.md"><code>hub-as-issuer.md</code></a>) but does not run DCR
+itself. Vault-level vault-token issuance is a separate path and is
+not gated by this approval flow.</li>
+<li><strong>First-party modules</strong> (vault, scribe, agent, notes) — register
+via the operator-bearer path during <code>parachute install &lt;svc&gt;</code>. They
+never see <code>pending</code>.</li>
+<li><strong>Third-party SPAs</strong> — register via public DCR. They start
+<code>pending</code>. Operator promotes via one of the three operator-driven
+paths (cookie auto-approve, inline button, or CLI).</li>
+</ul>
+<h2>Open questions</h2>
+<ul>
+<li><strong>Re-approval flow on <code>redirect_uri</code> rotation.</strong> Today an SPA that
+changes its <code>redirect_uri</code> re-registers (new <code>client_id</code>, new
+approval round). A first-class &quot;update redirect_uri&quot; flow without
+re-approval is plausible but not built. Defer until needed.</li>
+<li><strong>Auto-revoke on extended idle.</strong> No automatic revocation today. If
+a client doesn't successfully complete a flow within N days of
+approval, do we revoke? Probably not (the friction event of
+re-approving outweighs the security win for installs with low
+churn), but it's an open question for cloud deployments.</li>
+<li><strong>Multi-operator approval.</strong> Today the install has one operator.
+Multi-human team setups (post-2026) may want
+approval-requires-quorum. Out of scope for now; flagged for the
+multi-human governance bump (see
+<a href="./governance.md"><code>governance.md</code></a>'s &quot;Open questions&quot;).</li>
+</ul>
+<h2>Implementing changes</h2>
+<ul>
+<li><a href="https://github.com/ParachuteComputer/parachute-hub/issues/74">hub#74</a>
+— base approval gate. Public DCR lands <code>pending</code>; operator-bearer
+and CLI paths land <code>approved</code>.</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-hub/issues/199">hub#199</a>
+— design issue for same-origin auto-approve via session cookie
+(closed by #200).</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-hub/pull/200">hub#200</a>
+— same-origin auto-approve via session cookie + Origin match.
+Adds the cookie branch to <code>handleRegister</code> and the
+<code>originMatchesIssuer</code> helper.</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-hub/issues/201">hub#201</a>
+— cross-origin auto-approve original design. Closed; see &quot;The
+deliberate non-fix&quot; above.</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-hub/issues/208">hub#208</a>
+— design issue for the inline approve button (closed by #209).</li>
+<li><a href="https://github.com/ParachuteComputer/parachute-hub/pull/209">hub#209</a>
+— inline approve button implementation. Adds
+<code>handleApproveClientPost</code> + the form section in
+<code>renderApprovePending</code>.</li>
+<li><a href="https://github.com/ParachuteComputer/paraclaw/issues/140">paraclaw#140</a>,
+<a href="https://github.com/ParachuteComputer/paraclaw/pull/144">paraclaw#144</a>
+— agent SPA companion issues; closed when A4 (inline button) was
+chosen, since cross-origin SPA-side <code>credentials: 'include'</code> doesn't
+help.</li>
+</ul>

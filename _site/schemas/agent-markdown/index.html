@@ -1,0 +1,80 @@
+<h1>Agent markdown schema</h1>
+<h2>Convention</h2>
+<p>One markdown file = one agent. YAML frontmatter describes how it fires and
+what it can do; the body is the system prompt.</p>
+<p>Canonical Zod schema:
+<a href="https://github.com/ParachuteComputer/parachute-agents/blob/main/src/agents.ts">parachute-agents/src/agents.ts</a>.
+That file is the authority — this doc summarizes it for reference and for
+modules adopting the same schema (e.g. Prism's <code>skill-builder</code>).</p>
+<h2>Shape</h2>
+<pre><code class="language-yaml">---
+name: &lt;unique slug&gt;
+description: &lt;human readable; used when exposing the agent via MCP&gt;
+trigger:
+  type: webhook | cron | vault | manual
+  # per-type fields below
+model: &lt;provider&gt;/&lt;model&gt;        # e.g. anthropic/claude-sonnet-4-6
+backend: vercel-ai | claude      # optional; overrides runner default
+tools: [&lt;built-in&gt; | { mcp: {...} }, ...]
+on_save:
+  tags: [&lt;string&gt;, ...]
+  path: &lt;template&gt;
+---
+
+System prompt body in markdown.
+</code></pre>
+<h2>Triggers</h2>
+<ul>
+<li><strong>webhook</strong> — <code>source: discord | slack | telegram | http | any</code>,
+<code>match: always | contains_url | regex:&lt;pattern&gt;</code>.</li>
+<li><strong>cron</strong> — <code>schedule: &quot;&lt;cron expression&gt;&quot;</code>.</li>
+<li><strong>vault</strong> — <code>on_event: created | updated</code>, optional
+<code>filter: { tags: [...], not_tags: [...] }</code>, <code>poll_seconds: &gt;=10</code> (default 60;
+push-based firing is future work).</li>
+<li><strong>manual</strong> — fires only via explicit invocation.</li>
+</ul>
+<h2>Tools</h2>
+<p>Two forms in the same array:</p>
+<pre><code class="language-yaml">tools:
+  - fetch_url             # string: built-in tool
+  - vault                 # string: built-in tool
+  - mcp:                  # object: attach an external MCP server
+      name: some-service
+      url: https://example.com/mcp
+      auth:
+        type: bearer
+        token_env: SOME_SERVICE_TOKEN
+</code></pre>
+<p>MCP auth supports <code>bearer</code> (<code>token</code> or <code>token_env</code>) and <code>oauth</code>
+(client-credentials grant via <code>client_id_env</code> / <code>client_secret_env</code> /
+<code>token_url</code>). Non-http(s) URLs are rejected at parse time. See
+<code>patterns/mcp-transport.md</code> for wire-level details.</p>
+<h2>Backend</h2>
+<p><code>vercel-ai</code> (default) routes through Vercel AI SDK + the runner's configured
+provider. <code>claude</code> routes through <code>@anthropic-ai/sdk</code> Messages API, picking
+up auth from <code>ParachuteAgentConfig.claudeAuth</code>. The markdown is identical in
+both cases — only the inference path changes.</p>
+<h2>Source options</h2>
+<p>Agent markdown maps (<code>path → string</code>) can come from:</p>
+<ul>
+<li><code>loadAgentsFromDir(dir)</code> — filesystem</li>
+<li><code>loadAgentsFromVault({ vault, tag })</code> — vault notes tagged
+<code>agent-definition</code> (default)</li>
+<li><code>loadAgentsInline(map)</code> — hand-authored map</li>
+</ul>
+<p>See <code>patterns/loadAgents.md</code> for the shared source convention.</p>
+<h2>Rules</h2>
+<ul>
+<li>Frontmatter must parse against <code>agentFrontmatterSchema</code> — no extra fields
+at the top level (zod will pass-through unknown keys, but new keys should
+be added to the schema first).</li>
+<li>Agent <code>name</code> must be unique within a runner. <code>loadAgents</code> throws on
+duplicates.</li>
+<li><code>description</code> is required for any agent that will be exposed via MCP —
+it's what the caller sees when listing available agents.</li>
+</ul>
+<h2>Adoption</h2>
+<p>Prism's <code>skill-builder</code> (Benjamin's project) covers similar ground. When
+Prism adopts <code>@openparachute/agent</code> as its runner, this schema is the
+handshake. Log schema extensions in <code>adoption/migration-notes.md</code> so we keep
+both sides in sync.</p>

@@ -1,0 +1,50 @@
+<h1>parachute-patterns</h1>
+<p>Shared conventions across the Parachute ecosystem — the single source of truth
+for how Parachute modules align with their siblings.</p>
+<p>Parachute is intentionally a set of small pieces, loosely joined: Vault, Daily,
+Scribe, Narrate, Channel, Agents, Cloud, Octopus, the <code>parachute</code> CLI. Every
+module stands alone; composition is opt-in. That modularity only holds together
+if the surfaces they share — naming, brand, schemas, auth, reporting shapes —
+stay coherent. This repo is where those surfaces are written down.</p>
+<h2>Who this is for</h2>
+<ul>
+<li><strong>Humans</strong> starting a new Parachute module, or adopting a pattern into an
+existing one.</li>
+<li><strong>Tentacles</strong> (Uni facets, see <a href="https://github.com/ParachuteComputer/UnforcedAGI">UnforcedAGI</a>)
+working inside a Parachute repo.</li>
+<li><strong>Future Parachute modules</strong> — when we invent the fifth, sixth, tenth thing,
+it should feel like a Parachute thing.</li>
+</ul>
+<h2>For tentacles working in a Parachute repo</h2>
+<p>Before you ship code that crosses a naming, brand, schema, or pattern
+boundary, check the relevant file here. If the convention is wrong, propose a
+change in this repo first. Every Parachute module should be able to point at a
+single source of truth for how it aligns with its siblings.</p>
+<h2>Layout</h2>
+<pre><code>naming/       package names, bin names, repo names
+modularity/   the standalone-first principle, with worked examples
+brand/        palette, typography, motifs, canonical tokens.css
+schemas/      agent markdown, vault note metadata, lint rules
+patterns/     loadX sources, report contract, token auth, MCP transport, dev-auto-user
+guides/       long-form how-to references that explain how patterns combine
+cookbook/     short recipes — one outcome, one page, links out for depth
+research/     in-flight design notes for not-yet-committed direction
+adoption/     checklist for new modules, migration notes log
+</code></pre>
+<p>Each file is short on purpose — one screen, one pattern. When examples are
+needed, link to the upstream repo rather than duplicating code here.</p>
+<h2>Contributing</h2>
+<ul>
+<li>Open a PR with the change. If the pattern is new (not documented before),
+include a one-paragraph rationale. If the pattern is changing, log the
+change in <code>adoption/migration-notes.md</code> with the date and the repos that
+need to follow.</li>
+<li><code>[DRAFT]</code> means the pattern is proposed but not yet adopted across the
+ecosystem. Remove the marker once the first two modules conform.</li>
+<li>Keep tone warm, precise, not precious.</li>
+</ul>
+<h2>Where this sits in the stack</h2>
+<p>parachute-patterns is documentation only — no code, no build, no runtime
+dependency. Every other Parachute repo may reference it, but none import from
+it. The repo is the contract, not the implementation.</p>
+<p>License: AGPL-3.0 (matching the family).</p>
