@@ -35,7 +35,6 @@ Per-repo checklist for surfaces that mention or quote the mirror config schema.
 - [x] `core/src/portable-md.ts` — `pruneOrphans` for deletion propagation; `realpathSync` path-traversal guard. ([vault#382](https://github.com/ParachuteComputer/parachute-vault/pull/382))
 - [x] `web/ui/src/routes/VaultMirror.tsx` — SPA picker collapsed to "On change" / "Manual only". ([vault#382](https://github.com/ParachuteComputer/parachute-vault/pull/382))
 - [ ] `UPGRADING.md` — operator-facing note about the silent schema migration + the safety-net cadence change.
-- [ ] `RELEASING.md` — bump-time note if relevant (the 0.4.9-rc.5 release picks this up).
 
 ### parachute.computer (operator-facing site)
 
@@ -44,7 +43,7 @@ Per-repo checklist for surfaces that mention or quote the mirror config schema.
 
 ### parachute-patterns (this repo)
 
-- [x] `migrations/README.md` — entry for this file. (Automatic — README references all migrations.)
+- [x] `migrations/README.md` — entry for this file. (File presence in `migrations/` is the index; no manual README edit needed.)
 - [ ] `patterns/design-system.md` — no change expected; mirror UI uses canonical tokens already (Workstream J).
 
 ## Operator-facing references
