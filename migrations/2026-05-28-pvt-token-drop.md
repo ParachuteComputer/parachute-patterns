@@ -1,7 +1,7 @@
 ---
 title: pvt_* token DROP — vault becomes a pure hub resource-server (vault#282 Stage 2)
 date: 2026-05-28
-status: in-flight — vault DROP PR open (0.6.0-rc.1); not merged
+status: vault DROP merged to main 2026-05-28 (squash b23746a, 0.6.0-rc.1); release tag + hub#466 propagation pending
 originating-pr: parachute-vault (the breaking DROP PR — vault#282 Stage 2)
 ---
 
@@ -68,7 +68,7 @@ cleaning up leftover rows.
 
 | PR | Repo | Scope | Status |
 |---|---|---|---|
-| DROP | parachute-vault | remove pvt_* mint + validation; REST tokens module; `tokens create`; `mcp-install --legacy-pat`; SPA legacy panel; dead store fns; fresh-vault hub-mint re-plumb; docs; 0.6.0-rc.1 | ⏳ **open (vault#412) — not merged** |
+| DROP | parachute-vault | remove pvt_* mint + validation; REST tokens module; `tokens create`; `mcp-install --legacy-pat`; SPA legacy panel; dead store fns; fresh-vault hub-mint re-plumb; docs; 0.6.0-rc.1 | ✅ **merged → main (b23746a)** — release tag pending |
 | (migration) | parachute-patterns | this file + the audit-script pvt_* block | ⏳ **open — sibling PR** |
 | hub propagation | parachute-hub | repoint expose-flow auth setup (`expose-auth-preflight.ts` `offerTokenCreate`, `expose-cloudflare.ts` guidance, `vault-tokens-create-interactive.ts`) off `parachute vault tokens create` → hub mint path; reassess `expose-auth-preflight` `tokenCount`-based classification | 📋 **hub#466 filed — land with/after DROP** |
 
