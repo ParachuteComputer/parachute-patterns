@@ -868,7 +868,7 @@ The reviewer doesn't block on small per-cell issues; it surfaces them so the hum
 
 ### Migration plan
 
-The five committed-core surfaces ranked by gap, biggest first. Each is owned by a downstream workstream from the audit's §5 menu.
+The committed-core web surfaces ranked by gap, biggest first — spanning the four committed-core modules (vault, surface, scribe, hub). Each row is owned by a downstream workstream from the audit's §5 menu.
 
 | Rank | Surface | Gap | Workstream | Owner module |
 |---|---|---|---|---|
