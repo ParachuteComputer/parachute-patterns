@@ -68,8 +68,9 @@ cleaning up leftover rows.
 
 | PR | Repo | Scope | Status |
 |---|---|---|---|
-| DROP | parachute-vault | remove pvt_* mint + validation; REST tokens module; `tokens create`; `mcp-install --legacy-pat`; SPA legacy panel; dead store fns; fresh-vault hub-mint re-plumb; docs; 0.6.0-rc.1 | ⏳ **open — this PR, not merged** |
-| (migration) | parachute-patterns | this file | ⏳ **open — sibling PR** |
+| DROP | parachute-vault | remove pvt_* mint + validation; REST tokens module; `tokens create`; `mcp-install --legacy-pat`; SPA legacy panel; dead store fns; fresh-vault hub-mint re-plumb; docs; 0.6.0-rc.1 | ⏳ **open (vault#412) — not merged** |
+| (migration) | parachute-patterns | this file + the audit-script pvt_* block | ⏳ **open — sibling PR** |
+| hub propagation | parachute-hub | repoint expose-flow auth setup (`expose-auth-preflight.ts` `offerTokenCreate`, `expose-cloudflare.ts` guidance, `vault-tokens-create-interactive.ts`) off `parachute vault tokens create` → hub mint path; reassess `expose-auth-preflight` `tokenCount`-based classification | 📋 **hub#466 filed — land with/after DROP** |
 
 ## Code references (parachute-vault DROP PR)
 
@@ -115,9 +116,38 @@ cleaning up leftover rows.
   offsite-named surface references it. CI publishes `@openparachute/vault@0.6.0`
   on the `v0.6.0` tag push (tag-gated; not part of this PR).
 
+## Audit verification (2026-05-28)
+
+Before the merge-gate, vault#412 was run through a 3-dimension adversarial audit
+(vault-internal + tests / operator failure-mode + schema / cross-repo blast
+radius) **plus** a workspace canonical-refs sweep. Result: **safe to merge, no
+P0/P1.** Highlights:
+
+- **Failure mode is clean.** A `pvt_*` bearer is not JWT-shaped (`looksLikeJwt`
+  gates on the `eyJ` prefix), so it skips JWT validation and falls through to a
+  uniform **401 `Invalid API key`** on every surface — no confusing JWT-parse
+  error, no crash. Regression-tested on per-vault + global + YAML +
+  `VAULT_AUTH_TOKEN` paths, with a positive control (a real hub JWT still authenticates).
+- **No runtime cross-repo break.** No committed-core module sends a `pvt_*` to
+  vault; hub's proxy is a transparent pass-through, `create --json token` stays a
+  string, surface/notes-ui are OAuth-only, runner is credential-agnostic.
+- **Schema is safe.** No new migration; `SCHEMA_VERSION` stays 20; legacy
+  `tokens` rows are inert with no boot/read crash.
+
+The canonical-refs sweep (its new `pvt_*` block) surfaced two **live-code**
+misses the DROP PR's checklist had claimed done — both folded into vault#412:
+- `src/init-summary.ts` — the "Next steps" footer still printed
+  `- Mint a token: parachute vault tokens create` (a now-erroring command); removed.
+- `src/scopes.ts` — dead `resolveCreateTokenFlags` (+ its `scopes.test.ts` block)
+  survived with zero non-test callers (exports dodge the unused-symbol check); removed.
+
+Remaining audit-flagged items are the **tracked secondary follow-ups** above
+(README prose ~L96/L102/L137/L157/L444; `docs/auth-model.md`; `docs/HTTP_API.md`)
+— non-erroring prose, intentionally deferred — plus the **hub#466** propagation.
+
 ## Cross-references
 
 - [`./2026-05-28-operator-mintable-vault-admin.md`](./2026-05-28-operator-mintable-vault-admin.md) — the enabling arc (everything that had to land before this DROP was safe).
 - [`../research/auth-architecture-shape.md`](../research/auth-architecture-shape.md) §11 — the AS/RS convergence + pvt_* retirement arc.
 - [`../patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md) — hub is the sole minting surface; the DROP makes vault a pure consumer.
-- [`../scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) — run after the DROP merges to catch missed pvt_* references.
+- [`../scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) — now carries a **`pvt_*` / `vault tokens create` block** (added in this PR). Run after the DROP merges to confirm only the tracked secondary follow-ups + hub#466 remain.
