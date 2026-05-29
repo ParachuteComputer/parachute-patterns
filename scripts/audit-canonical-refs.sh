@@ -180,6 +180,26 @@ echo "(CSS class aliases .status-disabled / .status-pending-oauth retained for o
 } || true
 echo ""
 
+echo "--- Stale pvt_* token guidance / 'vault tokens create' (pvt_* DROP — vault#282 Stage 2) ---"
+echo "(vault no longer mints pvt_* opaque tokens — access tokens are hub-issued JWTs. Operator-facing copy + CLI guidance should point at the hub mint-token flow / mcp-install, never 'parachute vault tokens create'. Lines describing the removal itself are excluded; UPGRADING.md is the recovery-path doc and is excluded; patterns/research/scratch are excluded as non-canonical narration.)"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=patterns \
+    --exclude-dir=research \
+    --exclude-dir=scratch \
+    --exclude-dir=parachute-agent \
+    --exclude-dir=parachute-notes \
+    --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' --include='*.md' \
+    --exclude='*.test.ts*' \
+    --exclude='UPGRADING.md' \
+    -E "vault tokens create|Bearer pvt_|creates? a pvt_|=pvt_" \
+    "$WORKSPACE" 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | grep -vi "removed\|no longer\|deprecat\|exits 1\|vestigial\|drop\|legacy" \
+    | head -20
+} || true
+echo ""
+
 echo "=== Done. Review findings; cross-check against migrations/*.md. ==="
 echo ""
 echo "Notes:"
