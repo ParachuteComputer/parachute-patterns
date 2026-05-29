@@ -1,7 +1,7 @@
 ---
 title: pvt_* token DROP — vault becomes a pure hub resource-server (vault#282 Stage 2)
 date: 2026-05-28
-status: vault DROP merged to main 2026-05-28 (squash b23746a, 0.6.0-rc.1); hub#466 propagation landed (hub#467, 8092445); release tag pending
+status: vault DROP merged to main 2026-05-28 (squash b23746a); hub#466 propagation landed (hub#467, 8092445). RC PUBLISHED 2026-05-29 — vault@0.5.0-rc.1 (corrected from a mistaken 0.6.0-rc.1; breaking = minor bump from 0.4.x, not 0.6) + hub@0.5.14-rc.11 on the npm `rc` channel; stable `@latest` pending
 originating-pr: parachute-vault (the breaking DROP PR — vault#282 Stage 2)
 ---
 
@@ -17,8 +17,12 @@ with 401** on every vault auth surface. Vault is now a pure hub OAuth
 resource-server.
 
 This is the one breaking change in the arc, so it leaves the `rc.N`-on-`0.X.Y`
-chain and ships at **`0.6.0-rc.N` → `0.6.0` stable** (governance rule 2 —
-breaking → minor bump; `@latest` untouched until the human says ship).
+chain and ships at **`0.5.0-rc.N` → `0.5.0` stable** (governance rule 2 —
+breaking → minor bump from the 0.4.x line; `@latest` untouched until the human
+says ship). NB: an initial cut mislabeled this `0.6.0-rc.1` (conflating vault's
+package version with the ecosystem "v0.6"/hub milestone); corrected to `0.5.0`
+in vault#414. The orphaned `0.6.0-rc.1` stayed published on npm but the `rc`
+dist-tag was repointed to `0.5.0-rc.1` (no unpublish needed).
 
 ## Why this is the breaking step
 
@@ -68,7 +72,7 @@ cleaning up leftover rows.
 
 | PR | Repo | Scope | Status |
 |---|---|---|---|
-| DROP | parachute-vault | remove pvt_* mint + validation; REST tokens module; `tokens create`; `mcp-install --legacy-pat`; SPA legacy panel; dead store fns; fresh-vault hub-mint re-plumb; docs; 0.6.0-rc.1 | ✅ **merged → main (b23746a)** — release tag pending |
+| DROP | parachute-vault | remove pvt_* mint + validation; REST tokens module; `tokens create`; `mcp-install --legacy-pat`; SPA legacy panel; dead store fns; fresh-vault hub-mint re-plumb; docs; 0.5.0-rc.1 (corrected from 0.6.0-rc.1, vault#414) | ✅ **merged → main (b23746a)**; rc published `0.5.0-rc.1` |
 | (migration) | parachute-patterns | this file + the audit-script pvt_* block | ⏳ **open — sibling PR** |
 | hub propagation | parachute-hub | repoint expose-flow auth setup (`expose-auth-preflight.ts` `offerTokenCreate`→`printTokenGuidance`, `expose-cloudflare.ts` `printAuthGuidance`, removed `vault-tokens-create-interactive.ts`) off `parachute vault tokens create` → hub mint path; collapsed `expose-auth-preflight` `classify()` from 5 `tokenCount`-based states → 3 (wide-open / password-no-totp / all-good) | ✅ **merged → hub main (hub#467, 8092445)** — closed hub#466 |
 
@@ -100,8 +104,8 @@ cleaning up leftover rows.
 
 ## Doc references
 
-- [x] `parachute-vault/UPGRADING.md` — pvt_* section flipped deprecation → breaking ("REJECTED as of 0.6.0"); migration steps kept as the recovery path; workstream-E "what survives" claims forward-pointed.
-- [x] `parachute-vault/CHANGELOG.md` — one `0.6.0-rc.1` entry appended (history verbatim).
+- [x] `parachute-vault/UPGRADING.md` — pvt_* section flipped deprecation → breaking ("REJECTED as of 0.5.0"); migration steps kept as the recovery path; workstream-E "what survives" claims forward-pointed.
+- [x] `parachute-vault/CHANGELOG.md` — one `0.5.0-rc.1` entry appended (history verbatim).
 - [x] `parachute-vault/README.md` — auth table + token-format + token-management + mcp-install cheat-sheet sections rewritten to hub-JWT; `--legacy-pat` / `tokens create` examples removed.
 - [x] `parachute-vault/CLAUDE.md` — `create` / `tokens` descriptions updated.
 - [x] `parachute-vault/src/cli.ts` usage()/help + JSDoc — `--legacy-pat` removed; `mcp-config <pvt_...>` → `<bearer>`.
@@ -113,8 +117,8 @@ cleaning up leftover rows.
 
 - None change. The npm package description / GitHub repo description don't name
   pvt_*. The token *shape* operators receive changes (pvt_* gone), but no
-  offsite-named surface references it. CI publishes `@openparachute/vault@0.6.0`
-  on the `v0.6.0` tag push (tag-gated; not part of this PR).
+  offsite-named surface references it. CI publishes `@openparachute/vault@0.5.0`
+  on the `v0.5.0` tag push (tag-gated; not part of this PR).
 
 ## Audit verification (2026-05-28)
 
