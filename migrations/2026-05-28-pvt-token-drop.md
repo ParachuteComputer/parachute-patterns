@@ -1,7 +1,7 @@
 ---
 title: pvt_* token DROP — vault becomes a pure hub resource-server (vault#282 Stage 2)
 date: 2026-05-28
-status: vault DROP merged to main 2026-05-28 (squash b23746a, 0.6.0-rc.1); release tag + hub#466 propagation pending
+status: vault DROP merged to main 2026-05-28 (squash b23746a, 0.6.0-rc.1); hub#466 propagation landed (hub#467, 8092445); release tag pending
 originating-pr: parachute-vault (the breaking DROP PR — vault#282 Stage 2)
 ---
 
@@ -70,7 +70,7 @@ cleaning up leftover rows.
 |---|---|---|---|
 | DROP | parachute-vault | remove pvt_* mint + validation; REST tokens module; `tokens create`; `mcp-install --legacy-pat`; SPA legacy panel; dead store fns; fresh-vault hub-mint re-plumb; docs; 0.6.0-rc.1 | ✅ **merged → main (b23746a)** — release tag pending |
 | (migration) | parachute-patterns | this file + the audit-script pvt_* block | ⏳ **open — sibling PR** |
-| hub propagation | parachute-hub | repoint expose-flow auth setup (`expose-auth-preflight.ts` `offerTokenCreate`, `expose-cloudflare.ts` guidance, `vault-tokens-create-interactive.ts`) off `parachute vault tokens create` → hub mint path; reassess `expose-auth-preflight` `tokenCount`-based classification | 📋 **hub#466 filed — land with/after DROP** |
+| hub propagation | parachute-hub | repoint expose-flow auth setup (`expose-auth-preflight.ts` `offerTokenCreate`→`printTokenGuidance`, `expose-cloudflare.ts` `printAuthGuidance`, removed `vault-tokens-create-interactive.ts`) off `parachute vault tokens create` → hub mint path; collapsed `expose-auth-preflight` `classify()` from 5 `tokenCount`-based states → 3 (wide-open / password-no-totp / all-good) | ✅ **merged → hub main (hub#467, 8092445)** — closed hub#466 |
 
 ## Code references (parachute-vault DROP PR)
 
@@ -106,8 +106,8 @@ cleaning up leftover rows.
 - [x] `parachute-vault/CLAUDE.md` — `create` / `tokens` descriptions updated.
 - [x] `parachute-vault/src/cli.ts` usage()/help + JSDoc — `--legacy-pat` removed; `mcp-config <pvt_...>` → `<bearer>`.
 - [x] doc-comment debt — `auth.ts`, `token-store.ts`, `scopes.ts`, `mcp-tools.ts`, `schema.ts` pvt_* comments cleaned/past-tensed.
-- [ ] **secondary README prose sweep (FOLLOW-UP)** — descriptive `pvt_...` mentions in `README.md` (the auto-wire narrative ~L96/L102, the Claude Desktop/Code MCP-entry examples ~L129–137/L157, the `/view` auth note ~L448, the `PARACHUTE_VAULT_TOKEN=pvt_...` env examples ~L675/L684) are non-erroring prose, not command examples — tracked as a follow-up issue, not blocking.
-- [ ] **secondary design/API docs (FOLLOW-UP)** — `parachute-vault/docs/HTTP_API.md` (pvt_* credential-table row, POST /tokens docs), `docs/auth-model.md` (the "API tokens (Bearer) / pvt_*" subsection), `docs/design/2026-04-28-vault-config-and-scopes.md` (strikethrough treatment). Tracked as a follow-up.
+- [ ] **secondary README prose sweep (FOLLOW-UP — in flight)** — descriptive `pvt_...` mentions in `README.md` (the auto-wire narrative ~L96/L102, the Claude Desktop/Code MCP-entry examples ~L129–137/L157, the `/view` auth note ~L448, the `PARACHUTE_VAULT_TOKEN=pvt_...` env examples ~L675/L684) are non-erroring prose, not command examples. Being fixed in a sibling vault doc-sweep PR (in flight); not blocking.
+- [ ] **secondary design/API docs (FOLLOW-UP — in flight)** — `parachute-vault/docs/HTTP_API.md` (pvt_* credential-table row, POST /tokens docs), `docs/auth-model.md` (the "API tokens (Bearer) / pvt_*" subsection), `docs/design/2026-04-28-vault-config-and-scopes.md` (strikethrough treatment). Being fixed in the same sibling vault doc-sweep PR (in flight).
 
 ## External references
 
@@ -141,13 +141,16 @@ misses the DROP PR's checklist had claimed done — both folded into vault#412:
 - `src/scopes.ts` — dead `resolveCreateTokenFlags` (+ its `scopes.test.ts` block)
   survived with zero non-test callers (exports dodge the unused-symbol check); removed.
 
+The **hub#466** propagation has since landed (hub#467, merged to hub main
+`8092445` — repointed the expose-flow auth guidance off `vault tokens create`,
+removed `vault-tokens-create-interactive.ts`, collapsed `classify()` 5→3 states).
 Remaining audit-flagged items are the **tracked secondary follow-ups** above
 (README prose ~L96/L102/L137/L157/L444; `docs/auth-model.md`; `docs/HTTP_API.md`)
-— non-erroring prose, intentionally deferred — plus the **hub#466** propagation.
+— non-erroring prose, being swept in a sibling vault doc PR (in flight).
 
 ## Cross-references
 
 - [`./2026-05-28-operator-mintable-vault-admin.md`](./2026-05-28-operator-mintable-vault-admin.md) — the enabling arc (everything that had to land before this DROP was safe).
 - [`../research/auth-architecture-shape.md`](../research/auth-architecture-shape.md) §11 — the AS/RS convergence + pvt_* retirement arc.
 - [`../patterns/hub-as-issuer.md`](../patterns/hub-as-issuer.md) — hub is the sole minting surface; the DROP makes vault a pure consumer.
-- [`../scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) — now carries a **`pvt_*` / `vault tokens create` block** (added in this PR). Run after the DROP merges to confirm only the tracked secondary follow-ups + hub#466 remain.
+- [`../scripts/audit-canonical-refs.sh`](../scripts/audit-canonical-refs.sh) — now carries a **`pvt_*` / `vault tokens create` block** (added in this PR). Run after the DROP merges to confirm only the tracked secondary follow-ups remain (hub#466 propagation landed as hub#467).
