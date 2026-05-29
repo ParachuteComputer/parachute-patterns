@@ -192,7 +192,7 @@ echo "(vault no longer mints pvt_* opaque tokens — access tokens are hub-issue
     --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' --include='*.md' \
     --exclude='*.test.ts*' \
     --exclude='UPGRADING.md' \
-    -E "vault tokens create|Bearer pvt_|creates? a pvt_" \
+    -E "vault tokens create|Bearer pvt_|creates? a pvt_|=pvt_" \
     "$WORKSPACE" 2>/dev/null \
     | grep -v "$LINE_EXCLUDES" \
     | grep -vi "removed\|no longer\|deprecat\|exits 1\|vestigial\|drop\|legacy" \
