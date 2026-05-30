@@ -71,6 +71,15 @@ Canonical implementations:
 - **Per-vault audience binding.** Hub-issued vault JWTs carry
   `aud=vault.<name>` and vault strict-checks it on each request — a token
   scoped for one vault cannot be replayed against another.
+- **Vault-bound consent drops foreign scopes.** When a client sends an
+  RFC 8707 `resource=<origin>/vault/<name>/mcp` indicator (an MCP client
+  connecting to one vault), the hub narrows the consent — and the minted
+  token — to that vault's `vault:<name>:<verb>` scopes and **drops** any
+  non-vault scope (`scribe:*`, `channel:send`, `hub:admin`). Those are
+  unusable inside an `aud=vault.<name>` token and would only inflate the
+  consent surface a friend sees connecting a single vault. A client that
+  legitimately wants a `scribe:` token runs a separate flow naming the scribe
+  resource. (hub#487; see `parachute-hub/src/resource-binding.ts`.)
 - **`pvt_*` tokens are unaffected.** They predate the resource-bound
   shape; they're scoped at issue-time inside vault's own DB and the JWT
   validation layer is bypassed for them.
