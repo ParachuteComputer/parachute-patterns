@@ -93,8 +93,10 @@ interface MissingDependencyWire {
     linux?: string;                   // distro lines and/or a curl recipe
     generic?: string;                 // fallback when platform is unknown
   };
-  /** Foundational deps only — replaced by an altHint for optional provider deps. */
-  sysadmin_hint?: string;             // "Or ask your system administrator to install it for you."
+  /** ALWAYS present. The foundational-dep trailer ("Or ask your system
+   *  administrator to install it for you."), or — for optional provider deps
+   *  — the spec's altHint instead. Never omitted. */
+  sysadmin_hint: string;
 }
 ```
 
@@ -133,14 +135,17 @@ Every rendered message is built from these parts, in order. The formatter
 
 ## The "show all distro lines, don't detect" rule
 
-When the platform is known, **lead with that OS's line but STILL list the
-others.** Operators routinely SSH into a box the formatter mis-detects
-(containers, cross-arch, an env that lies about `process.platform`); it's
-cheaper to print three lines than to gamble on one. This is the vault
-git-preflight precedent — `GitNotInstalledError`'s message names `dnf` /
-`apt-get` / `brew` all at once rather than detecting the distro.
+When the platform is known, show **all of that platform family's options** —
+never detect the distro. On Linux that means listing **both `apt-get` and
+`dnf`** (plus the static-binary curl recipe when set): we can tell Linux from
+macOS via `process.platform`, but we cannot tell Debian from Fedora, and a box
+we guess wrong on (containers, cross-distro, an env that lies) actively
+misleads. This is the vault git-preflight lesson — name every in-family manager
+rather than gambling on one. (The formatter scopes to the detected *platform
+family*; it does not print macOS `brew` on a Linux box, the one case where the
+cross-platform line carries no value.)
 
-When the platform is **unknown**, show all families + the docs URL.
+When the platform is **unknown** (`win32`/other), show all families + the docs URL.
 
 ```
 Install it:
@@ -231,18 +236,19 @@ The `DepSpec` carries `optional?: boolean` + `altHint?: string`:
 
 The shared lib owns:
 
-- **`DepSpec`** — `{ binary, why, docsUrl, install: { darwin?, linux?, generic? }, linuxBinaryUrl?, optional?, altHint? }`.
+- **`DepSpec`** — `{ binary, why, docsUrl, install: { darwin?, linuxApt?, linuxDnf?, linuxBinaryUrl?, generic? }, optional?, altHint? }`. (`install` carries the granular per-manager recipes; the flattened `MissingDependencyWire.install` collapses the Linux variants to a single `linux?` line for SPA rendering.)
 - **The registry** — one `DepSpec` per known binary, keyed by binary name. The
   single source of truth for install strings. No module hand-syncs them.
-- **`ensureExecutable(spec, which = Bun.which)`** — preflight; throws
-  `MissingDependencyError`. `which` is a test seam.
-- **`rethrowIfMissing(err, spec)`** — ENOENT heuristic; re-throws as
-  `MissingDependencyError`, passes everything else through.
-- **`formatMissingDependency(spec, { interactive })`** — the 5-part assembler.
-- **`toWire(spec)`** — the `MissingDependencyWire` builder (503 body).
+- **`ensureExecutable(binary, { which })`** — preflight; looks `binary` up in the
+  registry + throws `MissingDependencyError` when `which(binary)` is null.
+  `which` defaults to `Bun.which`; it's a test seam.
+- **`rethrowIfMissing(err, binary)`** — ENOENT heuristic; re-throws a
+  not-found error as `MissingDependencyError`, passes everything else through.
+- **`formatMissingDependency(binary, spec, { interactive })`** — the 5-part assembler (CLI/daemon text).
+- **`toMissingDependencyWire(binary, spec)`** — the `MissingDependencyWire` builder (503 body); also reachable as `MissingDependencyError#toWire()`.
 
 ```ts
-import { ensureExecutable, rethrowIfMissing, toWire } from "@openparachute/depcheck";
+import { ensureExecutable, rethrowIfMissing, toMissingDependencyWire } from "@openparachute/depcheck";
 ```
 
 The lib is the **engine, not the policy** — same shape as scope-guard (the lib

@@ -2,7 +2,7 @@
 title: Missing-dependency UX — actionable install messages across all spawn sites (task #188)
 date: 2026-05-29
 status: active
-originating-pr: parachute-patterns (this normative-contract PR)
+originating-pr: patterns#110
 ---
 
 # Missing-dependency UX
@@ -36,12 +36,18 @@ missing.** This generalizes two prior point-fixes into one ecosystem contract:
 
 Each line gets a PR-number slot, filled as it lands.
 
-- [ ] **depcheck lib publish** — `@openparachute/depcheck` in
+- [x] **depcheck lib built + merged** — `@openparachute/depcheck` in
   `parachute-hub/packages/depcheck`: `DepSpec`, registry, `ensureExecutable`,
-  `rethrowIfMissing`, `formatMissingDependency`, `toWire`. Published to npm `rc`
-  dist-tag so siblings can depend on it. — _PR TBD (parachute-hub)_
-- [ ] **hub adoption** — wire hub's own spawn sites + the shared SPA error
-  component switch on `error_type === "missing_dependency"`. — _PR TBD (parachute-hub)_
+  `rethrowIfMissing`, `formatMissingDependency`, `toMissingDependencyWire`. —
+  **hub#483** (merged to hub main, rc.19). _npm publish to the `rc` dist-tag
+  still PENDING — needs the one-time npm Trusted-Publisher rule for the new
+  package + a `depcheck-v0.1.0-rc.1` tag push; siblings can't depend on it
+  until then._
+- [x] **hub adoption** — wired hub's spawn sites (tailscale, supervisor
+  `startCmd`→`services.json` status, tail, cloudflare/detect fold,
+  api-modules-ops) + the shared SPA install card switch on
+  `error_type === "missing_dependency"`. — **hub#483**. _(install.ts:739
+  vault-init spawn deferred — see gap list.)_
 - [ ] **vault adoption** — route the vault gap sites through depcheck; fold the
   existing `git-preflight.ts` into the shared lib (or have it re-export). —
   _PR TBD (parachute-vault)_
@@ -59,10 +65,10 @@ Grouped by repo. Each adopter routes these through `ensureExecutable` +
 
 ### parachute-hub
 
-- [ ] `tailscale` — `src/.../run.ts:12`
-- [ ] supervisor `startCmd` (the bare "failed") — `src/.../lifecycle.ts:81`
-- [ ] `tail` — `src/.../lifecycle.ts:949`
-- [ ] `install.ts:739` — `parachute-vault` spawn
+- [x] `tailscale` — `src/.../run.ts:12` — hub#483
+- [x] supervisor `startCmd` (the bare "failed") — `src/.../lifecycle.ts:81` → `services.json` `lastStartError` — hub#483
+- [x] `tail` — `src/.../lifecycle.ts:949` — hub#483
+- [ ] `install.ts:739` — `parachute-vault` spawn (deferred in hub#483; captures exit code rather than raw-crashing — low priority)
 
 ### parachute-vault
 
@@ -88,13 +94,13 @@ Grouped by repo. Each adopter routes these through `ensureExecutable` +
 
 ## Code references
 
-- [ ] `parachute-hub/packages/depcheck/**` — the shared lib (NEW package). —
-  _PR TBD_
-- [ ] hub / vault / scribe / runner spawn sites above — _per-repo PRs TBD_
+- [x] `parachute-hub/packages/depcheck/**` — the shared lib (NEW package). —
+  hub#483
+- [x] hub spawn sites — hub#483. _vault / scribe / runner spawn sites: per-repo PRs TBD_
 - [ ] `parachute-vault/src/git-preflight.ts` — reconcile with depcheck (fold or
-  re-export so vault doesn't carry a parallel registry). — _PR TBD_
-- [ ] hub's shared SPA error component — add the
-  `error_type === "missing_dependency"` branch (install card). — _PR TBD_
+  re-export so vault doesn't carry a parallel registry). — _PR TBD (vault adoption)_
+- [x] hub's shared SPA error component — `error_type === "missing_dependency"`
+  install card. — hub#483
 
 ## Doc references
 
