@@ -200,6 +200,37 @@ echo "(vault no longer mints pvt_* opaque tokens — access tokens are hub-issue
 } || true
 echo ""
 
+# --- Missing-dependency UX: hand-synced install strings outside depcheck ----
+# patterns/missing-dependency-ux.md (task #188, migration 2026-05-29) makes
+# `@openparachute/depcheck` the single owner of dependency install strings +
+# the message formatter. A module carrying its own `brew install` /
+# `apt-get install` / `dnf install` recipe, or a raw `Executable not found`
+# literal, in `src/` is drift back to hand-synced strings — the exact thing
+# the shared lib exists to prevent.
+#
+# Advisory, not a hard fail (like the rest of the script). Expected legitimate
+# hits during the adoption arc: depcheck's own registry (packages/depcheck),
+# vault's git-preflight.ts (being folded into depcheck), hub's
+# cloudflaredInstallHint (the static-binary precedent) — these ARE the
+# canonical sources and are excluded. Anything else is a candidate to route
+# through depcheck.
+
+echo "--- Hand-synced install strings / raw 'Executable not found' outside @openparachute/depcheck ---"
+echo "(missing-dependency-ux.md — depcheck owns install recipes + the ENOENT message; modules wire spawn sites, they don't carry strings)"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --include='*.ts' --include='*.tsx' \
+    --exclude='*.test.ts*' \
+    --exclude-dir=depcheck \
+    -E "brew install|apt-get install|dnf install|Executable not found in \\\$PATH|not found on PATH" \
+    "$WORKSPACE"/parachute-hub "$WORKSPACE"/parachute-vault \
+    "$WORKSPACE"/parachute-scribe "$WORKSPACE"/parachute-runner 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | grep -v "git-preflight\|cloudflaredInstallHint\|cloudflare/detect" \
+    | head -30
+} || true
+echo ""
+
 echo "=== Done. Review findings; cross-check against migrations/*.md. ==="
 echo ""
 echo "Notes:"
@@ -207,4 +238,5 @@ echo "  - Vendor/build dirs (node_modules, _site, dist, build, .next, .git, migr
 echo "  - CHANGELOGs + DEPRECATED.md are excluded line-level (they're historical record)."
 echo "  - parachute-notes/canonical-ports.md/service-spec.ts are excluded from the port-1942 check (they're the canonical source)."
 echo "  - parachute-agent retirement docs + launch-day artifacts are excluded from the agent check."
+echo "  - depcheck's own registry + vault git-preflight.ts + hub cloudflaredInstallHint are excluded from the install-string check (canonical sources)."
 echo "  - Add new grep blocks above when you hit a new class of stale ref."
