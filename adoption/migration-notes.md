@@ -5,6 +5,42 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-06-02 — hub-as-supervisor unification: retire the manager-less detached-daemon model
+
+**Change:** the hub no longer runs as a manager-less detached daemon on
+some substrates and a serve+supervisor on others. Everywhere now runs
+`parachute serve` (hub foreground + in-process Supervisor; modules =
+attached children) under a per-platform process manager — systemd on a
+Linux VM, launchd on a Mac, the container runtime on Render/Fly. The
+detached spawners are retired; supervised is the only runtime. `parachute
+start` becomes "serve in the background." See the propagation checklist at
+[`migrations/2026-06-01-hub-as-supervisor.md`](../migrations/2026-06-01-hub-as-supervisor.md)
+and the design doc (parachute.computer#89).
+
+**Why now.** The two-model split was incidental (it depended on the deploy
+substrate, not a deliberate choice) and was the root of EC2≠Render, no
+reboot-survival off-container, broken UI module-management off-Render
+(`503 supervisor_unavailable`), and the stale-daemon-drift bug class.
+
+**Affected:**
+
+- `parachute-hub` — the entire 6-phase arc landed here: hub#495 (P1),
+  hub#496 / hub#497 (P2), hub#498 / hub#499 / hub#500 (P3),
+  hub#502 / hub#504 (P4), hub#507 / hub#510 (P5), hub#514 (P6 docs).
+  Shipped to npm `@rc` as `hub@0.6.3-rc.1` (hub#501).
+- `parachute.computer` — design doc (#89) + Phase-6 site-docs PR (install +
+  `deploy/*` pages: serve-under-systemd as the self-host path; EC2/Hetzner ≡
+  Render story).
+- `parachute-patterns` — migration file (patterns#112, P1) + this finalize
+  (this PR). No pattern *doc* changed; `canonical-ports.md` (1939 hub-pin)
+  is respected, not changed.
+
+**Status:** complete — all six phases merged to `parachute-hub` `main`
+(2026-06-02). `@latest` stable + the live-box detached→supervised migration
+remain, gated on Aaron.
+
+---
+
 ## 2026-05-25 — module-ui-declaration.md: vault + scribe declare `uiUrl` (workstream C)
 
 **Change:** reverse the "vault has no `uiUrl`" stance in
