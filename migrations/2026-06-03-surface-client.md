@@ -45,7 +45,7 @@ This file is the propagation checklist. Phase 1 is mostly **additive + docs-trut
 
 ### Follow-on hardening (landed alongside the phases)
 
-- [x] surface-render DX polish — `useVaultFetchBlob`/`vaultClientFetchBlob`, unified `highlight` hook, baseline `styles.css`, `unresolvedLink`/`resolvedLink`/`INERT`, override-type re-exports. Tracked-by: surface#74 / #75. **surface-render not yet republished — bump→0.2.0 + tag `render-v0.2.0` is gated on the ship decision.**
+- [x] surface-render DX polish — `useVaultFetchBlob`/`vaultClientFetchBlob`, unified `highlight` hook, baseline `styles.css`, `unresolvedLink`/`resolvedLink`/`INERT`, override-type re-exports. Tracked-by: surface#74 (issue) / #75 (PR). **surface-render not yet republished — bump→0.2.0 + tag `render-v0.2.0` is gated on the ship decision.**
 - [x] Version-drift guard — `SURFACE_CLIENT_VERSION` / `SURFACE_RENDER_VERSION` codegen'd from `package.json` (`prebuild` + drift-guard test) so the constants can't stall behind the shipped version. Tracked-by: surface#77 (closes surface#57).
 - [x] CI workflow-lint — `yaml.safe_load` + pinned actionlint on `.github/workflows/**`, so a `release.yml` YAML typo can't silently `startup_failure` and no-op publishes. Tracked-by: surface#76 (closes surface#72).
 
