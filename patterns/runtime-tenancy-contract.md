@@ -22,23 +22,32 @@ meta tags plus a `<base>` element in the served HTML:
   <meta name="parachute-mount" content="/surface/<name>">     <!-- runtime code reads this -->
   <meta name="parachute-hub" content="https://...">       <!-- hub origin for OAuth discovery -->
   <meta name="parachute-vault" content="/vault/<name>">   <!-- when operator's session is vault-bound -->
-  <meta name="parachute-tenant-id" content="<name>">      <!-- tenant's logical name within this host -->
+  <meta name="parachute-vault-origin" content="https://..."> <!-- cloud / cross-origin vault only -->
 </head>
 ```
+
+There is **no** `parachute-tenant-id` meta tag — the tenant's logical id is
+*derived* from the mount path (`getTenantId()` takes the last segment of
+`/surface/<name>`), not injected separately. The host injects the mount; the
+id falls out of it.
 
 Tenants consume via `@openparachute/surface-client`:
 
 ```ts
 import {
-  getMountBase,
-  getHubOrigin,
-  getVaultPath,
-  getTenantId,
+  getMountBase,   // mount path (React Router basename), trailing slash stripped
+  getHubOrigin,   // hub origin for OAuth discovery
+  getVaultUrl,    // fully-qualified vault URL (origin + path), ready for fetch()
+  getTenantId,    // logical tenant id, derived from the mount path
 } from '@openparachute/surface-client';
 ```
 
-The helpers read the meta tags, return typed values, and throw clear
-errors when the host hasn't injected what the tenant expects.
+The helpers read the meta tags and return typed values. They **never throw**:
+a missing tag returns `null` and the caller chooses the fallback (this is
+load-bearing for *standalone* surfaces, which have no host injecting the tags
+— see the surface-client README's "Runtime-tenancy contract" section). Note
+the exported reader is **`getVaultUrl`** (returns a fully-qualified URL so
+`fetch(getVaultUrl())` works directly) — there is no `getVaultPath` export.
 
 ## Two-layer rationale
 
