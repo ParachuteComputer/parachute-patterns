@@ -1,6 +1,6 @@
 # Tag data model
 
-> One-line summary: a tag is a single SQL row carrying its identity, description, indexed fields, declared typed relationships, and parent-tag pointers. Schemas inherit through `parent_names`; `_default` is the implicit universal parent. No notes-as-config for tag concerns. Vault is SQLite; tags belong in tables.
+> One-line summary: a tag is a single SQL row carrying its identity, description, indexed fields, a declared relationship vocabulary (opaque JSON map), and parent-tag pointers. Schemas inherit through `parent_names`; `_default` is the implicit universal parent. No notes-as-config for tag concerns. Vault is SQLite; tags belong in tables.
 
 ## Convention
 
@@ -11,7 +11,7 @@ CREATE TABLE tags (
   name TEXT PRIMARY KEY,
   description TEXT,                  -- markdown blurb describing the tag
   fields TEXT,                       -- JSON: indexed metadata fields per `query-operators.md`
-  relationships TEXT,                -- JSON: typed-link declarations per §Typed relationships below
+  relationships TEXT,                -- JSON: opaque relationship-vocabulary map (see §Relationships)
   parent_names TEXT,                 -- JSON array of parent tag names (multi-inheritance, see §Schema inheritance)
   created_at TEXT NOT NULL,
   updated_at TEXT
@@ -28,11 +28,24 @@ The legacy `tag_schemas` sidecar table, the `_tags/<name>` config-note pattern, 
 
 The conflation between "this is a note" and "this is system configuration" was creating real confusion (see `parachute-patterns/research/parachute-data-model-shape.md`). Drawing the line cleanly: notes carry user content. Anything else is a SQL table or a column.
 
-## Typed relationships
+## Relationships
 
-A tag declares the **expected** typed-link shapes for notes carrying that tag. The declaration is informational — used by agents to understand what links a typed note "should" have, and used by the UI to surface affordances. It is **not enforced** at write time (see §Future evolution).
+`tags.relationships` is an **opaque relationship vocabulary**: a plain JSON map of relationship-name → arbitrary JSON value, stored verbatim. The vault validates only that the top level is a plain object — it **rejects** a top-level array, primitive, `null`, or empty-string key — and does **not** enforce the inner shape of each value. Whatever the app writes under a relationship name is stored and returned as-is for the app to interpret. The declaration is informational throughout: not enforced at write time for either the map shape or any link a note carries (see §Future evolution).
 
-Schema shape (stored as JSON in `tags.relationships`):
+This is the canonical contract as of vault#431. The earlier strict `{target_tag, cardinality}` validator was loosened to this opaque map so the Weaver/UI can store a freeform relationship vocabulary directly. Because any plain object is accepted, the old typed shape (below) is still fully valid — the opaque map is a backwards-compatible superset.
+
+The Weaver's freeform vocabulary is a typical opaque map (relationship-name → whatever the app needs):
+
+```json
+{
+  "works-on":  { "from": "person", "to": "project" },
+  "member-of": { "from": "person", "to": "organization" }
+}
+```
+
+### Recommended convention: `{target_tag, cardinality}` typed-link declarations
+
+For declaring the **expected** typed-link shapes for notes carrying a tag, the recommended convention is a per-relationship object of `{ target_tag, cardinality, description? }`. This is a *convention*, not a requirement — the vault accepts it because it's a valid opaque map, but does not enforce its keys. Agents use it to understand what links a typed note "should" have; the UI uses it to surface affordances ("Add author" on a `#book`):
 
 ```json
 {
@@ -54,9 +67,9 @@ Schema shape (stored as JSON in `tags.relationships`):
 }
 ```
 
-### Cardinality vocabulary
+#### Cardinality vocabulary
 
-Four named values, chosen for AI legibility (LLMs parse named cardinalities more reliably than `"1..*"` style numerics):
+When following the typed-link convention, `cardinality` uses four named values, chosen for AI legibility (LLMs parse named cardinalities more reliably than `"1..*"` style numerics):
 
 | Value | Meaning |
 |---|---|
@@ -65,7 +78,7 @@ Four named values, chosen for AI legibility (LLMs parse named cardinalities more
 | `"many"` | Zero or more (0..*) |
 | `"many-required"` | One or more (1..*) |
 
-Stored verbatim as the JSON string. Agents reading the schema understand intent without parsing UML notation.
+Stored verbatim as the JSON string. Agents reading the schema understand intent without parsing UML notation. These values are a convention the vault does not validate.
 
 ### Relationships compose with the existing `links` table
 
@@ -181,6 +194,7 @@ The model arrived in three steps; this section records the arc so the migration-
 1. **2026-05-03 — `tag_schemas` + `_tags/*` retirement** (vault#245, schema v13 → v14). Added `description`, `fields`, `relationships`, `parent_names` columns on `tags`. Lifted data from the `tag_schemas` sidecar and `_tags/<name>` config notes. Dropped `tag_schemas`. Left `_tags/<name>` notes in place as historical breadcrumbs.
 2. **2026-05-03 — `_schemas/*` retirement** (vault#249, schema v14 → v15). Lifted `_schemas/<name>` notes and the `_schema_defaults` mapping note into a new `note_schemas` + `schema_mappings` two-table subsystem. MCP tool count went 10 → 16 with `update-note-schema`, `delete-note-schema`, `list-note-schemas`, `set-schema-mapping`, `delete-schema-mapping`, `synthesize-notes`.
 3. **2026-05-09 — `note_schemas` + `schema_mappings` ripped** (vault#269, schema v16 → v17). Audit found zero operator use of the path-prefix mapping kind, and tag-mapped schemas were redundant with `tags.fields`. Subsystem removed entirely; the six new MCP tools deleted; tool count went 16 → 9. Note-validation now lives where tag-validation lives: on `tags.fields`, with `_default` as the universal-fallback (vault#272, same-day).
+4. **2026-06-03 — `relationships` loosened to an opaque vocabulary map** (vault#431). Validator now accepts any plain-object map; the `{target_tag, cardinality}` typed shape becomes a recommended convention, not a requirement. Backwards-compatible superset.
 
 The arc is one-way. Aaron approved the irreversible migrations 2026-05-03 (steps 1+2) and 2026-05-09 (step 3); the cleaner break beats keeping the subsystem alongside.
 
@@ -210,4 +224,4 @@ The arc is one-way. Aaron approved the irreversible migrations 2026-05-03 (steps
 - Tag rename is now operator-friendly across all surfaces (vault#275 — superseded the earlier fail-closed 409 on token-referenced tags).
 - Companion docs: `patterns/vault-mcp-discovery.md` (how clients see the schema), `research/parachute-data-model-shape.md` (architectural reflection), `research/tana-deep-dive.md` (typed-graph context), `patterns/tag-scoped-tokens.md` (token-scope concerns layered on this model).
 
-_Last updated: 2026-05-09 — current with vault 0.4.1-rc.4._
+_Last updated: 2026-06-03 — `relationships` loosened to an opaque vocabulary map (vault#431)._
