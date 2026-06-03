@@ -38,10 +38,16 @@ This file is the propagation checklist. Phase 1 is mostly **additive + docs-trut
 
 ## Later-phase items (not Phase 1)
 
-- [ ] `createVaultSurface` factory with hosted/standalone auto-detect + auto-refresh VaultClient (**Phase 2**, surface-client). Tracked-by: (pending).
-- [ ] Extract `@openparachute/surface-render` (markdown + wikilinks + embeds + multi-format + MDX-safe-default) (**Phase 3**, parachute-surface). Tracked-by: (pending).
-- [ ] Migrate notes-ui onto surface-render; reconcile its `discovery.ts` shim against `createVaultSurface`'s `clientName` (**Phase 4**). Tracked-by: (pending).
-- [ ] Adopt both packages in `~/Code/my-vault-ui`, deleting its hand-rolled oauth/api/pkce/types + Markdown/AudioEmbed (**Phase 5**, external). Tracked-by: (pending).
+- [x] `createVaultSurface` factory with hosted/standalone auto-detect + auto-refresh VaultClient (**Phase 2**, surface-client). Tracked-by: surface#68. surface-client published v0.2.0.
+- [x] Extract `@openparachute/surface-render` (markdown + wikilinks + embeds + multi-format + MDX-safe-default) (**Phase 3**, parachute-surface). Tracked-by: surface#69 (dep-fix #70). Published v0.1.0 via npm Trusted Publishing.
+- [x] Migrate notes-ui onto surface-render; deleted its MarkdownView/remark-wikilinks/VaultImage/render dupes, kept `buildWikilinkResolver` + `NotesLink` (**Phase 4**, dogfood gate). Tracked-by: surface#73. Confirmed API fit with zero surface-render changes; friction → #74.
+- [ ] Adopt both packages in `~/Code/my-vault-ui` / `parachute-brain`, deleting hand-rolled oauth/api/pkce/types + Markdown/AudioEmbed (**Phase 5**, external). Tracked-by: Aaron's parachute-brain build (in progress, separate context).
+
+### Follow-on hardening (landed alongside the phases)
+
+- [x] surface-render DX polish — `useVaultFetchBlob`/`vaultClientFetchBlob`, unified `highlight` hook, baseline `styles.css`, `unresolvedLink`/`resolvedLink`/`INERT`, override-type re-exports. Tracked-by: surface#74 / #75. **surface-render not yet republished — bump→0.2.0 + tag `render-v0.2.0` is gated on the ship decision.**
+- [x] Version-drift guard — `SURFACE_CLIENT_VERSION` / `SURFACE_RENDER_VERSION` codegen'd from `package.json` (`prebuild` + drift-guard test) so the constants can't stall behind the shipped version. Tracked-by: surface#77 (closes surface#57).
+- [x] CI workflow-lint — `yaml.safe_load` + pinned actionlint on `.github/workflows/**`, so a `release.yml` YAML typo can't silently `startup_failure` and no-op publishes. Tracked-by: surface#76 (closes surface#72).
 
 ## Audit
 
