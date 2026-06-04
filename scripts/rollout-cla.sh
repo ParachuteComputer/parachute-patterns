@@ -20,6 +20,8 @@ BRANCH="cla-rollout"
 WORKFLOW_PATH=".github/workflows/cla.yml"
 
 # Tiers from migrations/2026-06-04-cla-rollout.md (cla-signatures excluded).
+# Pilot on parachute-workspace FIRST (after CLA_PAT is set); use --all only
+# once the flow is proven there.
 ALL_REPOS=(
   # Tier 1 — committed core + core support
   parachute-vault parachute-surface parachute-scribe parachute-hub

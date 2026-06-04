@@ -12,7 +12,10 @@ Small operational scripts that help maintain the patterns + the ecosystem they d
 A script earns its place here when:
 
 - It supports a discipline already documented in `patterns/` or `guides/`.
-- It runs locally, against checked-out repos, with no production access.
+- It runs locally, against checked-out repos, with no production access —
+  **or** it's operational automation acting through the GitHub API on the
+  org's own repos (like `rollout-cla.sh`); those must be idempotent and
+  say what they touch in their header comment.
 - It's a couple hundred lines or fewer. Larger tooling belongs in its own repo.
 
 When adding one:
