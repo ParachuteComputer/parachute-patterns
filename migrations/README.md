@@ -28,6 +28,8 @@ Body: short context (why the shift), then sections:
 
 Each item is a checkbox + `repo:path` + (when in flight) the PR number that addresses it.
 
+These section names are a starting model, not a required template — adapt them to the shape of the shift (e.g. the notes-as-app and CLA-rollout migrations use phase/tier sections). Keep the checkbox + location + PR-number item shape regardless.
+
 ## Maintenance
 
 - **Active migration:** keep updating as items land.
