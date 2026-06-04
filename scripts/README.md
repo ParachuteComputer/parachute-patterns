@@ -5,6 +5,7 @@ Small operational scripts that help maintain the patterns + the ecosystem they d
 ## Current scripts
 
 - [`audit-canonical-refs.sh`](./audit-canonical-refs.sh) — grep-based audit for stale architectural references across the workspace. Run after architectural shifts (e.g. a new entry in [`../migrations/`](../migrations/)) or before releases to catch propagation misses.
+- [`rollout-cla.sh`](./rollout-cla.sh) — opens per-repo PRs adding the CLA caller workflow (see [`../patterns/cla.md`](../patterns/cla.md) + [`../migrations/2026-06-04-cla-rollout.md`](../migrations/2026-06-04-cla-rollout.md)). Idempotent; `--all` or explicit repo args.
 
 ## Adding a script
 
