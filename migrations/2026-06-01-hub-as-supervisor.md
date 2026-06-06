@@ -24,6 +24,11 @@ originating-pr: parachute.computer#89 (design doc)
 >   hub#508 (`resolveOperatorTokenIssuer` consolidation) · hub#509 (proactive iss-detection) ·
 >   hub#511 / hub#512 (RFC 8707 resource→aud — real, but NOT the connector blocker, deferred) ·
 >   hub#513 (warn at `expose --cloudflare` re Cloudflare bot protection).
+> - **See also (post-arc propagation):** hub#580 (dual-lifecycle race — module's own
+>   launchd/systemd unit vs the supervisor; field-hit on Linux + macOS) resolved via
+>   hub PR #581 (light install + stale-unit sweep + port-squatter surfacing) and
+>   vault PR #452 (init defaults autostart off under a hub) — the vault-side
+>   propagation of this arc's "supervisor owns module lifecycles" decision.
 
 The shift: **retire the manager-less detached-daemon process model and run `parachute serve` (hub foreground + in-process Supervisor; modules = attached children) under a per-platform process manager everywhere** — systemd on a Linux VM, launchd on a Mac, the container runtime on Render/Fly.
 
@@ -80,4 +85,4 @@ This is the propagation checklist. It tracks every code/doc/operator surface the
 - The cloudflared connector reboot-persistence work (hub#493) is the precedent the hub unit generalizes; the headless systemd-user linger gotcha (hub#494) applies to the hub unit too.
 - Open owner decisions D1–D4 are recorded in the design doc; D4 settled 2026-06-01 (SPA-driven `upgrade hub` is first-class).
 - **rc ship:** Phases 1–3 shipped to the npm `@rc` dist-tag as `hub@0.6.3-rc.1` (hub#501). The `@latest` stable release and the live-box detached→supervised migration are gated on Aaron and not yet done as of finalize (2026-06-02).
-- **Deferred follow-ups (filed during the arc, not part of the core unification):** hub#503 (cloudflare-off origin-clear) · hub#505 (depcheck dist DX) · hub#506 (D4 hub-upgrade 409-deadlock — to land before the D4 deploy) · hub#508 (`resolveOperatorTokenIssuer` consolidation) · hub#509 (proactive iss-detection) · hub#511 / hub#512 (RFC 8707 resource→aud binding — a real OAuth correctness item, but NOT the connector blocker it was first suspected to be; deferred) · hub#513 (warn at `expose --cloudflare` about Cloudflare bot protection on the connector path).
+- **Deferred follow-ups (filed during the arc, not part of the core unification):** hub#503 (cloudflare-off origin-clear) · hub#505 (depcheck dist DX) · hub#506 (D4 hub-upgrade 409-deadlock — to land before the D4 deploy) · hub#508 (`resolveOperatorTokenIssuer` consolidation) · hub#509 (proactive iss-detection) · hub#511 / hub#512 (RFC 8707 resource→aud binding — a real OAuth correctness item, but NOT the connector blocker it was first suspected to be; deferred) · hub#513 (warn at `expose --cloudflare` about Cloudflare bot protection on the connector path). **See also:** hub#580 / hub PR #581 / vault PR #452 (vault init hub-default-off — the vault-side item of the dual-lifecycle race this arc's model implies; field-confirmed on Linux + macOS).
