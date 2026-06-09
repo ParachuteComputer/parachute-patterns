@@ -36,6 +36,37 @@
    └──────────────────────────────────────────────────────────┘
 ```
 
+## Self-registration is the single source of truth (2026-06-09)
+
+The **[modular-UI architecture](../design/2026-06-09-modular-ui-architecture.md)**
+shift settles a long-standing inconsistency: discovery is driven by
+**self-registration**, not a curated whitelist.
+
+Previously the hub's Modules screen was gated by a hardcoded
+`CURATED_MODULES = ["vault","scribe"]` constant. A module could be running,
+proxied, supervised, and self-registered in `services.json` — yet
+administratively invisible and un-installable because it wasn't in that
+constant (channel hit exactly this). Three registries disagreed
+(`CURATED_MODULES` vs `services.json` vs `FIRST_PARTY_FALLBACKS` /
+`KNOWN_MODULES`).
+
+The model now:
+
+- **Enumeration = self-registration.** The Modules screen and `/api/modules`
+  enumerate the union of `services.json` ∪ each module's `module.json` ∪ the
+  supervisor's live children. **No whitelist decides visibility.** The other
+  registries (`KNOWN_MODULES`) survive only as an **install-time bootstrap**
+  index (resolve a name → installable package), not as a visibility gate.
+- **`focus` de-emphasizes, never hides.** A module's `module.json` declares
+  `focus: "core" | "experimental"` (see
+  [`module-json-extensibility.md` — Modular-UI fields](./module-json-extensibility.md#modular-ui-fields)).
+  The hub uses it to **sort and label** — `"core"` first, `"experimental"`
+  de-emphasized — but every self-registered module appears. Unlisted →
+  `"experimental"`.
+
+This retires the curated-whitelist model. The propagation checklist is
+[`../migrations/2026-06-09-modular-ui.md`](../migrations/2026-06-09-modular-ui.md).
+
 ## If you're trying to…
 
 ### Understand the three-layer module contract (services.json, well-known, module.json)
@@ -52,9 +83,10 @@ Read [`module-json-extensibility.md`](./module-json-extensibility.md).
 The full `module.json` field catalog — `name`, `manifestName`,
 `displayName`, `tagline`, `port`, `paths`, `health`,
 `startCmd`, `scopes`, `dependencies`, plus the extensibility fields
-(`hasAuth`, `init`, `urlForEntry`, `managementUrl`, `uiUrl`). No
-`@openparachute/` scope or `parachute-*` prefix required; the
-contract is what makes a module a module.
+(`hasAuth`, `init`, `urlForEntry`, `managementUrl`, `uiUrl`) and the
+2026-06-09 modular-UI fields (`focus`, `configUiUrl`, `configSchema`,
+`adminCapabilities`, `events`, `actions`). No `@openparachute/` scope or
+`parachute-*` prefix required; the contract is what makes a module a module.
 
 ### Render your module in the hub's discovery section
 

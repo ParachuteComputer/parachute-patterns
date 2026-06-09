@@ -166,6 +166,57 @@ under `/notes` declares both `uiUrl: "/notes"` and `managementUrl:
 "/notes/admin"`), one, or neither. They serve different surfaces and
 don't conflict.
 
+## `configUiUrl` — the module's own config surface (2026-06-09)
+
+The **[modular-UI architecture](../design/2026-06-09-modular-ui-architecture.md)**
+shift adds a third UI-declaration field: `configUiUrl`. It completes the
+trio by naming **where the module's own config surface lives** — the surface
+the hub frames / links from a uniform config shell, instead of hard-coding a
+per-module config view in the hub SPA (the deprecated generic `ModuleConfig`
+form, and the bespoke per-module Channels view, were the anti-pattern this
+retires).
+
+The three fields divide cleanly by audience and surface:
+
+| Field | Surface | Renders | Resolution base |
+| --- | --- | --- | --- |
+| `uiUrl` | Hub **discovery** page | One **tile** per service (the user-facing UI) | hub origin |
+| `managementUrl` | Hub **admin** pages | "Manage `<name>`" **deep-link** per instance | module's own well-known origin |
+| `configUiUrl` | Hub **config shell** | The module's **own config surface** (hub frames / links it) | module's own well-known origin |
+
+```ts
+configUiUrl?: string;  // path or full URL — the module's own config surface
+```
+
+- **uiUrl = the discovery tile.** "Here's the thing; go use it."
+- **managementUrl = an admin deep-link.** "Manage this instance" from a
+  hub admin list (today: the per-vault list).
+- **configUiUrl = the module's own config surface.** The hub renders one
+  consistent config shell and frames / links each module's `configUiUrl`;
+  the module owns the config UI end-to-end. This is the machine-readable
+  form of the "modules own their config UIs" principle. Resolution follows
+  `managementUrl`'s rules (relative → module's well-known origin; absolute →
+  verbatim).
+
+A module may declare any subset. Examples from the modular-UI arc:
+
+- **scribe** — `uiUrl: "/scribe/admin"` (discovery tile) and
+  `configUiUrl: "/scribe/admin"` may point at the same self-served surface;
+  scribe's admin HTML *is* its config UI. Note the two strings resolve
+  against **different bases** — `uiUrl` against the hub origin, `configUiUrl`
+  against the module's own origin — and only collapse to the same URL because
+  scribe is co-located on the hub origin. A third-party module hosted
+  elsewhere would see them diverge.
+- **channel** — builds + serves a config/admin UI (manage channels /
+  transports) and declares `configUiUrl` for it (`focus: "experimental"`).
+- **runner** — builds + serves a job-listing / config UI and declares
+  `configUiUrl`.
+
+Full field catalog + the `focus` / `events` / `actions` peers:
+[`module-json-extensibility.md` — Modular-UI fields](./module-json-extensibility.md#modular-ui-fields).
+The discovery-side `focus` tier (self-registration, no whitelist) is in
+[`module-discovery.md`](./module-discovery.md).
+
 ## Examples
 
 - **`parachute-notes`** — declares `uiUrl: "/notes"`. The Notes PWA is

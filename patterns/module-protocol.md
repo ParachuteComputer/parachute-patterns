@@ -56,6 +56,18 @@ Reference implementation dispatches these in
 (`/.parachute/info`, `/.parachute/icon.svg`, `/.parachute/config/schema`,
 `/.parachute/config`).
 
+**Module-owned config UI + connections (added 2026-06-09).** Under the
+[modular-UI architecture](../design/2026-06-09-modular-ui-architecture.md),
+a module's config UI is the module's own surface — it serves it and declares
+`configUiUrl` in `module.json`; the hub frames / links it from a uniform
+config shell rather than hard-coding a per-module view. The same shift adds
+`events` (what a module emits) and `actions` (what it accepts) to `module.json`,
+which feed the hub's general **Connections** surface (when [event] → do
+[action]). The runtime `/.parachute/config` + `/.parachute/config/schema`
+endpoints remain the live-config seam; `configSchema` in `module.json`
+promotes the schema to install-time. Full field catalog:
+[`module-json-extensibility.md` — Modular-UI fields](./module-json-extensibility.md#modular-ui-fields).
+
 ### 3. Discovery — `/.well-known/parachute.json`
 
 The hub aggregates every installed service's storage entry into a single
@@ -118,7 +130,14 @@ the hub page fetch lives in
   [`hub-as-issuer.md`](./hub-as-issuer.md) and
   [`oauth-scopes.md`](./oauth-scopes.md).
 - Third-party module manifest (`.parachute/module.json`) shape — see
-  [`module-json-extensibility.md`](./module-json-extensibility.md).
+  [`module-json-extensibility.md`](./module-json-extensibility.md), including
+  the 2026-06-09 modular-UI fields (`configUiUrl`, `focus`, `events`,
+  `actions`).
+- Self-registration-driven discovery (no whitelist) + the `focus` tier — see
+  [`module-discovery.md`](./module-discovery.md).
+- Where a module's user / admin / config UI is declared (`uiUrl` /
+  `managementUrl` / `configUiUrl`) — see
+  [`module-ui-declaration.md`](./module-ui-declaration.md).
 - Well-known metadata for OAuth (RFC 8414 / RFC 9728) — see
   [`well-known-discovery-rfc.md`](./well-known-discovery-rfc.md).
 
