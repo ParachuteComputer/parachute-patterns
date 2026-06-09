@@ -132,9 +132,10 @@ third-party content** (Telegram messages in channel's UI, synced notes,
 transcripts). A stored XSS in any same-origin module surface escalates to
 host-admin via the ambient cookie + the mint endpoints. Mitigations, each
 load-bearing: the first-admin gate, 10-minute mint TTLs, `NON_REQUESTABLE`
-scopes, the CSRF belt on `/admin/*` JSON POSTs (hub#632), rigorous output
-escaping in every module surface, and (tracked) default CSP on proxied module
-pages. Do not weaken any of these to make a seam flow more convenient.
+scopes, and rigorous output escaping in every module surface. In progress,
+each tracked: the CSRF belt on `/admin/*` JSON POSTs (hub#632 — Phase C1 of
+the migration, sequenced first) and default CSP on proxied module pages (E8).
+Do not weaken any of these to make a seam flow more convenient.
 
 ## The bootstrap exception
 

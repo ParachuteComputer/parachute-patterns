@@ -166,7 +166,11 @@ The field catalog is in
 `uiUrl` / `managementUrl` use the B4 relative form (no leading slash —
 joined onto each instance's mount: `/vault/<name>/admin/`; trailing
 slash deliberate per the fragment-token-SPA section) while
-`configUiUrl` is origin-absolute (the daemon-level multi-vault home);
+`configUiUrl` is origin-absolute (the daemon-level multi-vault home).
+(This is the target shape — vault's shipped manifest carries the legacy
+`"/admin/"` form until the vault wave of
+[`2026-06-09-hub-module-boundary.md`](../migrations/2026-06-09-hub-module-boundary.md)
+lands; the hub's one-release compat shim bridges the gap.)
 `init` carries a safety constraint that `command[0]` must equal a bin
 from the installed npm package.
 

@@ -65,9 +65,12 @@ one-release compat shim for the old vault manifest.
       `recordTokenMint` — no registry row → unrevocable until expiry, and
       `teardownConnection` deletes channel's *copy*, not the credential.
       Fix: record both mints (`created_via: "connection_provision"`), persist
-      the jtis on the ConnectionRecord, make teardown revoke them, and
-      rotate/re-provision existing connections (one-time migration). Charter
-      rule: any mint with TTL beyond ~10 min MUST be registered. (hub)
+      the jtis on the ConnectionRecord, make teardown revoke them. Existing
+      connections are NOT auto-rotated (settled in hub#637): legacy records
+      are flagged `legacy: true` on the list wire shape and their unregistered
+      mints ride to original expiry — re-create a connection to get revocable
+      credentials. Charter rule: any mint with TTL beyond ~10 min MUST be
+      registered. (hub)
 - [ ] **B1 hub: `DELETE /vaults/<name>`** (host:admin Bearer; explicit
       `confirm: "<name>"` body). Mechanics: shell to
       `parachute-vault remove --yes` (module CLI stays the source of truth,
@@ -154,7 +157,8 @@ one-release compat shim for the old vault manifest.
       warning (server boot / selfRegister already calls `listVaults()`) when
       a vault named `admin`/`new`/`assets` exists, naming the shadowing
       consequence + recovery. Recovery procedure (no rename command exists):
-      `parachute-vault export → create <newname> → import → remove`. (vault)
+      `parachute-vault export <dir> --vault admin → create <newname> →
+      import <dir> --vault <newname> → remove admin --yes`. (vault)
 - [ ] **B3 vault: the `/vault/admin/` surface.** Sub-items, all required:
       - `routing.ts`: daemon-level `/vault/admin` branch **before**
         `isAdminSpaPath`, reusing `serveAdminSpa` with its own prefix-strip;
