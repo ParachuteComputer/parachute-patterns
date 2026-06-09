@@ -276,13 +276,25 @@ one-release compat shim for the old vault manifest.
 - [ ] E10 `/login` on a no-admin box renders JSON 503 instead of a
       finish-setup page (pre-existing; surfaced by the B3 empty-state review)
 
-## Status
+## Status (2026-06-09 — built, deployed, live-verified same day)
 
 | Item | PR | State |
 |---|---|---|
-| Phase A | (this PR) | open |
-| B0, B1, B2h, B4, B-route (hub wave 1) | — | queued |
-| B2v, B3 (vault wave) | — | queued |
-| B5 (hub wave 2) | — | queued |
-| C1–C5, D1–D3 | — | queued |
-| D4, E1–E10 | — | issues to file |
+| Phase A (charter + migration + doc alignment) | patterns#120, #121 | **merged** |
+| B0, B1, B2h, B4, B-route (hub wave 1) | hub#637 | **merged** |
+| B2v, B3 (vault wave — `/vault/admin/`) | vault#473 | **merged** |
+| B5 (hub wave 2 — SPA slim, feature-detected) | hub#645 | **merged** |
+| C1 (Origin belt — closes hub#632) | hub#638 | **merged** |
+| C2 (channel delete symmetry) | channel#46 | **merged** |
+| C3 (runner auth + config form) | runner#17 | **merged** |
+| C4 (surface session→mint; fixed pre-existing aud break) | surface#86 | **merged** |
+| C5 + D1 + D2 + D3 (mint re-gate · retire /admin/channels · preset generalization · channel FALLBACK) | hub#646 | **merged** |
+| D4 (design-doc supersession banners) | parachute.computer#106 | **merged** |
+| E1–E10 | scribe#74 #75 · vault#474 #475 #476 · hub#639 #640 #641 #642 #643 #644 | issues filed |
+
+Live verification (local fabric, 2026-06-09): `/vault/admin/` 200 through the
+hub (bare → 301), per-vault SPA + data plane unaffected, legacy
+`/vault`/`/vault/new` 301s re-pointed, well-known fans one correctly-resolved
+per-instance tile per vault under the new semantics, the compat shim dormant
+(new manifest live), `/admin/channels` retired, `DELETE /vaults` gated, all
+module admin pages 200.
