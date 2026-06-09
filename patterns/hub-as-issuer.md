@@ -119,13 +119,14 @@ change between Phase 1 and Phase B2. Only the implementation does.
 - **Multi-vault and scope narrowing.** A single hub fronts N vaults
   today, each at `/vault/<name>`. The issuer is still the hub origin
   for all of them; per-vault narrowing is a scope concern, not an
-  issuer concern. See `oauth-scopes.md` "Future: per-resource
+  issuer concern. See `oauth-scopes.md` "Future: deeper per-resource
   narrowing".
-- **Token format at the Phase B2 cutover.** Today's tokens are opaque
-  `pvt_*` strings looked up by hash on the issuing vault. Phase B2 is
-  expected to switch to signed JWTs; the transition needs a bridge
-  period where both formats validate. Specced in the design doc, not
-  yet implemented.
+- **Token format at the Phase B2 cutover — resolved.** Tokens were
+  opaque `pvt_*` strings looked up by hash on the issuing vault; the
+  cutover to hub-signed JWTs completed, and the `pvt_*` issuance path
+  then retired entirely (vault#412 — see
+  [`token-auth.md`](./token-auth.md)'s supersession banner). No bridge
+  period remains: hub-minted JWTs are the only issuance.
 - **Refresh and step-up flows across modules.** A token granted
   `vault:read` requesting `scribe:transcribe` later is conceptually one
   hub re-prompt, but the dance touches every module. Designed in

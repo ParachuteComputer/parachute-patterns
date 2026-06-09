@@ -314,7 +314,8 @@ emitting the canonical trailing-slash form directly from
 `managementUrl`, the redirect never fires and the token survives.
 Real-world example: vault#252 added a 301 from `/vault/<name>/admin`
 → `/vault/<name>/admin/`; vault#255 fixed token loss by changing
-`managementUrl: "/admin"` → `"/admin/"`. Modules with non-SPA
+`managementUrl: "/admin"` → `"/admin/"` (pre-B4 legacy forms — the
+current per-instance form is `"admin/"`). Modules with non-SPA
 admin UIs, or SPAs that don't use fragment-tokens, don't need this.
 
 **Backwards-compatible.** Absent field = no link rendered. Modules that

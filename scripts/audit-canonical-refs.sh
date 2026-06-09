@@ -200,6 +200,20 @@ echo "(vault no longer mints pvt_* opaque tokens — access tokens are hub-issue
 } || true
 echo ""
 
+echo "--- Legacy UI-URL semantics: mount-joined \"/admin/\" manifests + hub /admin/vaults route (B4 — hub-module-boundary 2026-06-09) ---"
+echo "(uiUrl/managementUrl/configUiUrl resolve by form: leading-/ is origin-absolute VERBATIM; vault's per-instance form is \"admin/\"; the provisioning UX lives at /vault/admin/. A manifest still declaring the legacy \"/admin/\" literal, or copy pointing at the hub's /admin/vaults page, is stale once Phase B lands. Lines narrating the shim/retirement + the migration-notes running log are excluded.)"
+{
+  grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --include='*.md' --include='*.ts' --include='*.tsx' --include='*.json' --include='*.njk' \
+    -E "\"?(uiUrl|managementUrl|configUiUrl)\"?[[:space:]]*:[[:space:]]*\"/admin/?\"|/admin/vaults" \
+    "$WORKSPACE" 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | grep -v "migration-notes" \
+    | grep -vi "legacy\|compat\|deprecat\|retire\|shim\|pre-B4\|hub-module-boundary" \
+    | head -30
+} || true
+echo ""
+
 # --- Missing-dependency UX: hand-synced install strings outside depcheck ----
 # patterns/missing-dependency-ux.md (task #188, migration 2026-05-29) makes
 # `@openparachute/depcheck` the single owner of dependency install strings +
@@ -239,4 +253,5 @@ echo "  - CHANGELOGs + DEPRECATED.md are excluded line-level (they're historical
 echo "  - parachute-notes/canonical-ports.md/service-spec.ts are excluded from the port-1942 check (they're the canonical source)."
 echo "  - parachute-agent retirement docs + launch-day artifacts are excluded from the agent check."
 echo "  - depcheck's own registry + vault git-preflight.ts + hub cloudflaredInstallHint are excluded from the install-string check (canonical sources)."
+echo "  - /admin/vaults hits in hub code are EXPECTED until the hub-module-boundary Phase B5 SPA slim lands — that sweep tracks the propagation."
 echo "  - Add new grep blocks above when you hit a new class of stale ref."

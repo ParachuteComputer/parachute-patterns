@@ -13,7 +13,7 @@
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                │  OAuth code-flow (RFC 6749 + PKCE)
-                               │  or paste `pvt_*` PAT
+                               │  or paste a hub-minted JWT
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  hub (the OAuth issuer for the whole ecosystem)              │
@@ -29,7 +29,7 @@
 │  resource server (vault / agent / scribe — today only vault) │
 │  • Validates JWT vs hub JWKS, checks `aud` + `iss`           │
 │  • Per-token attributes: scoped_tags allowlist               │
-│  • Falls back to `pvt_*` (PAT) for direct-vault clients      │
+│  • Pure resource server — no module mints (pvt_* retired)    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,21 +63,22 @@ hub-side implementation pointers.
 
 ### Mint a token a user pastes into a script or CLI
 
-Read [`token-auth.md`](./token-auth.md). The `pvt_*` PAT path —
-prefix, sha256-only storage, scoping, one-time reveal. This is the
-**user-facing** counterpart to OAuth bearers; same scope vocabulary,
-different lifetime + storage model. Live alongside hub-issued JWTs;
-both validate at the same vault entrypoint.
+Hub-minted JWTs are the **only live issuance**: `parachute auth
+mint-token --scope vault:<name>:<verb>` (optionally `--ephemeral`), or
+the admin SPA tokens page. Scoping incl. tag-allowlists:
+[`tag-scoped-tokens.md`](./tag-scoped-tokens.md). The historical
+module-minted `pvt_*` PAT path is retired — see the supersession
+banner on [`token-auth.md`](./token-auth.md).
 
 ### Narrow a token to a specific slice of a vault
 
 Read [`tag-scoped-tokens.md`](./tag-scoped-tokens.md). Tokens can
 declare a `scoped_tags` allowlist at mint time. The OAuth scope
-claim (`vault:<name>:<verb>`) stays clean; tag scoping is a
-**per-token vault-internal attribute**, not a scope-string
-extension. Hierarchy expansion via `tags.parent_names`,
-string-form fallback for orphan sub-tags, fail-closed delete-tag
-guards.
+claim (`vault:<name>:<verb>`) stays clean; the allowlist rides the
+hub-issued JWT in a dedicated **`permissions.scoped_tags` claim**
+(post-C0, 2026-05-28), not a scope-string extension. Hierarchy
+expansion via `tags.parent_names`, string-form fallback for orphan
+sub-tags, fail-closed delete-tag guards.
 
 ### Wire one service to call another
 
@@ -110,28 +111,25 @@ sole AS; vault/agent/scribe as RS) plus migration tracker
 Research-tier — pattern docs are for resolved patterns; this is
 the longer arc still being worked through.
 
-## The two token paths
+## The two token paths (one live, one historical)
 
-Two paths reach the same resource server, with the same scope
-vocabulary:
+Two paths used to reach the same resource server with the same scope
+vocabulary; since the `pvt_*` retirement (vault#412, the 2026-05-28
+capability-attenuation arc) only the OAuth path issues:
 
-| Path | Issuer | Token shape | Storage | Audience | When to use |
+| Path | Issuer | Token shape | Storage | Audience | Status |
 | --- | --- | --- | --- | --- | --- |
-| **OAuth bearer** | hub | JWT signed by hub JWKS | not stored; validated stateless | bound (`aud=vault.<name>` etc.) | agent-to-service, third-party SPA, programmatic API consumer |
-| **`pvt_*` PAT** | vault (or other RS) | random opaque token, `pvt_` prefix | sha256 hash in RS DB | implicit (per-row) | human pastes into CLI/script; standalone-vault deployments with no hub |
+| **OAuth bearer** | hub | JWT signed by hub JWKS | not stored; validated stateless | bound (`aud=vault.<name>` etc.) | **the only live issuance** — agents, third-party SPAs, programmatic consumers, *and* paste-into-script credentials (`parachute auth mint-token`, optionally `--ephemeral`) |
+| **`pvt_*` PAT** | vault (or other RS) | random opaque token, `pvt_` prefix | sha256 hash in RS DB | implicit (per-row) | **retired** — see the supersession banner on [`token-auth.md`](./token-auth.md) |
 
-The PAT path is **legacy and direct**: hub doesn't see it, no JWT
-involved, vault validates against its own `tokens` table. The OAuth
-path is **the canonical future**: hub validates the consent dance,
-mints the JWT, vault validates the JWT signature + claims. Both share
-the scope string and the same scope-inheritance rules; they diverge on
-storage, lifetime, and revocation.
-
-The migration arc is *not* "kill PATs." PATs solve a real ergonomic
-problem (pasted secrets in scripts, standalone-vault no-hub
-deployments). The arc is "make sure the PAT path doesn't accumulate
-its own DCR-substitute layer cake" — keep the OAuth path as the rich
-one, keep PATs as the deliberate-flat-secret escape hatch.
+The PAT path was legacy and direct: hub never saw it, vault validated
+against its own `tokens` table. The ergonomic problems PATs solved
+(pasted secrets in scripts, short-lived automation credentials) are
+now served by hub-minted JWTs — scoped, optionally ephemeral, and
+revocable through the hub's token registry — so the flat-secret
+escape hatch retired instead of accumulating its own layer cake. No
+module mints; issuance is the hub's
+([`hub-module-boundary.md`](./hub-module-boundary.md)).
 
 ## How the cluster composes
 
@@ -145,8 +143,8 @@ files because the underlying concepts compose:
   per-token attribute (`tag-scoped-tokens` shape), and gets enforced
   at request time on the RS.
 - A new client either goes through DCR (`oauth-dcr-approval`) and
-  consents (hub-side) or asks the operator to paste a PAT
-  (`token-auth`).
+  consents (hub-side) or asks the operator to paste a hub-minted JWT
+  (`parachute auth mint-token`; the retired PAT path is `token-auth`).
 - A new inter-service edge either inherits the validator seam
   (`service-to-service-auth`) on a shared-secret basis or upgrades
   to hub-issued JWTs (Phase B2 cutover).
@@ -159,7 +157,8 @@ Rule 3 should name which auth-cluster docs the change touches.
 - [`hub-as-issuer.md`](./hub-as-issuer.md) — the issuer architecture
 - [`oauth-scopes.md`](./oauth-scopes.md) — the scope vocabulary
 - [`oauth-dcr-approval.md`](./oauth-dcr-approval.md) — DCR + consent
-- [`token-auth.md`](./token-auth.md) — `pvt_*` PAT path
+- [`token-auth.md`](./token-auth.md) — `pvt_*` PAT path (historical —
+  superseded; see its banner)
 - [`tag-scoped-tokens.md`](./tag-scoped-tokens.md) — sub-vault scope
 - [`service-to-service-auth.md`](./service-to-service-auth.md) —
   inter-service edges
