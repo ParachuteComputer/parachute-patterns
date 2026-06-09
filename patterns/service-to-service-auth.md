@@ -87,9 +87,11 @@ tomorrow they come from JWT claims.
 
 They use the **same scope vocabulary** but **different validators**
 today. Phase B2 converges them — the same JWKS-backed verifier
-validates both. Until then, don't conflate them: a `pvt_*` user token
-should never be accepted by an inter-service callee, and a service
-secret should never appear on a user-facing surface.
+validates both. Until then, don't conflate them: a user-facing token
+(a hub-minted JWT; historically a `pvt_*` PAT — retired, see
+[`token-auth.md`](./token-auth.md)'s banner) should never be accepted
+by an inter-service callee, and a service secret should never appear
+on a user-facing surface.
 
 ## Rules
 
@@ -154,8 +156,11 @@ secret should never appear on a user-facing surface.
 - **User OAuth scopes and issuer** — see
   [`oauth-scopes.md`](./oauth-scopes.md) and
   [`hub-as-issuer.md`](./hub-as-issuer.md).
-- **`pvt_` user tokens** — see [`token-auth.md`](./token-auth.md).
-  Different trust axis; do not interchange with service secrets.
+- **User tokens** — hub-minted JWTs (scoping:
+  [`tag-scoped-tokens.md`](./tag-scoped-tokens.md)); the retired
+  `pvt_*` PAT path is [`token-auth.md`](./token-auth.md) (superseded —
+  see its banner). Different trust axis; do not interchange with
+  service secrets.
 - **Service-to-service over MCP** — MCP transport carries its own
-  bearer (typically a `pvt_*` user token, not a service secret).
-  Covered in [`mcp-transport.md`](./mcp-transport.md).
+  bearer (a hub-minted user JWT, not a service secret). Covered in
+  [`mcp-transport.md`](./mcp-transport.md).

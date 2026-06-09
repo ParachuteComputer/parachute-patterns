@@ -13,7 +13,7 @@ A committed-core module SHOULD expose:
 | Surface | Path convention | Purpose |
 |---|---|---|
 | **HTTP API** | `/<short>/<rest>` (or `/<short>/<name>/<rest>` for multi-tenant modules like vault) | REST surface for direct programmatic access. |
-| **Admin UI** | `/<short>/admin` (relative `managementUrl` in `module.json`; or admin SPA route inside hub) | Operator-facing web UI for configuring + managing the module. |
+| **Admin UI** | `/<short>/admin` (relative `managementUrl: "admin"` in `module.json`) — **served by the module itself**. An admin SPA route inside the hub is *not* a valid shape (the hub#624 failure mode; see [`hub-module-boundary.md`](./hub-module-boundary.md)). | Operator-facing web UI for configuring + managing the module. |
 | **MCP server** | `/<short>/mcp` | LLM/agent integration via Model Context Protocol. |
 | **Health endpoint** | `/<short>/health` (or whatever `health` in `module.json` declares) | Hub-supervised liveness probe. |
 | **Self-registration** | writes own row to `~/.parachute/services.json` at boot | Per [`module-self-registration.md`](./module-self-registration.md). |
@@ -143,6 +143,10 @@ lighthouse — modules know which way they're heading.
 
 ## Related patterns
 
+- [`hub-module-boundary.md`](./hub-module-boundary.md) — the ownership
+  charter these surfaces live inside: the hub owns the substrate
+  (identity, issuance, transport, catalog, supervision); the module owns
+  its domain, including every one of these surfaces.
 - [`module-protocol.md`](./module-protocol.md) — the runtime contracts
   every module implements (`/.parachute/info`, `/.parachute/icon.svg`,
   `/.parachute/config*`). Module-surfaces is the broader framing

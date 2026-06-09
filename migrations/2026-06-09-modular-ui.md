@@ -72,6 +72,12 @@ across hub + every module + the pattern docs. **All items start unchecked.**
 - [ ] hub: hub-admin nav / shell — shrink the hub admin to genuinely hub-level
   things (users, OAuth, tokens, expose, vault provisioning, discovery,
   connections); module-specific config moves out of the hub SPA (P3 — hub)
+  > **Superseded in part** by
+  > [`2026-06-09-hub-module-boundary.md`](./2026-06-09-hub-module-boundary.md)
+  > (same day): "vault provisioning" stays hub-level only as the
+  > *transaction* (`POST /vaults` / `DELETE /vaults/<name>`); the
+  > provisioning *UX* moves to vault's own surface at `/vault/admin/`
+  > (that migration's Phase B). The rest of this item stands.
 - [ ] hub: **delete the deprecated generic `ModuleConfig` form** — module-owned
   config UI (framed / linked via `configUiUrl`) is the only pattern (P3 — hub)
 - [ ] hub: uniform module-config shell — links to / frames each module's

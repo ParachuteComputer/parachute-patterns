@@ -51,7 +51,7 @@ one file the author controls.
       "claude.ai": { "appendPath": "/mcp" }
     }
   },
-  "managementUrl": "/admin",
+  "managementUrl": "admin",
   "scopes": { "defines": ["my-service:read", "my-service:write"] },
   "dependencies": {
     "vault": { "optional": true, "scopes": ["vault:read"] }
@@ -252,13 +252,12 @@ via the module's well-known doc) to shape its directory page. Optional;
 absent means "the hub renders nothing for this concern" — existing
 manifests stay valid unchanged.
 
-For the discovery-side peer field `uiUrl` — a path on **hub's** origin
-declaring where a module's user-facing UI lives, rendered as a tile on
-hub's discovery page — see
-[`module-ui-declaration.md`](./module-ui-declaration.md). Note the
-resolution-base difference: `managementUrl`'s relative form resolves
-against the module's own origin; `uiUrl`'s relative form resolves
-against hub's origin.
+For the discovery-side peer field `uiUrl` — declaring where a module's
+user-facing UI lives, rendered as a tile on hub's discovery page — see
+[`module-ui-declaration.md`](./module-ui-declaration.md). Since the
+2026-06-09 B4 unification, `uiUrl` / `managementUrl` / `configUiUrl`
+all share **one resolution rule set**, decided by the form of the
+string (see below) — there is no longer a per-field resolution base.
 
 ### `managementUrl: string`
 
@@ -271,15 +270,32 @@ well-known doc and renders a "Manage <displayName>" link on its
 directory page. Added 2026-05-02 alongside the hub vault-management SPA
 work (parachute-hub#158, parachute-vault#216).
 
-**Resolution.**
+**Resolution** — B4 canonical semantics (2026-06-09, the hub–module
+boundary shift; shared with `uiUrl` and `configUiUrl` — see
+[`module-ui-declaration.md`](./module-ui-declaration.md#shape)):
 
-- **Relative path** (e.g., `"/admin"`): hub resolves against the module's
-  well-known origin — `<module-url><managementUrl>`. For first-party
-  modules under the hub origin this means `<hub-origin>/<short><managementUrl>`
-  (e.g., `https://parachute.tailnet/vault/admin`).
 - **Full absolute URL** (e.g., `"https://admin.example.com"`): hub uses
   verbatim. Escape hatch for modules whose admin UI is hosted somewhere
-  other than the module's own origin.
+  other than the hub origin.
+- **Origin-absolute path** (leading `/`, e.g., `"/vault/admin/"`): hub
+  uses verbatim against the canonical origin — never mount-joined. This
+  is how a multi-instance module names a daemon-level surface that
+  exists once, not per instance.
+- **Relative path** (no leading `/`, e.g., `"admin/"`): hub joins it to
+  the module's mount — `<module-url>/admin/`. For multi-instance
+  modules (vault) the join happens **per instance**:
+  `/vault/<name>/admin/`, one resolved URL per instance. The hub's
+  `resolveManagementUrl` family treats its inputs as
+  per-instance-relative by contract.
+
+The pre-B4 doc said a leading-`/` path like `"/admin"` resolved against
+the module's well-known origin — that mount-joining of a leading-`/`
+string is retired. **Compat shim (one release):** the literal legacy
+`"/admin/"` on a *vault* entry still mount-joins, with a deprecation
+warning, until vault's new manifest (`managementUrl: "admin/"`) reaches
+`@latest`. See
+[`migrations/2026-06-09-hub-module-boundary.md`](../migrations/2026-06-09-hub-module-boundary.md)
+(B4).
 
 **Auth seam.** The module's UI handles its own auth — typically a
 hub-issued JWT scoped narrowly to that module (e.g., a vault-admin scope
@@ -298,7 +314,8 @@ emitting the canonical trailing-slash form directly from
 `managementUrl`, the redirect never fires and the token survives.
 Real-world example: vault#252 added a 301 from `/vault/<name>/admin`
 → `/vault/<name>/admin/`; vault#255 fixed token loss by changing
-`managementUrl: "/admin"` → `"/admin/"`. Modules with non-SPA
+`managementUrl: "/admin"` → `"/admin/"` (pre-B4 legacy forms — the
+current per-instance form is `"admin/"`). Modules with non-SPA
 admin UIs, or SPAs that don't use fragment-tokens, don't need this.
 
 **Backwards-compatible.** Absent field = no link rendered. Modules that
@@ -358,8 +375,11 @@ form of the "modules own their config UIs" principle.
 | `managementUrl` | Hub admin pages (e.g. vault list) | An admin **deep-link** — "Manage `<name>`" per instance. |
 | `configUiUrl` | Hub config shell | The module's **own config surface** the hub frames / links. |
 
-Resolution follows the same rules as `managementUrl` (relative resolves
-against the module's own well-known origin; absolute is verbatim). See
+Resolution follows the shared B4 rules (see
+[`managementUrl`](#managementurl-string) above: `http(s)://` verbatim ·
+leading-`/` origin-absolute verbatim · no-leading-slash joined to the
+module's mount). Vault uses the origin-absolute form here —
+`configUiUrl: "/vault/admin/"`, the daemon-level multi-vault home. See
 [`module-ui-declaration.md`](./module-ui-declaration.md) for the full
 three-way comparison.
 

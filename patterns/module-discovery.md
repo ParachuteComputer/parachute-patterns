@@ -92,15 +92,17 @@ The full `module.json` field catalog — `name`, `manifestName`,
 
 Read [`module-ui-declaration.md`](./module-ui-declaration.md).
 Declare `uiUrl` in `module.json` and hub renders one tile per
-service that declares it. Path form resolves against hub's origin
-(distinct from `managementUrl`'s relative form, which resolves
-against the module's own well-known origin). Absent = no tile.
+service that declares it. URL strings resolve by form (B4,
+2026-06-09): `http(s)://` verbatim · leading-`/` origin-absolute
+verbatim · no-leading-slash joined to the module's mount (per
+instance for multi-instance modules). Absent = no tile.
 
 ### Expose MCP tools from your module
 
 Read [`mcp-transport.md`](./mcp-transport.md). Streamable HTTP at
-`<base>/mcp` + `Authorization: Bearer <token>`. Both OAuth bearers
-and `pvt_*` PATs validate the same way. Discovery via RFC 8414
+`<base>/mcp` + `Authorization: Bearer <token>` (hub-issued JWTs —
+the historical `pvt_*` PAT alternate is retired; see
+[`token-auth.md`](./token-auth.md)'s banner). Discovery via RFC 8414
 metadata — links into the auth cluster
 ([`well-known-discovery-rfc.md`](./well-known-discovery-rfc.md),
 [`hub-as-issuer.md`](./hub-as-issuer.md)).
@@ -152,17 +154,25 @@ The canonical end-to-end (target shape):
       "claude.ai": { "appendPath": "/mcp" }
     }
   },
-  "managementUrl": "/admin/",
+  "uiUrl": "admin/",
+  "managementUrl": "admin/",
+  "configUiUrl": "/vault/admin/",
   "scopes": { "defines": ["vault:<name>:read", "vault:<name>:write", "vault:<name>:admin"] }
 }
 ```
 
 The field catalog is in
 [`module-json-extensibility.md`](./module-json-extensibility.md);
-`managementUrl` is the relative-resolves-against-module shape per
-the same doc (trailing slash deliberate per its fragment-token-SPA
-section); `init` carries a safety constraint that `command[0]` must
-equal a bin from the installed npm package.
+`uiUrl` / `managementUrl` use the B4 relative form (no leading slash —
+joined onto each instance's mount: `/vault/<name>/admin/`; trailing
+slash deliberate per the fragment-token-SPA section) while
+`configUiUrl` is origin-absolute (the daemon-level multi-vault home).
+(This is the target shape — vault's shipped manifest carries the legacy
+`"/admin/"` form until the vault wave of
+[`2026-06-09-hub-module-boundary.md`](../migrations/2026-06-09-hub-module-boundary.md)
+lands; the hub's one-release compat shim bridges the gap.)
+`init` carries a safety constraint that `command[0]` must equal a bin
+from the installed npm package.
 
 **2. `parachute install @openparachute/vault`** populates
 `~/.parachute/services.json` with the entry, runs `init.command`,
@@ -170,12 +180,13 @@ and starts the service.
 [`module-protocol.md`](./module-protocol.md) §1-2.
 
 **3. Hub serves the well-known aggregate** at
-`/.well-known/parachute.json`. Each vault entry includes its
-`uiUrl` (intentionally omitted in vault's case — vault content is
-browsed via Notes, see
-[`module-ui-declaration.md`](./module-ui-declaration.md)'s adoption
-note) and `managementUrl` so hub's admin page renders a "Manage
-Vault `<name>`" link.
+`/.well-known/parachute.json`. Each vault entry carries its resolved
+per-instance `uiUrl` / `managementUrl` (`/vault/<name>/admin/` — one
+row per instance per the B4 join; the earlier "vault omits `uiUrl`"
+stance was reversed, see
+[`module-ui-declaration.md`](./module-ui-declaration.md) §Use vs
+admin), so hub's surfaces render a tile + "Manage Vault `<name>`"
+link per instance.
 [`module-protocol.md`](./module-protocol.md) §2.
 
 **4. An MCP client connects** to `<vault-url>/mcp` over Streamable

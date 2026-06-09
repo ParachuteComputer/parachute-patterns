@@ -1,5 +1,17 @@
 # Token auth — `pvt_` tokens
 
+> **SUPERSEDED (2026-05-28; live as of vault 0.6.0 path).** The
+> module-minted `pvt_*` PAT model this doc describes was retired —
+> vault#412 dropped `pvt_*` issuance entirely. **Hub-minted JWTs via
+> `/api/auth/mint-token` are the only token issuance**; no module mints
+> its own credentials (the issuance boundary is the hub's — see
+> [`hub-module-boundary.md`](./hub-module-boundary.md)). For the current
+> model see [`tag-scoped-tokens.md`](./tag-scoped-tokens.md) and the
+> propagation checklist at
+> [`migrations/2026-05-28-operator-mintable-vault-admin.md`](../migrations/2026-05-28-operator-mintable-vault-admin.md).
+> This doc is retained for history; do not adopt the pattern below in
+> new modules.
+
 ## Convention
 
 Parachute-issued **personal access tokens** use a `pvt_` prefix

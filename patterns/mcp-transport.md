@@ -3,10 +3,10 @@
 ## Convention
 
 Parachute-hosted MCP servers speak **Streamable HTTP** at `<base>/mcp`
-and authenticate via OAuth bearer tokens (or `pvt_*` PATs) over
-`Authorization: Bearer <token>`. The OAuth bearer path is the
-agent-and-service default; `pvt_*` is the user-facing PAT — see
-[`token-auth.md`](./token-auth.md).
+and authenticate via hub-issued OAuth bearer JWTs over
+`Authorization: Bearer <token>`. (The historical `pvt_*` PAT
+alternate is retired — see [`token-auth.md`](./token-auth.md)'s
+supersession banner.)
 
 - Canonical example: `parachute-vault` serves its MCP at `<vault-url>/mcp`.
 - Clients: agents in `@openparachute/agent` connect via

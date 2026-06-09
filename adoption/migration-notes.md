@@ -5,6 +5,67 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-06-09 — The hub–module boundary: thin hub, module-owned instance lifecycle
+
+**Change:** new ownership charter
+[`hub-module-boundary.md`](../patterns/hub-module-boundary.md) — the hub
+owns the substrate (identity, issuance, identity transactions, transport,
+catalog, supervision, bootstrap); modules own their domain, including
+their **instance lifecycle** and all admin/config UX; the seam is *module
+surfaces driving hub identity APIs*. Two normative consequences ripple
+through the existing docs (amended in the same PR):
+
+1. **Provisioning split** — the hub owns the provisioning *transaction*
+   (`POST /vaults` / `DELETE /vaults/<name>`, `parachute:host:admin`);
+   the module's own surface owns the provisioning *UX* (vault's
+   daemon-level home at `/vault/admin/`). The hub keeps the setup wizard
+   + a zero-instances bootstrap affordance (the bootstrap exception).
+   "Admin SPA route inside hub" is no longer a valid module admin-UI
+   shape (the hub#624 failure mode).
+2. **B4 URL-resolution unification** — `uiUrl` / `managementUrl` /
+   `configUiUrl` share one rule set decided by the string's form:
+   `http(s)://` verbatim · leading-`/` origin-absolute verbatim ·
+   no-leading-slash joined to the module's mount (per instance for
+   multi-instance modules). Vault's manifest becomes
+   `uiUrl`/`managementUrl: "admin/"` + `configUiUrl: "/vault/admin/"`;
+   the legacy literal `"/admin/"` on a vault entry mount-joins under a
+   one-release compat shim with a deprecation warning.
+
+Also folded: lifecycle symmetry (every provision flow ships its
+identity-cascading deprovision flow; long-lived mints must be
+registered), and supersession markers on the retired `pvt_*`
+module-as-issuer model (`token-auth.md` banner; `oauth-scopes.md`
+scrubbed; `agent:*` scopes moved to a retired-scopes note).
+
+Docs amended in this PR: `oauth-scopes.md`, `module-ui-declaration.md`,
+`module-json-extensibility.md`, `module-surfaces.md`, `design-system.md`,
+`token-auth.md`, `design/2026-06-09-modular-ui-architecture.md`,
+`migrations/2026-06-09-modular-ui.md`.
+
+**Affected:**
+
+- `parachute-hub` — Phase B hub waves 1+2: `DELETE /vaults/<name>` +
+  identity cascade, reserved-name consolidation, B4 resolver unification
+  + compat shim, the `/vault/admin` route, SPA slimming (`NewVault.tsx`
+  retires, feature-detected); Phase C/D hardening + residue.
+- `parachute-vault` — Phase B vault wave: the `/vault/admin/` surface,
+  reserved-name validators, new manifest (`"admin/"` +
+  `configUiUrl: "/vault/admin/"`).
+- `parachute-channel` — delete symmetry (channel's page drives
+  `DELETE /admin/connections/<id>` alongside the daemon mechanics).
+- `parachute-runner` — working config-UI auth via the generic
+  module-token mint (scribe pattern); stale `pvt_*` schema text fix.
+- `parachute-surface` — session→mint sign-in replacing the pasted-bearer
+  TokenSetup.
+- `parachute.computer` — supersession banners on the 2026-04-20
+  module-architecture + hub-as-portal design docs (Phase D4).
+
+**Status:** Phase A (charter + doc amendments) in this PR. Build phases
+queued — tracked in
+[`migrations/2026-06-09-hub-module-boundary.md`](../migrations/2026-06-09-hub-module-boundary.md).
+
+---
+
 ## 2026-06-02 — hub-as-supervisor unification: retire the manager-less detached-daemon model
 
 **Change:** the hub no longer runs as a manager-less detached daemon on
