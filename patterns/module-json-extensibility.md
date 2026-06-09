@@ -73,6 +73,12 @@ one file the author controls.
 | `init` | Optional post-install one-shot the CLI runs after `parachute install <name>`. Object with a `command` argv. Safety: first arg must equal a bin defined by the installed npm package. See [Install-time behaviors](#install-time-behaviors). |
 | `urlForEntry` | Optional declarative URL adjustments keyed by consumer. Today's only operations: `appendPath` (append a suffix) or `replaceWith` (full override). See [Install-time behaviors](#install-time-behaviors). |
 | `managementUrl` | Optional path-or-full-URL where the module's admin UI lives. Hub renders a "Manage" link when present. See [Hub UI fields](#hub-ui-fields). |
+| `configUiUrl` | Optional path-or-full-URL where the **module's own config surface** lives. The hub frames / links it from a uniform config shell — it never hard-codes a per-module config view. See [Modular-UI fields](#modular-ui-fields). |
+| `focus` | Optional discovery tier — `"core"` or `"experimental"`. De-emphasizes (never hides) exploration modules on the Modules screen. Unlisted defaults to `"experimental"`. See [Modular-UI fields](#modular-ui-fields). |
+| `configSchema` | Optional JSON Schema for declarative config (promotes the existing-but-unused `/.parachute/config/schema` field into the manifest). See [Modular-UI fields](#modular-ui-fields). |
+| `adminCapabilities` | Optional `string[]` metadata advertising admin facets (e.g. `["config","credentials","logs"]`). See [Modular-UI fields](#modular-ui-fields). |
+| `events` | Optional array of `{key,title,filterSchema?}` describing the events this module **emits** — the source half of a Connection. See [Modular-UI fields](#modular-ui-fields). |
+| `actions` | Optional array of `{key,title,inputSchema?,provision?}` describing the actions this module **accepts** — the sink half of a Connection. See [Modular-UI fields](#modular-ui-fields). |
 | `scopes.defines` | OAuth scopes the module owns. Namespaced by `name` so collisions don't happen — see [`oauth-scopes.md`](./oauth-scopes.md). |
 | `dependencies` | Other modules this one wants to talk to. Each entry has `optional` and `scopes` fields; CLI uses these to auto-wire on install (env-var injection) — see [`service-to-service-auth.md`](./service-to-service-auth.md). |
 
@@ -307,6 +313,121 @@ under the module's own origin keeps the boundary clean: hub stays a
 thin directory + link-out; each module owns its admin surface
 end-to-end. Decision recorded 2026-05-02 (Aaron's call) after an
 initial pass at hub-side per-vault detail pages was reverted.
+
+## Modular-UI fields
+
+Added 2026-06-09 by the **modular-UI architecture** shift (design doc:
+[`../design/2026-06-09-modular-ui-architecture.md`](../design/2026-06-09-modular-ui-architecture.md);
+migration: [`../migrations/2026-06-09-modular-ui.md`](../migrations/2026-06-09-modular-ui.md)).
+The shift splits three conflated concerns — **discovery** (hub-owned, driven
+by self-registration), **a module's own config UI** (module-owned, hub-framed),
+and **connections** (hub-native, cross-module wiring) — and gives each a
+machine-readable contract here. All six fields are optional and additive;
+existing manifests stay valid unchanged.
+
+### `focus: "core" | "experimental"`
+
+```ts
+focus?: "core" | "experimental";  // default "experimental" for unlisted
+```
+
+Discovery tier. The hub's Modules screen enumerates **every self-registered
+module** (`services.json` ∪ `module.json` ∪ supervisor — no whitelist; see
+[`module-discovery.md`](./module-discovery.md)) and uses `focus` to sort and
+label rather than to gate: `"core"` modules surface first; `"experimental"`
+ones are de-emphasized but **never hidden**. This is what lets a running,
+self-registered module (e.g. channel) be administratively visible without an
+entry in a curated constant. Absent → treated as `"experimental"`.
+
+### `configUiUrl: string`
+
+```ts
+configUiUrl?: string;  // path or full URL — the module's OWN config surface
+```
+
+Where the **module's own** config/admin surface lives. The hub renders a
+uniform config shell that links to / frames this URL; it never grows a
+bespoke per-module config view in its SPA. This is the machine-readable
+form of the "modules own their config UIs" principle.
+
+`configUiUrl` is distinct from `managementUrl` and `uiUrl`:
+
+| Field | Surface | Meaning |
+| --- | --- | --- |
+| `uiUrl` | Hub discovery page | The discovery **tile** — where the module's user-facing UI lives. |
+| `managementUrl` | Hub admin pages (e.g. vault list) | An admin **deep-link** — "Manage `<name>`" per instance. |
+| `configUiUrl` | Hub config shell | The module's **own config surface** the hub frames / links. |
+
+Resolution follows the same rules as `managementUrl` (relative resolves
+against the module's own well-known origin; absolute is verbatim). See
+[`module-ui-declaration.md`](./module-ui-declaration.md) for the full
+three-way comparison.
+
+### `configSchema: { /* JSON Schema */ }`
+
+```ts
+configSchema?: object;  // JSON Schema
+```
+
+Promotes the existing-but-unused `/.parachute/config/schema` runtime endpoint
+(see [`module-protocol.md`](./module-protocol.md) §2) into the install-time
+manifest. Declarative config a consumer can render without round-tripping to
+the running module. Optional; a module with a custom `configUiUrl` surface
+needn't declare it.
+
+### `adminCapabilities: string[]`
+
+```ts
+adminCapabilities?: string[];  // e.g. ["config","credentials","logs"]
+```
+
+Free-form metadata advertising which admin facets a module's config surface
+covers. Hint-only — the hub may use it to label the config shell. No fixed
+vocabulary at v1.
+
+### `events` + `actions` — the Connections contract
+
+```ts
+events?:  Array<{ key: string; title: string; filterSchema?: object }>;
+actions?: Array<{
+  key: string;
+  title: string;
+  inputSchema?: object;
+  provision?: object;   // how the hub wires this action (e.g. register a vault trigger)
+}>;
+```
+
+The declarative surface for **hub-native connections** — wiring "when
+[event] in [module] → do [action] in [module]". A module declares the
+`events` it **emits** (the source half) and the `actions` it **accepts**
+(the sink half). The hub — the only thing with cross-module authority to
+mint tokens and register triggers — owns a general Connections surface that
+reads these declarations and orchestrates provisioning via each action's
+`provision` block. No per-module-pair hard-coding.
+
+A connection's right-hand **sink is always an `action`** (something a module
+*accepts*), never an `event` (something a module *emits*). Keep the two halves
+straight — an event can only ever be a connection's *source*.
+
+First-class declarations the committed-core modules ship:
+
+- **vault** emits `note.created` / `note.updated` / `note.deleted`; accepts `note.create`.
+- **scribe** emits `transcription.complete`; accepts `transcribe`.
+- **channel** emits `message.received` / `message.sent`; accepts `message.deliver`.
+
+"Add a vault-backed channel" becomes the connection
+`vault.note.created (filter: tag #channel-message/inbound) →
+channel.message.deliver` — a general Connection, not channel-specific config.
+The sink is the channel **action** `message.deliver` ("Deliver an inbound
+message (wakes the session)"); its `provision` block tells the hub to register
+a vault runtime trigger (vault#469) that webhooks the channel's inbound
+endpoint with a hub-minted `channel:send` bearer. The channel `message.received`
+/ `message.sent` **events** are the *source* half for *other* connections that
+want to react to channel activity — they are never the inbound sink.
+`filterSchema` shapes the event filter (e.g. "only notes with tag X");
+`inputSchema` shapes the action's arguments; `provision` tells the hub how to
+wire it. Both arrays are optional; a module with no cross-module surface
+declares neither.
 
 ## Why this shape
 
