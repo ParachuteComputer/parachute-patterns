@@ -59,10 +59,11 @@ substrate with the operator's session. Four mechanisms, all live today:
    `GET /admin/vault-admin-token/<name>` (per-instance vault),
    `GET /admin/host-admin-token` (host-admin authority). All
    first-admin-gated, `NON_REQUESTABLE` via public OAuth, same-origin only.
-   Reference: scribe `src/admin-ui.ts` (scribe#73). *Known limitation: the
-   generic mint is currently gated on the install-bootstrap registry, so a
-   genuinely third-party module 404s — tracked in the migration (the fix is
-   re-gating on self-registration + manifest presence).*
+   Reference: scribe `src/admin-ui.ts` (scribe#73). The generic mint gates on
+   self-registration (a services.json row whose installDir carries a readable
+   `.parachute/module.json`), with the install-bootstrap registry as a fallback for
+   first-party modules mid-install — so a genuinely third-party module mints
+   with zero hub code changes (migration C5).
 2. **Identity-transaction endpoints the surface drives with operator
    approval.** The exemplar is channel's link-a-vault: channel's own page
    POSTs the hub's `/admin/connections` (`credentials: "include"`); the hub
@@ -170,9 +171,8 @@ What this means for a multi-instance module author today:
 
 A third-party **single-instance** module author ships a daemon +
 `.parachute/module.json` + self-registration + their own admin surface, and
-receives: proxy, discovery, OAuth scope declaration, and Connections — with
-zero hub code changes. (The generic admin-token mint currently still requires
-bootstrap-registry presence — a tracked gap, not a design intent.)
+receives: proxy, discovery, OAuth scope declaration, the generic admin-token
+mint, and Connections — with zero hub code changes.
 Per-instance identity is the documented exception above. Any *other*
 capability that fails this test is either substrate (move it behind a generic
 hub API) or a holdover (move it into the module).
@@ -193,7 +193,8 @@ connection mints, legacy `/admin/channels` endpoint, the Connections
 config writes, the vault-side vestigial owner-password/TOTP the hub's
 expose-preflight still reads (an *inverse* holdover: identity state living
 module-side), runner's unauthenticatable config UI, surface's pasted-bearer
-sign-in, the bootstrap-registry gate on the generic mint.
+sign-in. (The bootstrap-registry gate on the generic mint was closed by
+migration C5 — the mint now gates on self-registration.)
 
 ## Related
 
