@@ -3,6 +3,16 @@
 **Status:** design → build (2026-06-09). Workspace-wide architecture shift. Aaron-mandated, comprehensive.
 **Repos:** parachute-patterns (protocol), parachute-hub (discovery + shell + connections), parachute-vault, parachute-scribe, parachute-channel, parachute-runner, parachute-surface (per-module config UIs + events/actions).
 
+> **Superseded in part (2026-06-09, same day).** The hub–module boundary
+> charter ([`../patterns/hub-module-boundary.md`](../patterns/hub-module-boundary.md))
+> extends this doc and amends one item: this doc's "genuinely hub-level"
+> list included *vault provisioning* wholesale. The charter splits it —
+> the provisioning **transaction** (`POST /vaults` / `DELETE
+> /vaults/<name>`, host-admin-gated identity transaction) is hub-level;
+> the provisioning **UX** is module-owned (vault's daemon-level surface
+> at `/vault/admin/`). Everything else here stands. Migration:
+> [`../migrations/2026-06-09-hub-module-boundary.md`](../migrations/2026-06-09-hub-module-boundary.md).
+
 ## The problem
 
 Three different concerns got conflated into "the hub admin", and the result is awkward + inconsistent:
@@ -19,7 +29,7 @@ Three different concerns got conflated into "the hub admin", and the result is a
 | **A module's own config/admin UI** | The **module** | Module serves it + declares `configUiUrl` (+ `configSchema`, `adminCapabilities`) in `module.json`. The hub renders a consistent **shell** that links to / frames the module-owned surface. Never hard-coded in the hub SPA. |
 | **Connections (cross-module wiring)** | Hub | The hub is the only thing with cross-module authority (mint tokens, register triggers). A **general Connections surface** wires "when [event] in [module] → do [action] in [module]" (the sink is always an `action`, never an `event`). Modules declare the `events` they emit + `actions` they accept. "Add a vault-backed channel" is the first connection (`vault.note.created` → `channel.message.deliver`), not channel-specific config. |
 
-The hub admin shrinks to genuinely hub-level things: users, OAuth, tokens, expose, vault provisioning, **module discovery**, and **connections**. Everything module-specific is module-owned and hub-linked.
+The hub admin shrinks to genuinely hub-level things: users, OAuth, tokens, expose, the vault-provisioning *transaction* (`POST /vaults` / `DELETE /vaults/<name>` — the provisioning *UX* is vault's own surface; see [`../patterns/hub-module-boundary.md`](../patterns/hub-module-boundary.md)), **module discovery**, and **connections**. Everything module-specific is module-owned and hub-linked.
 
 ## The protocol extension (`module.json`)
 

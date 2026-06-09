@@ -15,8 +15,8 @@ Parachute OAuth tokens carry **whitespace-separated scope strings**
   verb like `transcribe`, `send`).
 - Middle segments (zero or more) — a resource hierarchy that narrows the
   scope. Today the only narrowing segment in use is `vault:<name>:<verb>`
-  (per-vault), which is **parsed but treated as a synonym** for
-  `vault:<verb>` in Phase 2.
+  (per-vault), which is **the enforced shape** for hub-issued JWTs —
+  see Parser rules below.
 
 ## Launch scopes (Phase 0+1)
 
@@ -27,27 +27,31 @@ Parachute OAuth tokens carry **whitespace-separated scope strings**
 | `vault:<name>:admin` | Write + read + `/.parachute/config*` |
 | `scribe:transcribe` | POST audio to scribe's transcription endpoint |
 | `scribe:admin` | Manage scribe config |
-| `agent:read` | Read agent groups + vault attachments via parachute-agent API/MCP |
-| `agent:write` | Mutate agent groups, secrets, channel wires, sessions |
-| `agent:admin` | Full parachute-agent admin (write + create/delete groups) |
 | `hub:admin` | Manage hub services catalog + OAuth config (Reserved; not yet enforced) |
-| `parachute:host:admin` | Provision new vaults via hub `POST /vaults` and other host-level admin (operator-only-mintable; not requestable from third-party clients) |
+| `parachute:host:admin` | Drive the hub's vault instance-lifecycle *transactions* (`POST /vaults` / `DELETE /vaults/<name>`) and other host-level admin (operator-only-mintable; not requestable from third-party clients). The provisioning *UX* lives in vault's own surface — see [`hub-module-boundary.md`](./hub-module-boundary.md). |
 | `channel:send` | Post messages via channel |
 
 Third-party modules declare their own namespace (`my-service:read`, etc.)
 and the hub renders consent for those scopes the same way.
 
+**Retired scopes.** `agent:read` / `agent:write` / `agent:admin` were the
+launch scopes for parachute-agent, retired with the module 2026-05-20 (see
+[`trust-gradient-isolation.md`](./trust-gradient-isolation.md)). No
+`agent:*` bearer was ever in the wild; the namespace is free to reclaim if
+a future module wants it.
+
 ## Inheritance
 
 ```
-admin ⊇ write ⊇ read       (for vault and agent)
+admin ⊇ write ⊇ read       (for vault; the retired agent namespace followed the same tree)
 ```
 
 - `vault:<name>:admin` satisfies any check for `vault:<name>:write` or
   `vault:<name>:read` on the same vault. Inheritance is per-resource —
   `vault:work:admin` does **not** satisfy a `vault:personal:read` check.
-- `agent:admin` satisfies `agent:write` and `agent:read` (single-namespace,
-  no per-resource binding — parachute-agent is one-installation-one-resource).
+- `agent:admin` satisfied `agent:write` and `agent:read` (single-namespace,
+  no per-resource binding) — historical; the `agent:*` namespace
+  retired with the agent module 2026-05-20.
 - **Non-inheritance scopes exact-match only.** `scribe:admin` does **not**
   currently imply `scribe:transcribe` — each non-inheritance-tree scope
   stands alone. This is deliberate: we add inheritance per-service
@@ -80,9 +84,13 @@ Canonical implementations:
   consent surface a friend sees connecting a single vault. A client that
   legitimately wants a `scribe:` token runs a separate flow naming the scribe
   resource. (hub#487; see `parachute-hub/src/resource-binding.ts`.)
-- **`pvt_*` tokens are unaffected.** They predate the resource-bound
-  shape; they're scoped at issue-time inside vault's own DB and the JWT
-  validation layer is bypassed for them.
+- **`pvt_*` tokens — retired (superseded).** This bullet used to say
+  `pvt_*` tokens were unaffected (issue-time-scoped in vault's own DB,
+  bypassing JWT validation). The module-minted `pvt_*` path was retired
+  entirely (vault#412; the vault 0.6.0 path) — **hub-minted JWTs are the
+  only token issuance**. See the supersession banner on
+  [`token-auth.md`](./token-auth.md) and
+  [`tag-scoped-tokens.md`](./tag-scoped-tokens.md) for the current model.
 - **Empty resource segments are preserved verbatim** (`vault::read` stays
   `vault::read`, so it can't satisfy any vault check — a one-line defence
   against a malformed DB row).
@@ -97,11 +105,18 @@ them to any third-party OAuth client. They can only be minted on the
 operator-token path (the locally-stored `~/.parachute/operator.token`
 that ships with hub install).
 
-- `parachute:host:admin` — provisioning new vaults via hub `POST /vaults`.
-  Cross-vault data sovereignty; high blast radius. The asymmetry vs
-  `hub:admin` (which IS requestable) is deliberate: `hub:admin` manages
-  service registration, `parachute:host:admin` creates new long-lived
-  data resources on the host filesystem.
+- `parachute:host:admin` — the vault instance-lifecycle *transactions* on
+  the hub: `POST /vaults` / `DELETE /vaults/<name>`. Cross-vault data
+  sovereignty; high blast radius. The asymmetry vs `hub:admin` (which IS
+  requestable) is deliberate: `hub:admin` manages service registration,
+  `parachute:host:admin` creates and destroys long-lived data resources
+  on the host filesystem. Ownership split per
+  [`hub-module-boundary.md`](./hub-module-boundary.md): the hub owns the
+  provisioning *transaction* (an identity transaction — token mints,
+  grants, lifecycle cascades); the module's own surface owns the
+  provisioning *UX* (vault's daemon-level `/vault/admin/`, which drives
+  these endpoints with a host-admin Bearer minted from the operator's
+  session).
 
 Implementation: hub maintains a `NON_REQUESTABLE_SCOPES` set checked at
 `/oauth/authorize` request time; `invalid_scope` per RFC 6749 if a third
@@ -171,12 +186,11 @@ for one release cycle so legacy clients don't hard-break on discovery.
 - **`vault:admin` (or any `:admin`) gates `/.parachute/config*`** on that
   module. This is the cross-cutting rule every module should honour.
 
-## Future: per-resource narrowing (Phase 2+)
+## Future: deeper per-resource narrowing
 
-`vault:<name>:<verb>` is parsed today but collapsed to `vault:<verb>`.
-The real shape, once enforced:
+`vault:<name>:<verb>` (per-vault) is **enforced today** — see Parser
+rules. The narrowing axis can go deeper; not yet designed:
 
-- `vault:work:read` — read the `work` vault only.
 - `vault:work:notes/inbox/:read` — read one path prefix inside one vault
   (notional; not yet designed).
 - `scribe:groq:transcribe` — use only the `groq` provider on scribe.

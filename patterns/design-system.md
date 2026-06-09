@@ -312,7 +312,7 @@ Three domains where the audit found the most drift. Implementers updating copy i
 |---|---|---|
 | `/admin/modules` row actions | `Restart`, `Upgrade`, `Configure`, `Uninstall` | unchanged |
 | `/admin/modules` install button | `Install` | unchanged |
-| `/admin/vaults` create form | `Create vault` | unchanged |
+| Vault create form — moved to vault's own surface at `/vault/admin/` (2026-06-09 boundary shift, [`hub-module-boundary.md`](./hub-module-boundary.md)); the hub keeps the setup-wizard vault step + a zero-instances bootstrap affordance | `Create vault` | unchanged — the verb moves with the surface |
 | `/admin/tokens` mint | `Mint token` | unchanged |
 | `/admin/tokens` row action | `Revoke` | unchanged |
 | `/admin/permissions` row action | `Revoke` (the grant) | unchanged |
@@ -340,7 +340,7 @@ Examples:
 - `/login` → `Sign in · Parachute`
 - `/oauth/authorize` (consent) → `Approve <client> · Parachute`
 - `/oauth/authorize` (pending-client) → `Approve <client>? · Parachute`
-- `/admin/vaults` → `Vaults · Parachute`
+- `/vault/admin/` (vault's multi-vault home; the hub's `/admin/vaults` route retires per [`hub-module-boundary.md`](./hub-module-boundary.md)) → `Vaults · Parachute`
 - `/admin/approve-client/<id>` → `Approve <client> · Parachute`
 - `/` → `Parachute`
 
@@ -810,7 +810,7 @@ Every surface in this ring uses the canonical mark (§2), canonical palette (§3
 | Module | Surfaces in scope |
 |---|---|
 | `parachute-hub` | `/`, `/hub.html`, `/login`, `/logout`, `/account/change-password`, `/oauth/*`, `/admin/setup`, `/admin/*` (the SPA), all generic error pages |
-| `parachute-vault` | `/vault/<name>/admin/*` (the per-vault SPA mounted via hub proxy), the standalone vault admin SPA at `/admin/` (when reachable; Workstream E is retiring the standalone OAuth surface separately — see §10) |
+| `parachute-vault` | `/vault/<name>/admin/*` (the per-vault SPA mounted via hub proxy), `/vault/admin/*` (the daemon-level multi-vault home — create/delete vaults; 2026-06-09 boundary shift, [`hub-module-boundary.md`](./hub-module-boundary.md)), the standalone vault admin SPA at `/admin/` (when reachable; Workstream E is retiring the standalone OAuth surface separately — see §10) |
 | `parachute-surface` | `/surface/admin/*` (the app-admin SPA — currently the largest outlier; Workstream B brings it into conformance) |
 | `parachute-scribe` | `/scribe/admin` (the server-rendered admin) |
 
