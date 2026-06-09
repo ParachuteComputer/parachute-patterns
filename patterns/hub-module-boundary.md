@@ -61,7 +61,7 @@ substrate with the operator's session. Four mechanisms, all live today:
    first-admin-gated, `NON_REQUESTABLE` via public OAuth, same-origin only.
    Reference: scribe `src/admin-ui.ts` (scribe#73). The generic mint gates on
    self-registration (a services.json row whose installDir carries a readable
-   `module.json`), with the install-bootstrap registry as a fallback for
+   `.parachute/module.json`), with the install-bootstrap registry as a fallback for
    first-party modules mid-install — so a genuinely third-party module mints
    with zero hub code changes (migration C5).
 2. **Identity-transaction endpoints the surface drives with operator
