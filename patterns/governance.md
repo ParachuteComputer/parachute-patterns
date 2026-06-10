@@ -85,10 +85,6 @@ release counter, not a significance signal — significance lives in the
 release notes. Don't read "big change" as "minor bump"; the next stable
 after `0.X.Y` is `0.X.(Y+1)` unless Aaron says otherwise.
 
-**v1.0 and after** — switch to standard SemVer with `alpha` / `beta` /
-`rc` prerelease tags as feature stability warrants. This pattern doc
-gets a v1.0 update at that time.
-
 **At v1.0 and after**, switch to standard SemVer with `alpha` / `beta` / `rc`
 prerelease tags as feature stability warrants, and to a "release PR" pattern
 that promotes `0.X.Y-rc.N` → `0.X.Y` final via a small dedicated PR for a
