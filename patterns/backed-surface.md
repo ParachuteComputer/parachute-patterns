@@ -40,8 +40,10 @@ backed one adds routes and a credential; the *instance* model, install flow
 executes its server code inside the surface daemon — the same trust act as
 installing any module (it already runs code on your machine, per the
 [boundary charter](./hub-module-boundary.md)'s trust statement). The
-operator installs deliberately; isolation hardening (e.g. running backends
-in Workers) is a tracked refinement, not a v1 gate.
+operator installs deliberately. Workers were evaluated and REJECTED for
+isolation (no real memory isolation; experimental termination); the tracked
+escalation is a per-surface supervised process under the *hub* supervisor —
+see Open questions.
 
 ## The trust geometry
 
@@ -55,7 +57,8 @@ clients are not hub users and never should be. Prism's three-actor
 vocabulary is the reference:
 
 1. **Signed-in audience user** — the surface's own accounts (invite-only,
-   its own sessions; httpOnly cookies, revocable server-side).
+   its own sessions; httpOnly cookies, revocable server-side). *(v2 —
+   v1 ships only capability + personal links; no password endpoints.)*
 2. **Capability link** — an HMAC-signed bearer of a *grant id*: scoped to a
    resource (note or tag), at a level (`view < comment < suggest < edit`),
    expiring, instantly revocable by deleting the grant (no secret rotation).
@@ -75,7 +78,7 @@ surface daemon's config store (per-surface, like channel's per-channel
 tokens) — never a hand-minted token in an `.env`:
 
 - provisioned as a **credential connection**
-  ([design](../design/2026-06-09-credential-connections.md)): operator-
+  ([design: H4 in the runtime spec](../../parachute-surface/design/2026-06-10-surface-runtime-primitives.md)): operator-
   approved from the surface admin, hub-minted, **registered** in the token
   registry (the registered-mint rule — unregistered long-lived tokens are
   unrevocable by construction), auto-renewing, revoked when the surface is
@@ -119,12 +122,14 @@ Consequence of the hybrid: audience-plane compromise concedes audience
 grants — never a vault credential. A backend outage degrades the audience,
 not the operator.
 
-**Share-grants are vault data.** Grants + capability-link metadata live as
-vault notes (tagged per-surface, indexed metadata) — inspectable, synced,
-agent-visible, reinstall-surviving — with a host-held, SSE-fed enforcement
-cache so per-request authorization never round-trips the vault and
-revocation propagates live. Sessions and caches stay app-side (operational
-state, not knowledge).
+**Share-grants: interface-first, vault-native preferred.** The GrantStore
+is an interface with two specced backings — vault-native (grants as notes,
+tagged per-surface with indexed metadata: inspectable, synced, agent-visible,
+reinstall-surviving, with a host-held SSE-fed enforcement cache) and
+app-side SQLite. The adjudication leans vault-native; the build confirms
+with real ergonomics in hand (Aaron, 2026-06-10: "let the build decide").
+Sessions and caches stay app-side either way (operational state, not
+knowledge).
 
 ## Content contract
 
@@ -185,8 +190,7 @@ a backend and a credential you don't need.
 [`module-protocol.md`](./module-protocol.md) ·
 [`module-surfaces.md`](./module-surfaces.md) ·
 [`surface-bundle-shape.md`](./surface-bundle-shape.md) ·
-[`trust-gradient-isolation.md`](./trust-gradient-isolation.md) ·
-[`../design/2026-06-09-credential-connections.md`](../design/2026-06-09-credential-connections.md)
+[`trust-gradient-isolation.md`](./trust-gradient-isolation.md)
 
 ## Open questions (DRAFT markers)
 
