@@ -5,6 +5,19 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-06-09 — Release versioning: patch (`y`) cadence by default
+
+**Change:** [`governance.md`](../patterns/governance.md) rule 2 clarified —
+pre-1.0 stable releases increment the **patch** number by default
+(`0.X.Y` → `0.X.(Y+1)`); minor (`x`) bumps are Aaron's explicit call, never
+inferred from change magnitude. Settled after the 2026-06-09 stable train
+shipped as judged-by-magnitude minor bumps against Aaron's intent. The
+version is a release counter; significance lives in the release notes.
+**Affected repos:** all publishing repos (hub, vault, scribe, runner,
+surface) — process change, no code. **Status:** effective immediately;
+next stables are hub 0.7.1 / vault 0.6.1 / scribe 0.5.1 / runner 0.2.1 /
+surface 0.3.1 unless Aaron says otherwise.
+
 ## 2026-06-09 — The hub–module boundary: thin hub, module-owned instance lifecycle
 
 **Change:** new ownership charter
