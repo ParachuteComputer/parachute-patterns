@@ -74,9 +74,16 @@ there's intent to release.
 **Doc-only PRs never bump version.** They merge straight to main and
 will be included in whatever the next ship-driven version bump captures.
 
-**v1.0 and after** — switch to standard SemVer with `alpha` / `beta` /
-`rc` prerelease tags as feature stability warrants. This pattern doc
-gets a v1.0 update at that time.
+**The increment is the PATCH (`y`) by default — minor (`x`) bumps are
+Aaron's explicit call, never inferred.** Settled 2026-06-09 after the
+boundary-arc stable train shipped as minor bumps (hub 0.6→0.7, vault
+0.5→0.6, …) on a judged-by-magnitude basis that wasn't Aaron's intent:
+"let's make sure we move back to 0.x.y releases (on y dimension) going
+forward since we're about to be doing a lot more changes. We've got a
+long way to go yet until we're at 1.0." Pre-1.0, the version number is a
+release counter, not a significance signal — significance lives in the
+release notes. Don't read "big change" as "minor bump"; the next stable
+after `0.X.Y` is `0.X.(Y+1)` unless Aaron says otherwise.
 
 **At v1.0 and after**, switch to standard SemVer with `alpha` / `beta` / `rc`
 prerelease tags as feature stability warrants, and to a "release PR" pattern
