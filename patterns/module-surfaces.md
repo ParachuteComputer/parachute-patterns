@@ -125,7 +125,10 @@ Phase B/C/D.
   other backend modules. Apps don't expose API/MCP/admin themselves;
   they consume those from the modules they integrate with. The
   parachute-surface host module exposes the canonical surfaces *on behalf
-  of* the apps it serves.
+  of* the apps it serves. A surface may also ship a **server entry**
+  for audience-facing routes — that is a *backed surface*, still an
+  instance-of-Surface and not a standalone module: see
+  [`backed-surface.md`](./backed-surface.md).
 
 ## Migration path
 
