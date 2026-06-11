@@ -5,6 +5,30 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-06-10 — Audience tiers: `surface` (backed surfaces own admission)
+
+**Change:** [`backed-surface.md`](../patterns/backed-surface.md) transport
+section — per-UI audience is now hub-proxy-enforced with FOUR tiers
+(`public | hub-users | operator | surface`). The new `surface` tier
+(hub#651) passes through at the proxy; the backed surface authenticates
+every request itself (kit deny-by-default). Replaces the stale "public flag
+today unenforced (parachute-surface#88)" note — enforcement shipped in
+hub#648 (H3).
+
+**Affected repos:**
+- `parachute-hub` — DONE (hub#648 gate, hub#651 `surface` tier; hub#650
+  tracks the future `granted-users` per-surface-ACL tier; hub#649 WS cap
+  flagged more-urgent post-#651)
+- `parachute-surface` — meta-schema accepts `audience: "surface"` (rides the
+  R6 docs-editor PR, with a hub-version-skew note); docs-editor flips from
+  `hub-users` → `surface` only after hub#651 deploys
+- `parachute.computer` — design doc §12 lacks an `audience` example for
+  backed surfaces (minor; sweep with the next design-doc pass)
+
+**Status:** in flight — hub#651 awaiting merge; surface side rides R6.
+
+---
+
 ## 2026-06-09 — Release versioning: patch (`y`) cadence by default
 
 **Change:** [`governance.md`](../patterns/governance.md) rule 2 clarified —

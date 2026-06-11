@@ -154,10 +154,18 @@ cheap external-edit signal.
 
 - Public reachability rides the hub proxy + the surface module's exposure
   declarations — a surface never runs its own tunnel. Per-surface audience
-  exposure semantics (the `public` flag, today unenforced —
-  parachute-surface#88) land coherently with this shape.
+  is **hub-proxy-enforced** (H3, hub#648 fixed parachute-surface#88) with
+  four tiers: `public` (pass; chrome strip off), `hub-users` (hub session /
+  scoped Bearer; the default), `operator` (first-admin session only), and
+  `surface` (hub#651 — pass-through; the backed surface owns admission
+  end-to-end via the kit's deny-by-default auth; the tier for
+  capability-link audiences, who are by design not hub users). Exposure
+  layers are orthogonal: the proxy's row-level cloak still applies, so a
+  `surface` mount on a loopback-only row stays unreachable from funnel.
+  Version skew is fail-closed — a `surface`-audience row registered against
+  a pre-#651 hub is dropped by manifest validation (mount 404s).
 - The hub's identity **chrome strip is opted out** for audience-facing
-  routes — public readers are not hub users.
+  routes (`public` and `surface` tiers) — the audience are not hub users.
 - Never infer "local = trusted" from forwarded-header *absence* (one
   misconfigured deployment silently grants owner). Local-trust signals come
   from the substrate (the hub proxy's layer classification), not inference.
