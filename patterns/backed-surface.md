@@ -154,12 +154,13 @@ cheap external-edit signal.
 
 - Public reachability rides the hub proxy + the surface module's exposure
   declarations — a surface never runs its own tunnel. Per-surface audience
-  is **hub-proxy-enforced** (H3, hub#648 fixed parachute-surface#88) with
-  four tiers: `public` (pass; chrome strip off), `hub-users` (hub session /
-  scoped Bearer; the default), `operator` (first-admin session only), and
-  `surface` (hub#651 — pass-through; the backed surface owns admission
-  end-to-end via the kit's deny-by-default auth; the tier for
-  capability-link audiences, who are by design not hub users). Exposure
+  is **hub-proxy-enforced** (hub#648, the audience gate — fixed
+  parachute-surface#88) with four tiers: `public`, `hub-users` (hub
+  session / scoped Bearer; the default), `operator` (first-admin session
+  only), and `surface` (hub#651 — pass-through; the backed surface owns
+  admission end-to-end via `@openparachute/surface-server`'s
+  deny-by-default auth; the tier for capability-link audiences, who are by
+  design not hub users). Exposure
   layers are orthogonal: the proxy's row-level cloak still applies, so a
   `surface` mount on a loopback-only row stays unreachable from funnel.
   Version skew is fail-closed — a `surface`-audience row registered against

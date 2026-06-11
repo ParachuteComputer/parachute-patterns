@@ -11,17 +11,19 @@ entries on top. Each entry: date, change, affected repos, status.
 section — per-UI audience is now hub-proxy-enforced with FOUR tiers
 (`public | hub-users | operator | surface`). The new `surface` tier
 (hub#651) passes through at the proxy; the backed surface authenticates
-every request itself (kit deny-by-default). Replaces the stale "public flag
-today unenforced (parachute-surface#88)" note — enforcement shipped in
-hub#648 (H3).
+every request itself (`@openparachute/surface-server`, deny-by-default).
+Replaces the stale "public flag today unenforced (parachute-surface#88)"
+note — enforcement shipped in hub#648 (the audience-gate work item from the
+surface-runtime design).
 
 **Affected repos:**
 - `parachute-hub` — DONE (hub#648 gate, hub#651 `surface` tier; hub#650
   tracks the future `granted-users` per-surface-ACL tier; hub#649 WS cap
   flagged more-urgent post-#651)
-- `parachute-surface` — meta-schema accepts `audience: "surface"` (rides the
-  R6 docs-editor PR, with a hub-version-skew note); docs-editor flips from
-  `hub-users` → `surface` only after hub#651 deploys
+- `parachute-surface` — meta-schema gains acceptance of
+  `audience: "surface"` (in flight on the R6 docs-editor branch, with a
+  hub-version-skew note); docs-editor flips from `hub-users` → `surface`
+  only after hub#651 deploys
 - `parachute.computer` — design doc §12 lacks an `audience` example for
   backed surfaces (minor; sweep with the next design-doc pass)
 
