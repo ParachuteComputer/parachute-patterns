@@ -1,8 +1,11 @@
 # Backed surfaces
 
-> **[DRAFT]** — shape decided 2026-06-09/10 (Aaron: "Surface can just be made
-> more flexible"); solidifies when the first conforming implementation (the
-> collaborative docs surface) ships. The proving prior art is Benjamin's
+> Shape decided 2026-06-09/10 (Aaron: "Surface can just be made more
+> flexible"); **solidified 2026-06-11** — two conforming implementations
+> ship: [woven-boulder](https://github.com/Unforced-Dev/WovenBoulder)
+> (public, projection-hard) and the collaborative docs editor
+> (`parachute-surface/packages/docs-editor` — invited, reconciliation-hard).
+> Both run the kit's conformance suite. The proving prior art is Benjamin's
 > [Prism](https://github.com/omniharmonic/prism) (Benjamin is on the
 > Parachute team; Prism is the team's reference for the trust geometry).
 
