@@ -27,7 +27,7 @@ surface-runtime design).
 - `parachute.computer` — design doc §12 lacks an `audience` example for
   backed surfaces (minor; sweep with the next design-doc pass)
 
-**Status:** in flight — hub#651 awaiting merge; surface side rides R6.
+**Status:** COMPLETE 2026-06-11 — hub#651 merged; surface-side meta-schema acceptance merged (surface#100); docs-editor flipped to `audience: "surface"` (surface#116); WS bridge + caps shipped (hub#648/#655); pattern DRAFT dropped.
 
 ---
 

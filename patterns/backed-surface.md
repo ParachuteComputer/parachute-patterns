@@ -1,8 +1,11 @@
 # Backed surfaces
 
-> **[DRAFT]** — shape decided 2026-06-09/10 (Aaron: "Surface can just be made
-> more flexible"); solidifies when the first conforming implementation (the
-> collaborative docs surface) ships. The proving prior art is Benjamin's
+> Shape decided 2026-06-09/10 (Aaron: "Surface can just be made more
+> flexible"); **solidified 2026-06-11** — two conforming implementations
+> ship: [woven-boulder](https://github.com/Unforced-Dev/WovenBoulder)
+> (public, projection-hard) and the collaborative docs editor
+> (`parachute-surface/packages/docs-editor` — invited, reconciliation-hard).
+> Both run the kit's conformance suite. The proving prior art is Benjamin's
 > [Prism](https://github.com/omniharmonic/prism) (Benjamin is on the
 > Parachute team; Prism is the team's reference for the trust geometry).
 
@@ -201,23 +204,25 @@ a backend and a credential you don't need.
 [`surface-bundle-shape.md`](./surface-bundle-shape.md) ·
 [`trust-gradient-isolation.md`](./trust-gradient-isolation.md)
 
-## Open questions (DRAFT markers)
+## Settled decisions
 
 Settled by the 2026-06-10 adjudication + the runtime design
 ([`parachute-surface/design/2026-06-10-surface-runtime-primitives.md`](../../parachute-surface/design/2026-06-10-surface-runtime-primitives.md)):
 the server-entry contract (factory → web-standard fetch handler), the
 audience kit as a library (`@openparachute/surface-server`), capability-link
 transport (exchange-on-first-click into a path-scoped httpOnly cookie),
-audience exposure as a hub-enforced three-value `audience` field, and the
+audience exposure as a hub-enforced four-tier `audience` field (hub#651
+added `surface`), and the
 isolation ladder — **Workers are rejected** (no real memory isolation): v1 is
 in-process with non-optional host containment (timeout, error boundary,
 crash-loop quarantine); the tracked escalation is a per-surface supervised
 process under the *hub* supervisor for surfaces declaring an isolation
-requirement. WebSocket upgrades through the hub proxy are confirmed
-unsupported today — a named hub work item (Bun-native upgrade bridge,
-capability-declared, deny-by-default).
+requirement. WebSocket upgrades **shipped** (hub#648: the Bun-native bridge,
+capability-declared, deny-by-default; hub#655 added per-IP + total
+connection caps). Hocuspocus-under-Bun verified live (engine class, manual
+pumping — the docs editor runs it).
 
-Still open: Hocuspocus-under-Bun verification (manual message pumping;
-fallback y-protocols), the wikilink-escaping serializer rule in the markdown
-codec, per-surface `aud` claims for hub JWTs, the read/write tag-scope split
-on credentials, separate-origin hosting for public surfaces.
+Still open: the wikilink-escaping serializer rule in the markdown codec,
+per-surface `aud` claims for hub JWTs, the read/write tag-scope split on
+credentials (the attenuation step both reference surfaces name in their
+SECURITY.md), separate-origin hosting for public surfaces.
