@@ -39,6 +39,19 @@ summary; the repo owner (currently Aaron) clicks merge.
 While the ecosystem is pre-1.0, every published change goes to npm's `rc`
 dist-tag first; promotion to `@latest` is a deliberate, separate step.
 
+**Re-affirmed 2026-06-13 after a drift.** Practice had slipped to
+stable-direct across three trains (hub 0.7.0, hub 0.7.1, vault 0.6.x — no
+rc was ever cut); the bun-linked local box + reviewer gating carried the
+correctness weight, so it *felt* safe. It wasn't complete: it stranded an
+rc-channel operator (`friends.parachute.computer` on `0.6.5-rc.8`) below
+`@latest`, because `parachute upgrade` follows `@rc` and `@rc` never moved.
+The rule stands as written: **every code-touching train publishes `-rc.1`
+(→ `@rc`) first, soaks, then promotes the SAME `0.X.Y` bits to `@latest`.**
+The next code-touching train across any module starts at `-rc.1`. The rc
+channel is a real canary — that's the point of the second ceremony. (See
+`Decisions/2026-06-13-rc-first-release-discipline` in the parachute-parachute
+team vault; Aaron chose re-affirm over amend-to-stable.)
+
 **Tag when it makes sense to ship, not on every PR.** Updated 2026-05-24
 from the earlier "every PR bumps rc.N" rule — that produced 30+ rc
 artifacts per stable cycle (hub#349-#358 was the worst offender, with
@@ -70,6 +83,23 @@ there's intent to release.
 - Push the bare-version tag (`v0.X.Y`). CI publishes with
   `dist-tag=latest` AND (where applicable) tags the container image as
   `:stable`.
+
+**The local bun-linked box is not a substitute for an rc soak.** It runs
+`main` (ahead of any rc) and validates *code* — not the published-artifact
++ migration-at-real-install path the `@rc` canary exercises. This is
+exactly why stable-direct felt safe but wasn't complete (2026-06-13 drift).
+
+**Upgrade channel resolution — the guarantee that prevents stranding.**
+`parachute upgrade` on the **rc channel** resolves to the highest version
+*above installed* across BOTH `@rc` and `@latest` (the downgrade guard is
+unchanged). So a canary mid-chain rides the newer rc; a canary with no
+newer rc but a newer stable converges to stable, and picks up the next rc
+when it ships. The operator stays on the rc *channel* without ever
+stranding below `@latest`. This is the client-side, token-free fix
+(parachute-hub `upgrade.ts`, closes hub#659). A server-side npm
+`dist-tag` advance was considered and deferred — trusted-publishing is
+token-free for `publish` only, and reintroducing an `NPM_TOKEN` just for
+`dist-tag` isn't worth it when the client-side fix is complete.
 
 **Doc-only PRs never bump version.** They merge straight to main and
 will be included in whatever the next ship-driven version bump captures.
