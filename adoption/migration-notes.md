@@ -5,6 +5,40 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-06-13 — rc-first release discipline re-affirmed + upgrade channel-resolution guarantee
+
+**Change:** [`governance.md`](../patterns/governance.md) rule 2 re-affirmed
+after a drift. Practice had slipped to **stable-direct** across three trains
+(hub 0.7.0, hub 0.7.1, vault 0.6.x — no rc was ever cut); the bun-linked
+local box + reviewer gating made it feel safe, but it stranded an rc-channel
+operator (`friends.parachute.computer` on `0.6.5-rc.8`) below `@latest`
+because `parachute upgrade` follows `@rc` and `@rc` never moved. The rule
+stands: every code-touching train publishes `-rc.1` (→ `@rc`) first, soaks,
+then promotes the SAME `0.X.Y` bits to `@latest`; the next code-touching
+train across any module starts at `rc.1`. Also documented: the local
+bun-linked box is **not** a substitute for an rc soak (it validates code,
+not the published-artifact + migration-at-real-install path), and the
+**upgrade channel-resolution guarantee** — `parachute upgrade` on the rc
+channel resolves to the highest version above installed across BOTH `@rc`
+and `@latest` (client-side, token-free; a server-side npm `dist-tag` advance
+was considered and deferred). Decision:
+`Decisions/2026-06-13-rc-first-release-discipline` in the parachute-parachute
+team vault (Aaron chose re-affirm over amend-to-stable).
+
+**Affected repos:**
+- `parachute-hub` — `upgrade.ts` best-of-channel resolution (closes
+  hub#659); IN FLIGHT. The friends box (old hub, no fix) needs a one-time
+  `parachute upgrade hub --channel latest` to reach a fixed hub; auto
+  thereafter.
+- all module repos (hub, vault, scribe, runner, surface) — process change,
+  no code: the **next code-touching train starts at `rc.1`** rather than
+  bumping straight to stable.
+
+**Status:** governance.md + this note DONE (this PR); hub#659 upgrade.ts fix
+in flight; rc-first in force for the next train on every module.
+
+---
+
 ## 2026-06-10 — Audience tiers: `surface` (backed surfaces own admission)
 
 **Change:** [`backed-surface.md`](../patterns/backed-surface.md) transport
