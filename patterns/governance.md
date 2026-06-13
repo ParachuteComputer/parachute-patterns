@@ -47,7 +47,7 @@ rc-channel operator (`friends.parachute.computer` on `0.6.5-rc.8`) below
 `@latest`, because `parachute upgrade` follows `@rc` and `@rc` never moved.
 The rule stands as written: **every code-touching train publishes `-rc.1`
 (→ `@rc`) first, soaks, then promotes the SAME `0.X.Y` bits to `@latest`.**
-The next code-touching train across any module starts at `rc.1`. The rc
+The next code-touching train across any module starts at `-rc.1`. The rc
 channel is a real canary — that's the point of the second ceremony. (See
 `Decisions/2026-06-13-rc-first-release-discipline` in the parachute-parachute
 team vault; Aaron chose re-affirm over amend-to-stable.)

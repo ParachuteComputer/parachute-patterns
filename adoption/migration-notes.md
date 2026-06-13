@@ -15,7 +15,7 @@ operator (`friends.parachute.computer` on `0.6.5-rc.8`) below `@latest`
 because `parachute upgrade` follows `@rc` and `@rc` never moved. The rule
 stands: every code-touching train publishes `-rc.1` (→ `@rc`) first, soaks,
 then promotes the SAME `0.X.Y` bits to `@latest`; the next code-touching
-train across any module starts at `rc.1`. Also documented: the local
+train across any module starts at `-rc.1`. Also documented: the local
 bun-linked box is **not** a substitute for an rc soak (it validates code,
 not the published-artifact + migration-at-real-install path), and the
 **upgrade channel-resolution guarantee** — `parachute upgrade` on the rc
@@ -31,7 +31,7 @@ team vault (Aaron chose re-affirm over amend-to-stable).
   `parachute upgrade hub --channel latest` to reach a fixed hub; auto
   thereafter.
 - all module repos (hub, vault, scribe, runner, surface) — process change,
-  no code: the **next code-touching train starts at `rc.1`** rather than
+  no code: the **next code-touching train starts at `-rc.1`** rather than
   bumping straight to stable.
 
 **Status:** governance.md + this note DONE (this PR); hub#659 upgrade.ts fix
