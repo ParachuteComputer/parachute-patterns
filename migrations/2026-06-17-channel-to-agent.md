@@ -7,6 +7,19 @@ originating-pr: parachute-channel#TBD (channel→agent full rename) + parachute-
 
 # channel → agent rename
 
+## Status — LANDED 2026-06-17
+
+Core rename shipped + cut over live the same day:
+- **Code:** parachute-agent **#87** (channel-repo rename, dual-accept/dual-read/back-compat) · parachute-hub **#667** (hub wire-up: scopes/mount/sink/admin-token + redirects + `channel` install alias + `LEGACY_MANIFEST_ALIASES`) · parachute-agent **#89** (daemon idles with zero channels instead of exiting — found during the cutover wipe). All merged.
+- **GitHub:** `parachute-channel` → **`parachute-agent`** (live module). The dead Dec-2025 squatter that held the name → `parachute-agent-archived` (re-archived). NOTE: the *retired Claude-in-containers* module is actually the **`paraclaw`** repo (the local `parachute-agent` dir tracks paraclaw) — it was never the `parachute-agent` GitHub repo; that was a separate dead experiment. `paraclaw` untouched.
+- **Live cutover DONE:** hub restarted on #667, agent module active on **1941** at `/agent`, `/channel`→`/agent` 301 redirect, `services.json` reconciled to one `parachute-agent` entry, test data wiped, secrets preserved, legacy standalone `computer.parachute.channel` launchd unit retired.
+- **npm — DEFERRED (corrected from the plan below):** `@openparachute/channel` was **never published** (nothing to deprecate); `@openparachute/agent` **already exists @0.1.2** = the retired module's orphan → publishing the renamed module is a name-collision to resolve later. The operator runs **bun-linked**, so npm publish isn't needed for the cutover.
+- **Scoping refinement landed:** vault **tags are namespaced `#agent/*`** (`#agent/definition`, `#agent/message`, `#agent/job`) per Aaron, module-owned, `parent_names` rollup — see the vault-native-agents design (parachute-agent#88). The flat `#agent-message`/`#agent-job` that shipped in #86/#87 move to `#agent/*` in that build (disposable test data). `metadata.channel` field kept.
+
+The checklist below is the original plan; treat the items above as the authoritative landed state.
+
+---
+
 The `parachute-channel` module (webhook fan-out + MCP bridge, port 1941) is renamed to **`parachute-agent`**. This is a **full clean rename**, not a soft-alias: the npm package, repo, service short name, OAuth scopes, HTTP mount, admin endpoints, vault tags, environment variables, and bin names all move from `channel` to `agent`. Aaron locked the scope (see "Decisions locked" below) and accepted brief breakage so this runs as a **coordinated cutover**, not a long expand-migrate-contract arc — with **one exception**: the vault `#channel-message` tag migrates via **dual-read** (read both old + new, write new, re-tag existing notes, re-register triggers) so no live note silently drops out of routing mid-flight.
 
 The old, already-retired `parachute-agent` repo (the Claude-in-containers module retired 2026-05-20, see its [DEPRECATED.md](https://github.com/ParachuteComputer/parachute-agent/blob/main/DEPRECATED.md)) currently squats the `parachute-agent` GitHub name. It must be renamed to `parachute-agent-legacy` and **then** archived (archiving alone does **not** free the name) **before** `parachute-channel` can take the `parachute-agent` name.
