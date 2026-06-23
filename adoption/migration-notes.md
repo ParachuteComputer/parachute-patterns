@@ -5,6 +5,39 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-06-23 — resume per-PR rc bumps (reverse "tag when ready")
+
+**Change:** [`governance.md`](../patterns/governance.md) rule 2 bump-cadence
+flipped back to **every code-touching PR bumps `rc.N` and publishes to
+`@rc`** (Aaron's call). Reverses the 2026-05-24 "tag when ready, not on
+every PR" rule. The earlier objection (rc bumps living in commits but never
+reaching npm) is moot now that CI publishes on tag push — so per-PR rc keeps
+the `@rc` channel tracking `main`, letting every box soak every change via
+`parachute upgrade`. rc-first-before-`@latest` (2026-06-13), patch-by-default,
+and doc-only-never-bump are all unchanged. Re-baselining is lazy: each
+package's next code-touching PR starts at `0.X.(Y+1)-rc.1` above its current
+stable (no mass republish); hub#660's channel-resolution prevents stranding
+meanwhile. Note: the workspace `~/ParachuteComputer/CLAUDE.md` rule 2 already
+said "every code-touching PR bumps the rc.N suffix" — it never adopted the
+2026-05-24 wording, so this re-syncs the canonical doc to it.
+
+**Affected repos:** all code-publishing repos (hub, vault, scribe, runner,
+parachute-surface + its packages). First application: parachute-surface
+notes-ui `0.1.7-rc.1` (#138).
+
+**Status:** governance doc updated (this PR). Going forward every
+code-touching PR carries its rc bump + pushes the rc tag on merge. Decision:
+`Decisions/2026-06-23-resume-per-pr-rc` in the parachute-parachute team vault.
+
+*No per-repo follow issues filed:* this is a behavioral cadence change with
+no code change for any repo to make — agents apply it directly from this
+pattern doc on their next code-touching PR. The affected-repos list above is
+the propagation record; a per-repo "remember to bump rc" issue would be lower
+signal than this entry. (Contrast: a schema/protocol change, where each repo
+needs a code update, does warrant per-repo issues.)
+
+---
+
 ## 2026-06-13 — rc-first release discipline re-affirmed + upgrade channel-resolution guarantee
 
 **Change:** [`governance.md`](../patterns/governance.md) rule 2 re-affirmed
