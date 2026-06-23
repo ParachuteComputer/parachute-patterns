@@ -112,7 +112,7 @@ token-free for `publish` only, and reintroducing an `NPM_TOKEN` just for
 `dist-tag` isn't worth it when the client-side fix is complete.
 
 **Doc-only PRs never bump version.** They merge straight to main and
-will be included in whatever the next ship-driven version bump captures.
+are captured by the next code-touching PR's rc bump.
 
 **The increment is the PATCH (`y`) by default — minor (`x`) bumps are
 Aaron's explicit call, never inferred.** Settled 2026-06-09 after the

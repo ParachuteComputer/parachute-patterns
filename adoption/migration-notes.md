@@ -29,6 +29,13 @@ notes-ui `0.1.7-rc.1` (#138).
 code-touching PR carries its rc bump + pushes the rc tag on merge. Decision:
 `Decisions/2026-06-23-resume-per-pr-rc` in the parachute-parachute team vault.
 
+*No per-repo follow issues filed:* this is a behavioral cadence change with
+no code change for any repo to make — agents apply it directly from this
+pattern doc on their next code-touching PR. The affected-repos list above is
+the propagation record; a per-repo "remember to bump rc" issue would be lower
+signal than this entry. (Contrast: a schema/protocol change, where each repo
+needs a code update, does warrant per-repo issues.)
+
 ---
 
 ## 2026-06-13 — rc-first release discipline re-affirmed + upgrade channel-resolution guarantee
