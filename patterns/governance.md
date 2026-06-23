@@ -52,29 +52,39 @@ channel is a real canary — that's the point of the second ceremony. (See
 `Decisions/2026-06-13-rc-first-release-discipline` in the parachute-parachute
 team vault; Aaron chose re-affirm over amend-to-stable.)
 
-**Tag when it makes sense to ship, not on every PR.** Updated 2026-05-24
-from the earlier "every PR bumps rc.N" rule — that produced 30+ rc
-artifacts per stable cycle (hub#349-#358 was the worst offender, with
-rc.30/31/32 living in commits but never reaching npm). The new policy:
-PRs land without version bumps; bump+tag happen together, only when
-there's intent to release.
+**Every code-touching PR bumps `rc.N` and publishes to `@rc`.**
+Re-adopted 2026-06-23 (Aaron), reversing the 2026-05-24 "tag when ready,
+not on every PR" rule. The earlier objection — rc bumps "living in commits
+but never reaching npm" (hub#349-#358's rc.30/31/32) — is now moot: CI
+publishes on tag push (Trusted Publishing, see [`release-ci.md`](release-ci.md)),
+so a bump that pushes its tag *does* reach npm. With that, per-PR rc earns
+its keep: the `@rc` channel tracks `main` continuously, so **every box can
+soak every change** (`parachute upgrade` on the rc channel) instead of waiting
+for an operator to decide to cut an rc. More frequent, lower-stakes testing
+across the fleet is the whole point; the version-history churn is the
+accepted cost. (Decision: `Decisions/2026-06-23-resume-per-pr-rc` in the
+parachute-parachute team vault.)
 
-**Per PR (typical case):**
+**Per code-touching PR (typical case):**
 
-- The PR does NOT bump `package.json` version. `package.json` stays at
-  whatever the last released version is.
-- Reviewer + merge as usual.
-- No tag, no publish. The PR's changes accumulate on `main`.
+- The PR bumps `package.json` to the next rc number (`0.X.Y-rc.(N+1)`).
+  The patch number `Y` stays fixed across the rc chain until promotion;
+  the rc counter increments each PR. Add the matching CHANGELOG rc section
+  (Rule 5).
+- Reviewer + human merge as usual.
+- On merge, push the matching git tag (`v0.X.Y-rc.N`, or the monorepo
+  per-package form like `notes-ui-v0.X.Y-rc.N`). CI publishes to `@rc`.
+  The tag is the canonical release marker; the publish is automated. The
+  tag points at the squashed merge commit on `main`, so it's pushed
+  *after* merge, not before.
 
-**When you want to ship (operator-driven):**
-
-- Bump `package.json` to the next rc number (`0.X.Y-rc.(N+1)`) or to a
-  stable (`0.X.Y` with no -rc suffix) in a small dedicated PR, OR
-  directly on `main` if your repo allows that. The patch number `Y`
-  stays fixed across the rc chain until promotion.
-- Push a matching git tag (`v0.X.Y-rc.N` or `v0.X.Y`). CI publishes —
-  see [`release-ci.md`](release-ci.md) for the workflow shape. The tag
-  is the canonical release marker; the publish is automated.
+**Re-baselining a stale `@rc` (stable ran ahead during the gap).** During
+the tag-when-ready interval the `@rc` dist-tag fell below `@latest` on
+several packages. No mass republish is needed: each package's **next**
+code-touching PR starts a fresh rc chain at `0.X.(Y+1)-rc.1` above its
+current stable, which re-points `@rc` above `@latest` organically as PRs
+land. hub#660's channel-resolution guarantee (below) prevents stranding in
+the meantime.
 
 **Promotion to stable:**
 
