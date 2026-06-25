@@ -2,7 +2,7 @@
 title: Multi-origin iss-set tolerance (one box, many URLs)
 date: 2026-06-25
 status: active
-originating-pr: parachute-hub#<TBD — multi-origin iss-set>
+originating-pr: parachute-hub#692
 ---
 
 # Migration: multi-origin `iss`-set tolerance
@@ -102,10 +102,12 @@ on top of the signature gate, never a substitute for it.
 
 ## Publish / version
 
-- [ ] scope-guard `0.5.0` publishes via the existing `release.yml` Trusted
-      Publishing job on a `scope-guard-v0.5.0` (or `-rc.N`) tag push — separate
-      tag namespace from hub's `v*`. vault/scribe consume it from npm once
-      published (they pin `^0.5.0`).
+- [x] scope-guard `0.5.0` published via the existing `release.yml` Trusted
+      Publishing job — tag `scope-guard-v0.5.0` pushed 2026-06-25 (separate tag
+      namespace from hub's `v*`). vault/scribe consume it from npm (`^0.5.0`)
+      in their follow-on adapter PRs. (Library cut, not a deployed-module
+      @latest release — the rc-soak governance is preserved at the module level:
+      hub/vault/scribe all stay `@rc`.)
 
 ## Doc references
 
