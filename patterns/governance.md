@@ -114,6 +114,28 @@ token-free for `publish` only, and reintroducing an `NPM_TOKEN` just for
 **Doc-only PRs never bump version.** They merge straight to main and
 are captured by the next code-touching PR's rc bump.
 
+**Module exception — `@openparachute/surface` ships STABLE, not rc (Aaron,
+2026-06-30).** The surface host module bumps the patch (`0.X.Y` → `0.X.(Y+1)`)
+and publishes to `@latest` directly on each code-touching PR — it does NOT cut
+an `-rc.N` first. Two reasons, both specific to that package:
+
+- **A dead `@rc` tag.** surface's `@rc` dist-tag fell behind `@latest` and no
+  operator tracks it, so an rc soak there canaries nothing — the guarantee that
+  justifies Rule 2 (every box soaks every change on the rc channel) doesn't
+  apply.
+- **The workspace caret-miss.** surface is a workspace with sibling packages
+  that depend on it via `^` ranges. Publishing a prerelease (`-rc.N`) makes those
+  `^` ranges silently resolve the *stable* from npm instead of the prerelease
+  (npm excludes prereleases from caret matches), so an rc publish fragments the
+  workspace. (See [`adoption/migration-notes.md`](../adoption/migration-notes.md).)
+  Shipping stable keeps the caret ranges coherent.
+
+So for surface: bump the patch, add the CHANGELOG stable section, push the
+bare-version tag, publish `@latest` — no rc chain. **Reviewers should not flag a
+surface PR for "missing the rc bump."** This is a per-package carve-out; every
+other module still follows the per-PR-rc discipline above. Reassess if surface's
+`@rc` tag is ever revived or the workspace stops cross-depending via carets.
+
 **The increment is the PATCH (`y`) by default — minor (`x`) bumps are
 Aaron's explicit call, never inferred.** Settled 2026-06-09 after the
 boundary-arc stable train shipped as minor bumps (hub 0.6→0.7, vault
