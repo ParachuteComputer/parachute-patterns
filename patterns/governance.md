@@ -52,9 +52,10 @@ channel is a real canary — that's the point of the second ceremony. (See
 `Decisions/2026-06-13-rc-first-release-discipline` in the parachute-parachute
 team vault; Aaron chose re-affirm over amend-to-stable.)
 
-**Every code-touching PR bumps `rc.N` and publishes to `@rc`.**
-Re-adopted 2026-06-23 (Aaron), reversing the 2026-05-24 "tag when ready,
-not on every PR" rule. The earlier objection — rc bumps "living in commits
+**Every code-touching PR bumps `rc.N` and publishes to `@rc`** (the
+`@openparachute/surface` module is excepted — it ships stable; see the
+module-exception note below). Re-adopted 2026-06-23 (Aaron), reversing the
+2026-05-24 "tag when ready, not on every PR" rule. The earlier objection — rc bumps "living in commits
 but never reaching npm" (hub#349-#358's rc.30/31/32) — is now moot: CI
 publishes on tag push (Trusted Publishing, see [`release-ci.md`](release-ci.md)),
 so a bump that pushes its tag *does* reach npm. With that, per-PR rc earns
@@ -113,6 +114,28 @@ token-free for `publish` only, and reintroducing an `NPM_TOKEN` just for
 
 **Doc-only PRs never bump version.** They merge straight to main and
 are captured by the next code-touching PR's rc bump.
+
+**Module exception — `@openparachute/surface` ships STABLE, not rc (Aaron,
+2026-06-30).** The surface host module bumps the patch (`0.X.Y` → `0.X.(Y+1)`)
+and publishes to `@latest` directly on each code-touching PR — it does NOT cut
+an `-rc.N` first. Two reasons, both specific to that package:
+
+- **A dead `@rc` tag.** surface's `@rc` dist-tag fell behind `@latest` and no
+  operator tracks it, so an rc soak there canaries nothing — the guarantee that
+  justifies Rule 2 (every box soaks every change on the rc channel) doesn't
+  apply.
+- **The workspace caret-miss.** surface is a workspace with sibling packages
+  that depend on it via `^` ranges. Publishing a prerelease (`-rc.N`) makes those
+  `^` ranges silently resolve the *stable* from npm instead of the prerelease
+  (npm excludes prereleases from caret matches), so an rc publish fragments the
+  workspace. (See [`adoption/migration-notes.md`](../adoption/migration-notes.md).)
+  Shipping stable keeps the caret ranges coherent.
+
+So for surface: bump the patch, add the CHANGELOG stable section, push the
+bare-version tag, publish `@latest` — no rc chain. **Reviewers should not flag a
+surface PR for "missing the rc bump."** This is a per-package carve-out; every
+other module still follows the per-PR-rc discipline above. Reassess if surface's
+`@rc` tag is ever revived or the workspace stops cross-depending via carets.
 
 **The increment is the PATCH (`y`) by default — minor (`x`) bumps are
 Aaron's explicit call, never inferred.** Settled 2026-06-09 after the

@@ -5,6 +5,28 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-06-30 — `@openparachute/surface` ships stable, not rc (Rule 2 carve-out)
+
+**Change:** [`governance.md`](../patterns/governance.md) rule 2 gains a
+per-package exception — the **surface** host module publishes `@latest` STABLE
+directly on each code-touching PR (bump the patch, no `-rc.N` chain). Two
+package-specific reasons: (1) surface's `@rc` dist-tag is dead (behind `@latest`,
+no operator tracks it), so an rc soak there canaries nothing; (2) surface is a
+workspace whose sibling packages depend on it via `^` ranges, and publishing a
+prerelease makes those carets silently resolve the *stable* from npm (npm
+excludes prereleases from caret matches — the
+`feedback_workspace_caret_miss_npm_fallback` lesson), fragmenting the workspace.
+Every other module still follows per-PR rc.
+
+**Affected repos:** `parachute-surface` (already shipping stable — 0.3.4 / 0.3.5
+/ 0.3.6, and 0.3.7 with Surface Git Transport Phase 1). This entry records the
+convention so reviewers stop flagging surface PRs for a "missing rc bump."
+
+**Status:** documented; surface already conforms. Reassess if surface's `@rc`
+tag is revived or the workspace stops cross-depending via carets.
+
+---
+
 ## 2026-06-23 — resume per-PR rc bumps (reverse "tag when ready")
 
 **Change:** [`governance.md`](../patterns/governance.md) rule 2 bump-cadence
