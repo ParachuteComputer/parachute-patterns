@@ -52,9 +52,10 @@ channel is a real canary — that's the point of the second ceremony. (See
 `Decisions/2026-06-13-rc-first-release-discipline` in the parachute-parachute
 team vault; Aaron chose re-affirm over amend-to-stable.)
 
-**Every code-touching PR bumps `rc.N` and publishes to `@rc`.**
-Re-adopted 2026-06-23 (Aaron), reversing the 2026-05-24 "tag when ready,
-not on every PR" rule. The earlier objection — rc bumps "living in commits
+**Every code-touching PR bumps `rc.N` and publishes to `@rc`** (the
+`@openparachute/surface` module is excepted — it ships stable; see the
+module-exception note below). Re-adopted 2026-06-23 (Aaron), reversing the
+2026-05-24 "tag when ready, not on every PR" rule. The earlier objection — rc bumps "living in commits
 but never reaching npm" (hub#349-#358's rc.30/31/32) — is now moot: CI
 publishes on tag push (Trusted Publishing, see [`release-ci.md`](release-ci.md)),
 so a bump that pushes its tag *does* reach npm. With that, per-PR rc earns
