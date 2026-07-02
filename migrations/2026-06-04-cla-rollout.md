@@ -59,7 +59,7 @@ Each item = a PR adding `.github/workflows/cla.yml` (caller template in
 ### Tier 3 — explorations / archiving (public, can still receive PRs)
 
 - [ ] parachute-notes (archiving — still public)
-- [ ] parachute-channel
+- [ ] parachute-agent (renamed from parachute-channel 2026-06-17)
 - [ ] parachute-daily
 - [ ] parachute-narrate
 - [ ] parachute-octopus

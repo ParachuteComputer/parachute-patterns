@@ -80,7 +80,7 @@ Every Parachute repo with code that gets `bun link`-ed for development:
 - [`parachute-vault`](https://github.com/ParachuteComputer/parachute-vault/blob/main/CLAUDE.md#post-merge-hygiene)
 - [`parachute-notes`](https://github.com/ParachuteComputer/parachute-notes/blob/main/CLAUDE.md#post-merge-hygiene)
 - [`parachute-scribe`](https://github.com/ParachuteComputer/parachute-scribe/blob/main/CLAUDE.md#post-merge-hygiene)
-- [`parachute-channel`](https://github.com/ParachuteComputer/parachute-channel/blob/main/CLAUDE.md#post-merge-hygiene)
+- [`parachute-agent`](https://github.com/ParachuteComputer/parachute-agent/blob/main/CLAUDE.md#post-merge-hygiene)
 - [`parachute.computer`](https://github.com/ParachuteComputer/parachute.computer/blob/main/CLAUDE.md#post-merge-hygiene) (Eleventy build, not a daemon, but same rule for consistency)
 
 A new repo's `CLAUDE.md` should include the same section, linking back to

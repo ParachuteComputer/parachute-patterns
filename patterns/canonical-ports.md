@@ -19,7 +19,7 @@ chosen port into the service's `.env`. See
 assignment algorithm, idempotency rules, and the service-side contract
 this doc's reservations get enforced through.
 
-## Reservations (state of the world, 2026-05-22)
+## Reservations (state of the world, 2026-07-01)
 
 | Port | Service | Tier | Status | Notes |
 |---|---|---|---|---|
@@ -27,22 +27,21 @@ this doc's reservations get enforced through.
 | 1940 | `parachute-vault` | committed core | assigned | REST + MCP at `/vault/<name>/`. |
 | 1942 | `parachute-notes` | committed core | deprecating (Phase 2 — see notes#154) | Static server over the PWA bundle. Standalone notes-daemon is deprecating; Notes ships as the canonical first app under `parachute-surface` (1946) going forward. |
 | 1943 | `parachute-scribe` | committed core | assigned | Whisper-compatible transcription API at root. |
-| 1944 | `parachute-agent` | committed core | retired | Web UI + agent runtime. Retired 2026-05-20 (see `parachute-agent/DEPRECATED.md`); slot held for historical reference. |
-| 1941 | `parachute-channel` | working module | assigned | Daemon. Exploratory; may retire — not part of the committed ecosystem. |
-| 1945 | `parachute-runner` | exploration | assigned | Background job runner; spawns `claude -p` against vault jobs. Phase 1 complete; exploration-tier (not committed-core). |
+| 1944 | `parachute-agent` (containers, retired 2026-05-20 — see `paraclaw`) | — | retired | The Claude-in-containers web UI + agent runtime. **Not the live `parachute-agent` module** (that's 1941, ex-channel); this is the earlier experiment, retired to the `paraclaw` repo (see its `DEPRECATED.md`). Slot held for historical reference. |
+| 1941 | `parachute-agent` | live module (experimental preview) | assigned | Vault-native agents + messaging gateway daemon. Renamed from `parachute-channel` 2026-06-17 (see [migration](../migrations/2026-06-17-channel-to-agent.md)); port unchanged. |
+| 1945 | `parachute-runner` | retired | retired | Background job runner; spawned `claude -p` against vault jobs. Retired 2026-07-01 — superseded by `parachute-agent` scheduled jobs (`#agent/job`); see `parachute-runner/DEPRECATED.md` + [migration](../migrations/2026-07-01-runner-retirement.md). Slot held for historical reference. |
 | 1946 | `parachute-surface` | committed core | assigned | UI host module; ships Notes as canonical first app. |
 | 1947 | unassigned | — | reserved | |
 | 1948 | unassigned | — | reserved | |
 | 1949 | unassigned | — | reserved | |
 
 The **committed core** is the set of modules the Parachute ecosystem
-commits to maintaining: hub, vault, app, scribe. (The standalone
-notes-daemon is deprecating into `parachute-surface`; `parachute-agent`
-retired 2026-05-20.) **Working modules** like channel exist and run,
-but the ecosystem does not commit to them as long-term first-party
-citizens. **Exploration-tier** modules like `parachute-runner` claim
-a slot in the range while they prove out, without a committed-core
-maintenance commitment.
+commits to maintaining: hub, vault, surface, scribe. (The standalone
+notes-daemon is deprecating into `parachute-surface`.) The **live
+module set of record** (2026-07-01) is vault, hub, agent, scribe,
+surface — with `parachute-agent` shipping as an **experimental
+preview**, not yet committed-core. Retired slots (`1944` containers
+agent, `1945` runner) are held for historical reference, not reused.
 
 ## Why a fixed range
 
@@ -98,9 +97,10 @@ than walking up into a service's slot.
 
 ## Open questions
 
-- **Channel's status.** Currently allocated `1941` and runs in the
-  ecosystem, but flagged for possible retirement. If channel retires,
-  free `1941` and update this table.
+- ~~**Channel's status.**~~ Resolved 2026-06-17: the module was not
+  retired but renamed (`parachute-channel` → `parachute-agent`), and
+  `1941` stays assigned to it. See
+  [`../migrations/2026-06-17-channel-to-agent.md`](../migrations/2026-06-17-channel-to-agent.md).
 - **Range exhaustion.** Eleven slots is cozy; we'll start to feel it
   around the seventh or eighth shipped service. The follow-up plan is
   `1950–1969` as a second range, but we don't need to commit until the

@@ -100,7 +100,7 @@ Path-append cases are handled inside the per-vault block. Landed in
   collapses for hub-rooted issuers — both forms reduce to
   `/.well-known/<type>`. The distinction only matters when the issuer
   has a path.
-- **`parachute-scribe`, `parachute-channel`, future modules** — when
+- **`parachute-scribe`, `parachute-agent`, future modules** — when
   they begin serving OAuth metadata, follow the same rule. If your
   service mounts at `/svc/<name>`, you serve
   `/.well-known/<type>/svc/<name>` at the origin root **and**

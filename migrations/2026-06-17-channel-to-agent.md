@@ -2,7 +2,7 @@
 title: channel → agent rename
 date: 2026-06-17
 status: active
-originating-pr: parachute-channel#TBD (channel→agent full rename) + parachute-hub#TBD (hub wire-up) + parachute-patterns#TBD (this file)
+originating-pr: parachute-agent#87 (channel→agent full rename) + parachute-hub#667 (hub wire-up); checklist reconciled in parachute-patterns#132
 ---
 
 # channel → agent rename
@@ -13,7 +13,7 @@ Core rename shipped + cut over live the same day:
 - **Code:** parachute-agent **#87** (channel-repo rename, dual-accept/dual-read/back-compat) · parachute-hub **#667** (hub wire-up: scopes/mount/sink/admin-token + redirects + `channel` install alias + `LEGACY_MANIFEST_ALIASES`) · parachute-agent **#89** (daemon idles with zero channels instead of exiting — found during the cutover wipe). All merged.
 - **GitHub:** `parachute-channel` → **`parachute-agent`** (live module). The dead Dec-2025 squatter that held the name → `parachute-agent-archived` (re-archived). NOTE: the *retired Claude-in-containers* module is actually the **`paraclaw`** repo (the local `parachute-agent` dir tracks paraclaw) — it was never the `parachute-agent` GitHub repo; that was a separate dead experiment. `paraclaw` untouched.
 - **Live cutover DONE:** hub restarted on #667, agent module active on **1941** at `/agent`, `/channel`→`/agent` 301 redirect, `services.json` reconciled to one `parachute-agent` entry, test data wiped, secrets preserved, legacy standalone `computer.parachute.channel` launchd unit retired.
-- **npm — DEFERRED (corrected from the plan below):** `@openparachute/channel` was **never published** (nothing to deprecate); `@openparachute/agent` **already exists @0.1.2** = the retired module's orphan → publishing the renamed module is a name-collision to resolve later. The operator runs **bun-linked**, so npm publish isn't needed for the cutover.
+- **npm — DEFERRED (corrected from the plan below):** `@openparachute/channel` was **never published** (nothing to deprecate); `@openparachute/agent` **already exists @0.1.2** = the retired module's orphan → publishing the renamed module is a name-collision to resolve later. The operator runs **bun-linked**, so npm publish isn't needed for the cutover. *(Since RESOLVED: the renamed module publishes as `@openparachute/agent` — 0.2.x rc chain, 0.2.4 stable 2026-07-01.)*
 - **Scoping refinement landed:** vault **tags are namespaced `#agent/*`** (`#agent/definition`, `#agent/message`, `#agent/job`) per Aaron, module-owned, `parent_names` rollup — see the vault-native-agents design (parachute-agent#88). The flat `#agent-message`/`#agent-job` that shipped in #86/#87 move to `#agent/*` in that build (disposable test data). `metadata.channel` field kept.
 
 The checklist below is the original plan; treat the items above as the authoritative landed state.
@@ -93,101 +93,101 @@ Why this order is safe: the new npm package and renamed channel repo (steps 3–
 
 ### parachute-channel → parachute-agent (the module repo)
 
-- [ ] `package.json` — `name: @openparachute/channel` → `@openparachute/agent`; bins `parachute-channel`, `parachute-channel-bridge` → `parachute-agent`, `parachute-agent-bridge`. *(PR: )*
-- [ ] `.parachute/module.json` `name` — `"channel"` → `"agent"` (the short name hub routing + admin APIs resolve). *(PR: )*
-- [ ] `.parachute/module.json` `paths` — `["/channel"]` → `["/agent"]` (hub proxy mount). *(PR: )*
-- [ ] `.parachute/module.json` `scopes` — `channel:read/write/send/admin` → `agent:read/write/send/admin`. *(PR: )*
-- [ ] `.parachute/module.json` `uiUrl`/`configUiUrl` — `/channel/home`, `/channel/admin` → `/agent/*`. *(PR: )*
-- [ ] `.parachute/module.json` tag schema — `#channel-message`, `#channel-message/inbound`, `#channel-message/outbound` → `#agent-message*`. **Dual-read during migration window.** (`metadata.channel` field unchanged — see Scoping refinements.) *(PR: )*
-- [ ] `.parachute/module.json` `displayName`/`tagline` — Channel → Agent. *(PR: )*
-- [ ] `src/auth.ts` — `SCOPE_READ/WRITE/SEND/ADMIN = "channel:*"` → `"agent:*"` (validated against JWTs). *(PR: )*
-- [ ] `src/bridge.ts` — MCP notification methods `notifications/claude/channel*` → `.../agent`; capability string `claude/channel` → `claude/agent`. *(PR: )*
-- [ ] `src/mcp-http.ts` — endpoint paths `/mcp/<name>`, `/.well-known/oauth-protected-resource/mcp/<name>`, `/.well-known/oauth-authorization-server/mcp/<name>` (hub proxies `/agent/mcp/*`). *(PR: )*
-- [ ] `src/transports/vault.ts` — tag names `#channel-message/inbound|outbound`; query predicates + note-tagging logic → `#agent-message/*`. **Dual-read.** (`metadata.channel` field stays.) *(PR: )*
-- [ ] `src/provision-channel.ts` — vault connection provisioning: trigger def, filter predicates `has_metadata: ["channel"]`, `missing_metadata: ["channel_inbound_rendered_at"]` → agent equivalents. (Consider renaming file → `provision-agent.ts`.) *(PR: )*
-- [ ] `src/daemon.ts` — inbound webhook `/api/vault/inbound` routes by `note.metadata.channel`; error messages; transcript-loading logic by channel name → agent. *(PR: )*
-- [ ] `src/**/*.ts` — console/debug output, comments, UI labels naming the "channel" daemon/service. *(PR: )*
-- [ ] Env vars (runtime, in `bridge.ts` / daemon / launcher / `spawn-agent.ts`): `PARACHUTE_CHANNEL_URL`, `_STATE_DIR`, `_TOKEN`, `_PORT` → `PARACHUTE_AGENT_*`. *(PR: )*
-- [ ] Bin/launcher/e2e invocations of `parachute-channel`, `parachute-channel-bridge` by name. *(PR: )*
-- [ ] `--dangerously-load-development-channels=server:parachute-channel` (Claude Code CLI discovery flag) → `server:parachute-agent`. *(PR: )*
-- [ ] `.mcp.json` MCP server config name `parachute-channel` → `parachute-agent`. *(PR: )*
+- [x] `package.json` — `name: @openparachute/channel` → `@openparachute/agent`; bins `parachute-channel`, `parachute-channel-bridge` → `parachute-agent`, `parachute-agent-bridge`. *(PR: agent#87)*
+- [x] `.parachute/module.json` `name` — `"channel"` → `"agent"` (the short name hub routing + admin APIs resolve). *(PR: agent#87)*
+- [x] `.parachute/module.json` `paths` — `["/channel"]` → `["/agent"]` (hub proxy mount). *(PR: agent#87)*
+- [x] `.parachute/module.json` `scopes` — `channel:read/write/send/admin` → `agent:read/write/send/admin`. *(PR: agent#87)*
+- [x] `.parachute/module.json` `uiUrl`/`configUiUrl` — `/channel/home`, `/channel/admin` → `/agent/*`. *(PR: agent#87)*
+- [x] `.parachute/module.json` tag schema — `#channel-message`, `#channel-message/inbound`, `#channel-message/outbound` → `#agent-message*`. **Dual-read during migration window.** (`metadata.channel` field unchanged — see Scoping refinements.) *(PR: agent#87, then re-namespaced `agent/*`: agent#133 expand / agent#135 contract / agent#147 bare-namespace fix)*
+- [x] `.parachute/module.json` `displayName`/`tagline` — Channel → Agent. *(PR: agent#87)*
+- [x] `src/auth.ts` — `SCOPE_READ/WRITE/SEND/ADMIN = "channel:*"` → `"agent:*"` (validated against JWTs). *(PR: agent#87)*
+- [x] `src/bridge.ts` — MCP notification methods `notifications/claude/channel*` → `.../agent`; capability string `claude/channel` → `claude/agent`. *(PR: agent#87)*
+- [x] `src/mcp-http.ts` — endpoint paths `/mcp/<name>`, `/.well-known/oauth-protected-resource/mcp/<name>`, `/.well-known/oauth-authorization-server/mcp/<name>` (hub proxies `/agent/mcp/*`). *(PR: agent#87)*
+- [x] `src/transports/vault.ts` — tag names `#channel-message/inbound|outbound`; query predicates + note-tagging logic → `#agent-message/*`. **Dual-read.** (`metadata.channel` field stays.) *(PR: agent#87 dual-read; agent#133/#135 data-key contract)*
+- [x] `src/provision-channel.ts` — vault connection provisioning: trigger def, filter predicates `has_metadata: ["channel"]`, `missing_metadata: ["channel_inbound_rendered_at"]` → agent equivalents. (Consider renaming file → `provision-agent.ts`.) *(PR: agent#87; trigger keys on `agent`: agent#135)*
+- [x] `src/daemon.ts` — inbound webhook `/api/vault/inbound` routes by `note.metadata.channel`; error messages; transcript-loading logic by channel name → agent. *(PR: agent#87)*
+- [x] `src/**/*.ts` — console/debug output, comments, UI labels naming the "channel" daemon/service. *(PR: agent#87)*
+- [x] Env vars (runtime, in `bridge.ts` / daemon / launcher / `spawn-agent.ts`): `PARACHUTE_CHANNEL_URL`, `_STATE_DIR`, `_TOKEN`, `_PORT` → `PARACHUTE_AGENT_*`. *(PR: agent#87)*
+- [x] Bin/launcher/e2e invocations of `parachute-channel`, `parachute-channel-bridge` by name. *(PR: agent#87)*
+- [x] `--dangerously-load-development-channels=server:parachute-channel` (Claude Code CLI discovery flag) → `server:parachute-agent`. *(PR: agent#87)*
+- [x] `.mcp.json` MCP server config name `parachute-channel` → `parachute-agent`. *(PR: agent#87)*
 
 ### parachute-hub
 
-- [ ] `src/service-spec.ts` — `SERVICE_SPECS["channel"]` key → `agent`; `package: @openparachute/agent` (line ~462); `manifestName: parachute-agent` (line ~463); `canonicalPaths: ["/agent"]` (line ~472); `startCmd: ["parachute-agent"]` (line ~480); short/displayName/tagline; comments. *(PR: )*
-- [ ] `src/service-spec.ts` — add **one-cycle `channel` install alias** so `parachute install channel` resolves to agent (`KNOWN_MODULES` / install resolution). *(PR: )*
-- [ ] `src/service-spec.ts` `shortNameForManifest` reverse-map (line ~845) — learn `parachute-agent → agent`; ensures legacy `parachute-channel` rows in `services.json` resolve during the upgrade window. *(PR: )*
-- [ ] `src/admin-channel-token.ts` → rename `src/admin-agent-token.ts` — `CHANNEL_TOKEN_SCOPES` → `agent:read/send/admin`; `aud: "channel"` → `aud: "agent"` (line ~35); endpoint `/admin/channel-token` → `/admin/agent-token`. *(PR: )*
-- [ ] `src/hub-server.ts` — route `pathname === "/admin/channel-token"` → `/admin/agent-token` (line ~2736); **301 redirect** old → new; dispatch-table + header docstring comments. *(PR: )*
-- [ ] `src/oauth-handlers.ts` — scope-prefix alias `["channel:", "parachute-channel"]` → `["agent:", "parachute-agent"]`; comments/display text (lines ~410, 892, 896). *(PR: )*
-- [ ] `src/scope-explanations.ts` — rename key `channel:send` → `agent:send`, label "Channel" → "Agent" (line ~22); move `OPTIONAL_MODULE_SCOPES` gate to `agent` module (lines ~48–52). `scopeIsAdmin()` (line ~281) is generic — no change. *(PR: )*
-- [ ] `src/admin-connections.ts` — `prepareChannelSink` → `prepareAgentSink`; fence `sink.module === "channel"` → `"agent"` (line ~699); webhook `/channel/api/vault/inbound` → `/agent/api/vault/inbound`; MCP-add text `channel-${name}` + `/channel/mcp/` → `agent-*` (line ~1743); `#channel-message` source filters → `#agent-message`. *(PR: )*
-- [ ] `src/connections-store.ts` — sink module `'channel'` label → `'agent'`. *(PR: )*
-- [ ] `src/module-manifest.ts` — comment example `channel.message.deliver -> channel:send` → `agent.message.deliver -> agent:send` (lines ~127, 780). *(PR: )*
-- [ ] `src/origin-check.ts` — legacy `/admin/channel-token` comment (line ~196). *(PR: )*
-- [ ] `src/api-modules.ts` — inline docs/comments; `/channel/admin/` → `/agent/admin/`, `/channel/ui/` → `/agent/ui/`. *(PR: )*
-- [ ] `src/api-modules-ops.ts` — `parseModulesPath` comment example `s/channel/agent/`. *(PR: )*
-- [ ] `src/commands/serve-boot.ts` — comments mentioning `/channel/*` routes. *(PR: )*
-- [ ] `src/commands/install.ts` — verify short name `agent` (+ the `channel` alias) used consistently in install flow. *(PR: )*
-- [ ] `src/help.ts` — `channel   parachute-channel daemon` → `agent   parachute-agent daemon`. *(PR: )*
-- [ ] `web/ui/src/routes/Connections.tsx` — MCP label "channel" → "agent"; form placeholder example filter `#channel-message/inbound` → `#agent-message/inbound` (line ~657). *(PR: )*
-- [ ] `web/ui/src/lib/api.ts` — `getHostAdminToken` fallback endpoint comment `/admin/channel-token` → `/admin/agent-token` (~line 724). *(PR: )*
-- [ ] `README.md` — port table `1941 | parachute-channel` → `1941 | parachute-agent`. *(PR: )*
-- [ ] `CLAUDE.md` — "Short names" section + architecture refs `s/channel/agent/`. *(PR: )*
-- [ ] `CHANGELOG.md` — historical entries are immutable (no edit); new entry records the rename + `agent:*` scopes + `/agent/*` paths. *(PR: )*
+- [x] `src/service-spec.ts` — `SERVICE_SPECS["channel"]` key → `agent`; `package: @openparachute/agent` (line ~462); `manifestName: parachute-agent` (line ~463); `canonicalPaths: ["/agent"]` (line ~472); `startCmd: ["parachute-agent"]` (line ~480); short/displayName/tagline; comments. *(PR: hub#667)*
+- [x] `src/service-spec.ts` — add **one-cycle `channel` install alias** so `parachute install channel` resolves to agent (`KNOWN_MODULES` / install resolution). *(PR: hub#667)*
+- [x] `src/service-spec.ts` `shortNameForManifest` reverse-map (line ~845) — learn `parachute-agent → agent`; ensures legacy `parachute-channel` rows in `services.json` resolve during the upgrade window. *(PR: hub#667)*
+- [x] `src/admin-channel-token.ts` → rename `src/admin-agent-token.ts` — `CHANNEL_TOKEN_SCOPES` → `agent:read/send/admin`; `aud: "channel"` → `aud: "agent"` (line ~35); endpoint `/admin/channel-token` → `/admin/agent-token`. *(PR: hub#667)*
+- [x] `src/hub-server.ts` — route `pathname === "/admin/channel-token"` → `/admin/agent-token` (line ~2736); **301 redirect** old → new; dispatch-table + header docstring comments. *(PR: hub#667)*
+- [x] `src/oauth-handlers.ts` — scope-prefix alias `["channel:", "parachute-channel"]` → `["agent:", "parachute-agent"]`; comments/display text (lines ~410, 892, 896). *(PR: hub#667)*
+- [x] `src/scope-explanations.ts` — rename key `channel:send` → `agent:send`, label "Channel" → "Agent" (line ~22); move `OPTIONAL_MODULE_SCOPES` gate to `agent` module (lines ~48–52). `scopeIsAdmin()` (line ~281) is generic — no change. *(PR: hub#667)*
+- [x] `src/admin-connections.ts` — `prepareChannelSink` → `prepareAgentSink`; fence `sink.module === "channel"` → `"agent"` (line ~699); webhook `/channel/api/vault/inbound` → `/agent/api/vault/inbound`; MCP-add text `channel-${name}` + `/channel/mcp/` → `agent-*` (line ~1743); `#channel-message` source filters → `#agent-message`. *(PR: hub#667)*
+- [x] `src/connections-store.ts` — sink module `'channel'` label → `'agent'`. *(PR: hub#667)*
+- [x] `src/module-manifest.ts` — comment example `channel.message.deliver -> channel:send` → `agent.message.deliver -> agent:send` (lines ~127, 780). *(PR: hub#667)*
+- [x] `src/origin-check.ts` — legacy `/admin/channel-token` comment (line ~196). *(PR: hub#667)*
+- [x] `src/api-modules.ts` — inline docs/comments; `/channel/admin/` → `/agent/admin/`, `/channel/ui/` → `/agent/ui/`. *(PR: hub#667)*
+- [x] `src/api-modules-ops.ts` — `parseModulesPath` comment example `s/channel/agent/`. *(PR: hub#667)*
+- [x] `src/commands/serve-boot.ts` — comments mentioning `/channel/*` routes. *(PR: hub#667)*
+- [x] `src/commands/install.ts` — verify short name `agent` (+ the `channel` alias) used consistently in install flow. *(PR: hub#667)*
+- [x] `src/help.ts` — `channel   parachute-channel daemon` → `agent   parachute-agent daemon`. *(PR: hub#667)*
+- [x] `web/ui/src/routes/Connections.tsx` — MCP label "channel" → "agent"; form placeholder example filter `#channel-message/inbound` → `#agent-message/inbound` (line ~657). *(PR: hub#667)*
+- [x] `web/ui/src/lib/api.ts` — `getHostAdminToken` fallback endpoint comment `/admin/channel-token` → `/admin/agent-token` (~line 724). *(PR: hub#667)*
+- [x] `README.md` — port table `1941 | parachute-channel` → `1941 | parachute-agent`. *(PR: hub#667)*
+- [x] `CLAUDE.md` — "Short names" section + architecture refs `s/channel/agent/`. *(PR: hub#667)*
+- [x] `CHANGELOG.md` — historical entries are immutable (no edit); new entry records the rename + `agent:*` scopes + `/agent/*` paths. *(PR: hub#667)*
 
 ### Data: vault tag + metadata migration (dual-read)
 
 The `#channel-message` tag spans vault schema, triggers, filters, and notes-UI. This is the **dual-read** surface — read both old + new, write new, re-tag existing notes, re-register triggers. (The `metadata.channel` routing field is unchanged this arc — see Scoping refinements.)
 
-- [ ] channel repo `src/transports/vault.ts` + `src/provision-channel.ts` + `src/daemon.ts` — emit/query `#agent-message*`; **accept both** old + new tags on read during the window. *(PR: )*
-- [ ] hub `src/admin-connections.ts` — trigger registration `action.webhook /agent/api/vault/inbound`; connection template source filter `#channel-message/inbound` → `#agent-message/inbound`. *(PR: )*
-- [ ] Vault `connectionTemplates[]` entry referencing `#channel-message` tag schema — update in lockstep with hub admin-connections (coordinate vault manifest + hub). *(PR: )*
+- [x] channel repo `src/transports/vault.ts` + `src/provision-channel.ts` + `src/daemon.ts` — emit/query `#agent-message*`; **accept both** old + new tags on read during the window. *(PR: agent#87 dual-read; agent#133 expand / agent#135 contract — agent-only write, legacy tag reads dropped; agent#147 bare `agent/*` namespace)*
+- [x] hub `src/admin-connections.ts` — trigger registration `action.webhook /agent/api/vault/inbound`; connection template source filter `#channel-message/inbound` → `#agent-message/inbound`. *(PR: hub#667)*
+- [x] Vault `connectionTemplates[]` entry referencing `#channel-message` tag schema — update in lockstep with hub admin-connections (coordinate vault manifest + hub). *(PR: hub#667 — hub-side template; trigger keys moved to `agent` in agent#135)*
 - [ ] **One-time re-tag run** against the live vault: re-tag existing `#channel-message*` notes → `#agent-message*`, re-register triggers on the new tag. (`metadata.channel` left as-is.) *(Aaron's hand — see Needs Aaron's hand.)*
 
 ### Tests
 
-- [ ] **parachute-agent (was channel):** all 42 `src/**/*.test.ts` — scope/path/tag/metadata/env-var assertions; bin names; capability/notification strings. *(PR: )*
-- [ ] `hub src/__tests__/admin-channel-token.test.ts` → rename `admin-agent-token.test.ts` — update imports, scope assertions (`channel:read/send/admin` → `agent:*`), `aud: channel` → `aud: agent` JWT claim, endpoint paths. *(PR: )*
-- [ ] `hub src/__tests__/admin-connections.test.ts` — line 166 manifestName; lines 191/259/266/318/743/798 `#channel-message/inbound` → `#agent-message/inbound`; line 670 `requested_by`; lines 724–764 agent-backed connection assertions; line 767 MCP add cmd; line 794 webhook; line 1028 scopes. *(PR: )*
-- [ ] `hub src/__tests__/admin-module-token.test.ts` — lines 287/294/306 manifestName + scope assertions. *(PR: )*
-- [ ] `hub src/__tests__/oauth-handlers.test.ts` — lines 120/172/183/210/238 `channel:send` → `agent:send`; lines 995/1038/1061/1079/1108/1133/1163 consent-screen expected scopes (**snapshot regen**). *(PR: )*
-- [ ] `hub src/__tests__/scope-explanations.test.ts` — line 22 key; lines 99/136 assertions. *(PR: )*
-- [ ] `hub src/__tests__/module-manifest.test.ts` — lines 34–64 connectionTemplates (`#channel-message/inbound`, "Link a channel" description, module name); lines 80–97 similar. *(PR: )*
-- [ ] `hub web/ui/src/routes/Connections.test.tsx` — line 60 comment; line 64 `module:'channel'`; lines 73/230/258 `#channel-message`; lines 140/150/165/167 var `channel-eng` → `agent-eng`; lines 238/267/300/309/352 connection IDs; line 241 MCP add cmd. *(PR: )*
-- [ ] `hub web/ui/src/routes/Modules.test.tsx` — line 365 name; line 366 `config_ui_url /channel/admin`; line 377 href; lines 390–399 module names + URLs. *(PR: )*
-- [ ] `hub src/__tests__/admin-lock.test.ts` — line 24 import from `admin-agent-token`; line 244 endpoint. *(PR: )*
-- [ ] `hub src/__tests__/api-modules.test.ts` — line 319 module name; lines 633–665 fixture paths/URLs; line 683 `config_ui_url`; line 685 `management_url`. *(PR: )*
-- [ ] `hub src/__tests__/api-modules-ops.test.ts` — line 216 `parseModulesPath` example; line 1035 `/api/modules/agent/`; lines 1054–1058 module-name assertion. *(PR: )*
-- [ ] `hub src/__tests__/admin-vaults.test.ts` — line 1005 scope `channel:send` → `agent:send`. *(PR: )*
-- [ ] `hub src/__tests__/expose.test.ts` — lines 1138–1141 module name + health path. *(PR: )*
-- [ ] `hub src/__tests__/operator-token.test.ts` — line 84 scope assertion. *(PR: )*
-- [ ] `hub src/__tests__/resource-binding.test.ts` — lines 86/95/105 scope refs. *(PR: )*
-- [ ] `hub src/__tests__/serve-boot.test.ts` — lines 308/328/375/397 module-name assertion. *(PR: )*
-- [ ] `hub src/__tests__/setup.test.ts` — line 124 service entry name. *(PR: )*
-- [ ] `hub src/__tests__/status.test.ts` — lines 229–230 `urlFor` argument. *(PR: )*
-- [ ] `hub web/ui/src/routes/Home.test.tsx` — line 277 `management_url` path. *(PR: )*
+- [x] **parachute-agent (was channel):** all 42 `src/**/*.test.ts` — scope/path/tag/metadata/env-var assertions; bin names; capability/notification strings. *(PR: agent#87)*
+- [x] `hub src/__tests__/admin-channel-token.test.ts` → rename `admin-agent-token.test.ts` — update imports, scope assertions (`channel:read/send/admin` → `agent:*`), `aud: channel` → `aud: agent` JWT claim, endpoint paths. *(PR: hub#667)*
+- [x] `hub src/__tests__/admin-connections.test.ts` — line 166 manifestName; lines 191/259/266/318/743/798 `#channel-message/inbound` → `#agent-message/inbound`; line 670 `requested_by`; lines 724–764 agent-backed connection assertions; line 767 MCP add cmd; line 794 webhook; line 1028 scopes. *(PR: hub#667)*
+- [x] `hub src/__tests__/admin-module-token.test.ts` — lines 287/294/306 manifestName + scope assertions. *(PR: hub#667)*
+- [x] `hub src/__tests__/oauth-handlers.test.ts` — lines 120/172/183/210/238 `channel:send` → `agent:send`; lines 995/1038/1061/1079/1108/1133/1163 consent-screen expected scopes (**snapshot regen**). *(PR: hub#667)*
+- [x] `hub src/__tests__/scope-explanations.test.ts` — line 22 key; lines 99/136 assertions. *(PR: hub#667)*
+- [x] `hub src/__tests__/module-manifest.test.ts` — lines 34–64 connectionTemplates (`#channel-message/inbound`, "Link a channel" description, module name); lines 80–97 similar. *(PR: hub#667)*
+- [x] `hub web/ui/src/routes/Connections.test.tsx` — line 60 comment; line 64 `module:'channel'`; lines 73/230/258 `#channel-message`; lines 140/150/165/167 var `channel-eng` → `agent-eng`; lines 238/267/300/309/352 connection IDs; line 241 MCP add cmd. *(PR: hub#667)*
+- [x] `hub web/ui/src/routes/Modules.test.tsx` — line 365 name; line 366 `config_ui_url /channel/admin`; line 377 href; lines 390–399 module names + URLs. *(PR: hub#667)*
+- [x] `hub src/__tests__/admin-lock.test.ts` — line 24 import from `admin-agent-token`; line 244 endpoint. *(PR: hub#667)*
+- [x] `hub src/__tests__/api-modules.test.ts` — line 319 module name; lines 633–665 fixture paths/URLs; line 683 `config_ui_url`; line 685 `management_url`. *(PR: hub#667)*
+- [x] `hub src/__tests__/api-modules-ops.test.ts` — line 216 `parseModulesPath` example; line 1035 `/api/modules/agent/`; lines 1054–1058 module-name assertion. *(PR: hub#667)*
+- [x] `hub src/__tests__/admin-vaults.test.ts` — line 1005 scope `channel:send` → `agent:send`. *(PR: hub#667)*
+- [x] `hub src/__tests__/expose.test.ts` — lines 1138–1141 module name + health path. *(PR: hub#667)*
+- [x] `hub src/__tests__/operator-token.test.ts` — line 84 scope assertion. *(PR: hub#667)*
+- [x] `hub src/__tests__/resource-binding.test.ts` — lines 86/95/105 scope refs. *(PR: hub#667)*
+- [x] `hub src/__tests__/serve-boot.test.ts` — lines 308/328/375/397 module-name assertion. *(PR: hub#667)*
+- [x] `hub src/__tests__/setup.test.ts` — line 124 service entry name. *(PR: hub#667)*
+- [x] `hub src/__tests__/status.test.ts` — lines 229–230 `urlFor` argument. *(PR: hub#667)*
+- [x] `hub web/ui/src/routes/Home.test.tsx` — line 277 `management_url` path. *(PR: hub#667)*
 
 ## Doc references
 
 ### parachute-patterns
 
-- [ ] `naming/repos.md` (line 20) — `ParachuteComputer/parachute-channel` → `parachute-agent`. *(PR: )*
-- [ ] `naming/bins.md` (line 30) — `@openparachute/channel` → `@openparachute/agent`; `parachute-channel`, `parachute-channel-bridge` → `parachute-agent`, `parachute-agent-bridge` (secondary bin follows `parachute-<module>-<role>`). *(PR: )*
-- [ ] `patterns/canonical-ports.md` (lines 31, 41, 101–103) — port 1941 entry `parachute-channel` → `parachute-agent` (**port 1941 stays**, only the name changes); resolve the line-101–103 open question (1941 is *assigned to parachute-agent*, not freed — the module is being renamed, not retired). *(PR: )*
-- [ ] `patterns/oauth-scopes.md` (lines 12, 32, 82, 207) — `channel:send` → `agent:send` in scope table, non-vault scope list, non-inheritance note, where-applies; service namespace `vault, scribe, channel, hub` → `vault, scribe, agent, hub`. *(PR: )*
-- [ ] `patterns/well-known-discovery-rfc.md` (line 103) — module list `parachute-scribe, parachute-channel, future modules` → `parachute-scribe, parachute-agent, future modules`. *(PR: )*
-- [ ] `patterns/module-json-extensibility.md` (line 439, lines 436–444) — `#channel-message/inbound` → `#agent-message/inbound`; module self-description name field + events/actions. *(PR: )*
-- [ ] `patterns/post-merge-hygiene.md` (line 83) — link/reference `parachute-channel` → `parachute-agent`. *(PR: )*
-- [ ] `research/auth-architecture-shape.md` (lines 57, 63, 165) — operator-token hard-coded scope list `channel:send` → `agent:send` (3 occurrences). *(PR: )*
-- [ ] `adoption/migration-notes.md` (lines 127, 1096, 1132, 1216, 1375, 1401) — all `parachute-channel` → `parachute-agent`; add a dated entry for this rename. *(PR: )*
-- [ ] `design/2026-06-09-modular-ui-architecture.md` (lines 4, 20–21, 30, 60, 66, 68) — module-architecture refs + descriptive "channel" → "agent"; line 68 connection filter `#channel-message/inbound` → `#agent-message/inbound`. *(PR: )*
-- [ ] `migrations/2026-06-09-modular-ui.md` (lines 17, 24, 68, 97–99, 110–112, 119, 122–123, 127–128) — all "channel" → "agent" incl. "manage channels" → "manage agents"; line 111 tag filter. *(PR: )*
-- [ ] `migrations/2026-06-09-hub-module-boundary.md` (lines 220, 245, 266, 291, 299) — `/admin/channels`, `/admin/channel-token`, `admin-channels.ts` → `/admin/agents`, `/admin/agent-token`, `admin-agents.ts`. *(PR: )*
-- [ ] `migrations/2026-06-04-cla-rollout.md` (line 62) — Tier 3 list `parachute-channel` → `parachute-agent`. *(PR: )*
-- [ ] `scripts/rollout-cla.sh` (line 33) — list entry `parachute-channel` → `parachute-agent`. *(PR: )*
-- [ ] `scripts/audit-canonical-refs.sh` (line ~88) — **the exclusion that's now ambiguous.** It excludes `parachute-agent` to skip the *retired* module; after this rename that hides the *new* module. Make specific: exclude `parachute-agent-legacy` / `parachute-agent/DEPRECATED`, not bare `parachute-agent`. *(PR: )*
-- [ ] `README.md` (line 7) — module list `Scribe, Narrate, Channel, Agents` → dedup/rephrase (`Scribe, Narrate, Agent, …` — note the *new* Agent replaces both "Channel" and the now-legacy "Agents"). *(PR: )*
+- [x] `naming/repos.md` (line 20) — `ParachuteComputer/parachute-channel` → `parachute-agent`. *(PR: patterns#132)*
+- [x] `naming/bins.md` (line 30) — `@openparachute/channel` → `@openparachute/agent`; `parachute-channel`, `parachute-channel-bridge` → `parachute-agent`, `parachute-agent-bridge` (secondary bin follows `parachute-<module>-<role>`). *(PR: patterns#132)*
+- [x] `patterns/canonical-ports.md` (lines 31, 41, 101–103) — port 1941 entry `parachute-channel` → `parachute-agent` (**port 1941 stays**, only the name changes); resolve the line-101–103 open question (1941 is *assigned to parachute-agent*, not freed — the module is being renamed, not retired). *(PR: patterns#132)*
+- [x] `patterns/oauth-scopes.md` (lines 12, 32, 82, 207) — `channel:send` → `agent:send` in scope table, non-vault scope list, non-inheritance note, where-applies; service namespace `vault, scribe, channel, hub` → `vault, scribe, agent, hub`. *(PR: patterns#132)*
+- [x] `patterns/well-known-discovery-rfc.md` (line 103) — module list `parachute-scribe, parachute-channel, future modules` → `parachute-scribe, parachute-agent, future modules`. *(PR: patterns#132)*
+- [x] `patterns/module-json-extensibility.md` (line 439, lines 436–444) — `#channel-message/inbound` → `#agent-message/inbound`; module self-description name field + events/actions. *(PR: patterns#132 — tag written as bare `agent/message/inbound` per agent#147)*
+- [x] `patterns/post-merge-hygiene.md` (line 83) — link/reference `parachute-channel` → `parachute-agent`. *(PR: patterns#132)*
+- [ ] `research/auth-architecture-shape.md` (lines 57, 63, 165) — operator-token hard-coded scope list `channel:send` → `agent:send` (3 occurrences). *(left as-is — dated research snapshot; `research/` is excluded from the audit sweeps as non-canonical narration)*
+- [x] `adoption/migration-notes.md` (lines 127, 1096, 1132, 1216, 1375, 1401) — all `parachute-channel` → `parachute-agent`; add a dated entry for this rename. *(historical running-log entries left verbatim; dated entry for the rename added in patterns#132; migration-notes is line-excluded from the audit sweeps)*
+- [ ] `design/2026-06-09-modular-ui-architecture.md` (lines 4, 20–21, 30, 60, 66, 68) — module-architecture refs + descriptive "channel" → "agent"; line 68 connection filter `#channel-message/inbound` → `#agent-message/inbound`. *(dated design doc — historical record, covered by the audit historical-docs exception; update when the modular-UI arc is next touched)*
+- [ ] `migrations/2026-06-09-modular-ui.md` (lines 17, 24, 68, 97–99, 110–112, 119, 122–123, 127–128) — all "channel" → "agent" incl. "manage channels" → "manage agents"; line 111 tag filter. *(migrations/ is the historical record + dir-excluded from the audit; update when that arc is next touched)*
+- [ ] `migrations/2026-06-09-hub-module-boundary.md` (lines 220, 245, 266, 291, 299) — `/admin/channels`, `/admin/channel-token`, `admin-channels.ts` → `/admin/agents`, `/admin/agent-token`, `admin-agents.ts`. *(migrations/ is the historical record + dir-excluded from the audit; update when that arc is next touched)*
+- [x] `migrations/2026-06-04-cla-rollout.md` (line 62) — Tier 3 list `parachute-channel` → `parachute-agent`. *(PR: patterns#132)*
+- [x] `scripts/rollout-cla.sh` (line 33) — list entry `parachute-channel` → `parachute-agent`. *(PR: patterns#132)*
+- [x] `scripts/audit-canonical-refs.sh` (line ~88) — **the exclusion that's now ambiguous.** It excludes `parachute-agent` to skip the *retired* module; after this rename that hides the *new* module. Make specific: exclude `parachute-agent-legacy` / `parachute-agent/DEPRECATED`, not bare `parachute-agent`. *(PR: patterns#132 — block rewritten: parachute-agent treated as the LIVE module; stale channel-era refs get their own sweep; historical docs get a narrow line-level exception)*
+- [x] `README.md` (line 7) — module list `Scribe, Narrate, Channel, Agents` → dedup/rephrase (`Scribe, Narrate, Agent, …` — note the *new* Agent replaces both "Channel" and the now-legacy "Agents"). *(PR: patterns#132)*
 
 ### parachute.computer (site + design docs)
 
@@ -201,7 +201,7 @@ The `#channel-message` tag spans vault schema, triggers, filters, and notes-UI. 
 
 ### Workspace docs
 
-- [ ] Workspace `CLAUDE.md` — committed-core/explorations table: `parachute-channel` row (exploration — may retire) → `parachute-agent`; note the rename + that the old retired `parachute-agent` is now `parachute-agent-legacy`. Disambiguate from the 2026-05-20 retired-agent paragraph so future readers don't conflate the two. *(local edit — workspace root is not a git repo)*
+- [x] Workspace `CLAUDE.md` — committed-core/explorations table: `parachute-channel` row (exploration — may retire) → `parachute-agent`; note the rename + that the old retired `parachute-agent` is now `parachute-agent-legacy`. Disambiguate from the 2026-05-20 retired-agent paragraph so future readers don't conflate the two. *(DONE — parachute-workspace#7: table row renamed + disambiguation note)*
 
 ### Do-NOT-touch (false positives — generic English "channel")
 
@@ -213,18 +213,18 @@ These use "channel" as an ordinary word, **not** the module — leave them alone
 
 ## Operator-facing references
 
-- [ ] `parachute-agent/README.md` (was channel) — daemon/bridge naming, MCP server config example, env vars `PARACHUTE_CHANNEL_*` → `PARACHUTE_AGENT_*`. *(PR: )*
-- [ ] `parachute-agent/CLAUDE.md` (was channel) — all refs, env-var docs, the `--dangerously-load-development-channels=server:parachute-channel` flag → `server:parachute-agent`. *(PR: )*
-- [ ] hub `README.md` port table — see Code references. *(PR: )*
-- [ ] hub admin UI MCP-add copy text — see `admin-connections.ts`. New connections render `agent-*`; **existing DB connections carry stale copyable text** — operators copying old UI text 404. Decide: rewrite/re-link stale connections, or document the re-link step in release notes. *(PR: )*
+- [x] `parachute-agent/README.md` (was channel) — daemon/bridge naming, MCP server config example, env vars `PARACHUTE_CHANNEL_*` → `PARACHUTE_AGENT_*`. *(PR: agent#87)*
+- [x] `parachute-agent/CLAUDE.md` (was channel) — all refs, env-var docs, the `--dangerously-load-development-channels=server:parachute-channel` flag → `server:parachute-agent`. *(PR: agent#87)*
+- [x] hub `README.md` port table — see Code references. *(PR: hub#667)*
+- [x] hub admin UI MCP-add copy text — see `admin-connections.ts`. New connections render `agent-*`; **existing DB connections carry stale copyable text** — operators copying old UI text 404. Decide: rewrite/re-link stale connections, or document the re-link step in release notes. *(PR: hub#667 for new connections; the stale-DB-copyable-text question was MOOTED by the live cutover — test data wiped, connections re-created)*
 
 ## External references
 
-- [ ] npm: **publish `@openparachute/agent`** (from the channel-repo rename PR merge). *(Aaron's hand — see below.)*
-- [ ] npm: **deprecate `@openparachute/channel`** → message points at `@openparachute/agent`. *(Aaron's hand.)*
-- [ ] GitHub: rename retired `parachute-agent` → `parachute-agent-legacy`, confirm archived (frees the name). *(Aaron's hand.)*
-- [ ] GitHub: rename `parachute-channel` → `parachute-agent` (auto-redirects old slug; update local remote + `gh repo set-default`). *(Aaron's hand.)*
-- [ ] GitHub: repo description for new `parachute-agent` names it correctly (and not the retired containers module). *(low priority)*
+- [x] npm: **publish `@openparachute/agent`** (from the channel-repo rename PR merge). *(DONE — the renamed module publishes as `@openparachute/agent` (0.2.x rc chain live; 0.2.4 stable 2026-07-01); the 0.1.2 orphan collision resolved by publishing over it)*
+- [x] npm: **deprecate `@openparachute/channel`** → message points at `@openparachute/agent`. *(MOOT — `@openparachute/channel` was never published; nothing to deprecate)*
+- [x] GitHub: rename retired `parachute-agent` → `parachute-agent-legacy`, confirm archived (frees the name). *(DONE 2026-06-17 — landed as `parachute-agent-archived`, not `-legacy`; the containers module was actually `paraclaw` — see Status banner)*
+- [x] GitHub: rename `parachute-channel` → `parachute-agent` (auto-redirects old slug; update local remote + `gh repo set-default`). *(DONE 2026-06-17 — see Status banner)*
+- [ ] GitHub: repo description for new `parachute-agent` names it correctly (and not the retired containers module). *(still channel-era copy — "Messaging gateway for Claude Code"; update to the vault-native-agents framing)*
 
 ## Needs Aaron's hand
 

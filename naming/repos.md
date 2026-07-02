@@ -13,11 +13,11 @@ ParachuteComputer/parachute-<module>
 Examples:
 
 - `ParachuteComputer/parachute-vault`
-- `ParachuteComputer/parachute-agents` (plural repo, singular package `@openparachute/agent`)
 - `ParachuteComputer/parachute-daily`
 - `ParachuteComputer/parachute-scribe`
 - `ParachuteComputer/parachute-notes`
-- `ParachuteComputer/parachute-channel`
+- `ParachuteComputer/parachute-agent` (renamed from `parachute-channel`
+  2026-06-17; package `@openparachute/agent`)
 - `ParachuteComputer/parachute-hub` — the umbrella; ships the `parachute` bin
 - `ParachuteComputer/parachute-patterns` (this repo)
 - `ParachuteComputer/parachute.computer` — the website (kept literal, matching

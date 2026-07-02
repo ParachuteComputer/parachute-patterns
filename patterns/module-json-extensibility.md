@@ -353,7 +353,7 @@ module** (`services.json` ∪ `module.json` ∪ supervisor — no whitelist; see
 [`module-discovery.md`](./module-discovery.md)) and uses `focus` to sort and
 label rather than to gate: `"core"` modules surface first; `"experimental"`
 ones are de-emphasized but **never hidden**. This is what lets a running,
-self-registered module (e.g. channel) be administratively visible without an
+self-registered module (e.g. agent) be administratively visible without an
 entry in a curated constant. Absent → treated as `"experimental"`.
 
 ### `configUiUrl: string`
@@ -433,17 +433,17 @@ First-class declarations the committed-core modules ship:
 
 - **vault** emits `note.created` / `note.updated` / `note.deleted`; accepts `note.create`.
 - **scribe** emits `transcription.complete`; accepts `transcribe`.
-- **channel** emits `message.received` / `message.sent`; accepts `message.deliver`.
+- **agent** (ex-channel) emits `message.received` / `message.sent`; accepts `message.deliver`.
 
-"Add a vault-backed channel" becomes the connection
-`vault.note.created (filter: tag #channel-message/inbound) →
-channel.message.deliver` — a general Connection, not channel-specific config.
-The sink is the channel **action** `message.deliver` ("Deliver an inbound
+"Add a vault-backed agent" becomes the connection
+`vault.note.created (filter: tag agent/message/inbound) →
+agent.message.deliver` — a general Connection, not agent-specific config.
+The sink is the agent **action** `message.deliver` ("Deliver an inbound
 message (wakes the session)"); its `provision` block tells the hub to register
-a vault runtime trigger (vault#469) that webhooks the channel's inbound
-endpoint with a hub-minted `channel:send` bearer. The channel `message.received`
+a vault runtime trigger (vault#469) that webhooks the agent's inbound
+endpoint with a hub-minted `agent:send` bearer. The agent `message.received`
 / `message.sent` **events** are the *source* half for *other* connections that
-want to react to channel activity — they are never the inbound sink.
+want to react to agent activity — they are never the inbound sink.
 `filterSchema` shapes the event filter (e.g. "only notes with tag X");
 `inputSchema` shapes the action's arguments; `provision` tells the hub how to
 wire it. Both arrays are optional; a module with no cross-module surface
@@ -534,7 +534,7 @@ packages that pre-date the convention, then retires.
 
 ## Where this applies
 
-- **Today:** first-party modules (vault, notes, scribe, channel) are
+- **Today:** first-party modules (vault, notes, scribe, agent) are
   hardcoded in `parachute-hub/src/service-spec.ts`. The shape lives in
   `PORT_RESERVATIONS` + `SERVICE_SPECS` and is functionally a
   pre-`module.json` ancestor.
