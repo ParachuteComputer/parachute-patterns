@@ -18,6 +18,9 @@ Examples:
 - `ParachuteComputer/parachute-notes`
 - `ParachuteComputer/parachute-agent` (renamed from `parachute-channel`
   2026-06-17; package `@openparachute/agent`)
+- `ParachuteComputer/parachute-agents` (plural — the dormant Cloudflare
+  Managed Agents exploration, still listed in `scripts/rollout-cla.sh`;
+  distinct from the live `parachute-agent` module above)
 - `ParachuteComputer/parachute-hub` — the umbrella; ships the `parachute` bin
 - `ParachuteComputer/parachute-patterns` (this repo)
 - `ParachuteComputer/parachute.computer` — the website (kept literal, matching

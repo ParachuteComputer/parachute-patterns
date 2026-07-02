@@ -44,13 +44,16 @@ GREP_DIR_EXCLUDES=(
 # stale framing as historical narration).
 LINE_EXCLUDES='CHANGELOG\|DEPRECATED\|BLOG-OUTLINE'
 
-# Historical-doc excludes for rename/retirement sweeps: dated design docs
-# (design/YYYY-MM-DD-*.md, workspace-root DESIGN-YYYY-*) and the
-# adoption/migration-notes.md running log deliberately quote the names that
-# were current when they were written. migrations/ is already dir-excluded
-# above for the same reason. Scope these narrowly — live pattern docs and
-# code do NOT get this pass.
-HISTORICAL_DOC_EXCLUDES='design/20[0-9][0-9]-\|DESIGN-20[0-9][0-9]-\|migration-notes'
+# Historical-doc excludes for rename/retirement sweeps: parachute-patterns'
+# OWN dated design docs (parachute-patterns/design/YYYY-MM-DD-*.md),
+# workspace-root DESIGN-YYYY-* drafts, and the adoption/migration-notes.md
+# running log deliberately quote the names that were current when they were
+# written. migrations/ is already dir-excluded above for the same reason.
+# Deliberately NOT excluded: other repos' design/ dirs — those hold living
+# docs (e.g. hub design docs marked "Status: implemented") whose stale refs
+# are real drift, not history. Scope stays narrow — live pattern docs and
+# code never get this pass.
+HISTORICAL_DOC_EXCLUDES='parachute-patterns/design/20[0-9][0-9]-\|DESIGN-20[0-9][0-9]-\|migration-notes'
 
 echo "=== Auditing canonical-architecture references in $WORKSPACE ==="
 echo ""
@@ -285,7 +288,7 @@ echo "  - Vendor/build dirs (node_modules, _site, dist, build, .next, .git, migr
 echo "  - CHANGELOGs + DEPRECATED.md are excluded line-level (they're historical record)."
 echo "  - parachute-notes/canonical-ports.md/service-spec.ts are excluded from the port-1942 check (they're the canonical source)."
 echo "  - parachute-agent is the LIVE module (ex parachute-channel, renamed 2026-06-17); the retired containers agent is the paraclaw repo."
-echo "  - Dated design docs (design/YYYY-MM-DD-*) + adoption/migration-notes.md are excluded from the rename/retirement sweeps (historical record); migrations/ is dir-excluded."
+echo "  - parachute-patterns' own dated design docs + workspace-root DESIGN-* drafts + adoption/migration-notes.md are excluded from the rename/retirement sweeps (historical record); migrations/ is dir-excluded. Other repos' design/ dirs are NOT excluded — a dated-but-implemented design doc with stale refs is real drift."
 echo "  - parachute-runner hits: runner retired 2026-07-01 — see migrations/2026-07-01-runner-retirement.md for the propagation checklist."
 echo "  - channel-block hits inside hub's one-cycle back-compat shims (301 redirect route, LEGACY_MANIFEST_ALIASES map, install alias) are EXPECTED until the contract PR drops them."
 echo "  - depcheck's own registry + vault git-preflight.ts + hub cloudflaredInstallHint are excluded from the install-string check (canonical sources)."
