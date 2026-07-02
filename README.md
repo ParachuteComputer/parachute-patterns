@@ -3,11 +3,12 @@
 Shared conventions across the Parachute ecosystem — the single source of truth
 for how Parachute modules align with their siblings.
 
-Parachute is intentionally a set of small pieces, loosely joined: Vault, Daily,
-Scribe, Narrate, Channel, Agents, Cloud, Octopus, the `parachute` CLI. Every
-module stands alone; composition is opt-in. That modularity only holds together
-if the surfaces they share — naming, brand, schemas, auth, reporting shapes —
-stay coherent. This repo is where those surfaces are written down.
+Parachute is intentionally a set of small pieces, loosely joined: Vault,
+Surface, Scribe, Hub (the portal + `parachute` CLI), Agent (ex-Channel), and
+the explorations around them. Every module stands alone; composition is
+opt-in. That modularity only holds together if the surfaces they share —
+naming, brand, schemas, auth, reporting shapes — stay coherent. This repo is
+where those surfaces are written down.
 
 ## Who this is for
 

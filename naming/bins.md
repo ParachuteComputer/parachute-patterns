@@ -27,8 +27,7 @@ See: [parachute-hub/src/cli.ts](https://github.com/ParachuteComputer/parachute-h
 | `@openparachute/vault` | `parachute-vault` | conformant (renamed in [vault #134](https://github.com/ParachuteComputer/parachute-vault/pull/134)) |
 | `@openparachute/scribe` | `parachute-scribe` | conformant (renamed in [scribe #9](https://github.com/ParachuteComputer/parachute-scribe/pull/9)) |
 | `@openparachute/notes` | *(no bin)* | frontend; served by `parachute-hub`'s `notes-serve` shim, no own bin |
-| `@openparachute/channel` | `parachute-channel`, `parachute-channel-bridge` | conformant |
-| `@openparachute/agent` | `parachute-agent`, `parachute-agent-ui` | conformant |
+| `@openparachute/agent` | `parachute-agent`, `parachute-agent-bridge` | conformant (renamed from `@openparachute/channel` / `parachute-channel`, `parachute-channel-bridge` 2026-06-17; secondary bin follows `parachute-<module>-<role>`) |
 | `@openparachute/narrate` | `parachute-narrate` | planned; not yet published |
 | `tailshare` | `tailshare` | not a Parachute-branded tool; no rename planned |
 

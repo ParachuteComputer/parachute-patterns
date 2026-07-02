@@ -30,7 +30,7 @@ ALL_REPOS=(
   parachute-workspace parachute-runner parachute-brain parachute-pebble
   paraclaw .github
   # Tier 3 — explorations / archiving
-  parachute-notes parachute-channel parachute-daily parachute-narrate
+  parachute-notes parachute-agent parachute-daily parachute-narrate
   parachute-octopus parachute-agents parachute-cloud openparachute-cli
   meshwork prism tailshare pcc
 )

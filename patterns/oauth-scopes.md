@@ -9,16 +9,18 @@ Parachute OAuth tokens carry **whitespace-separated scope strings**
 <service>[:<resource>]*:<action>
 ```
 
-- First segment — the service (vault, scribe, channel, hub, or any
+- First segment — the service (vault, scribe, agent, surface, hub, or any
   third-party module's declared name).
 - Last segment — the action (`read`, `write`, `admin`, or a service-specific
   verb like `transcribe`, `send`).
 - Middle segments (zero or more) — a resource hierarchy that narrows the
-  scope. Today the only narrowing segment in use is `vault:<name>:<verb>`
+  scope. Two narrowing segments are in use: `vault:<name>:<verb>`
   (per-vault), which is **the enforced shape** for hub-issued JWTs —
-  see Parser rules below.
+  see Parser rules below — and `surface:<name>:<verb>` (per-surface,
+  enforced at the hub's authenticated git endpoint — Surface Git
+  Transport, 2026-06-30).
 
-## Launch scopes (Phase 0+1)
+## Scopes (launch set + later additions)
 
 | Scope | Grants |
 | --- | --- |
@@ -29,29 +31,44 @@ Parachute OAuth tokens carry **whitespace-separated scope strings**
 | `scribe:admin` | Manage scribe config |
 | `hub:admin` | Manage hub services catalog + OAuth config (Reserved; not yet enforced) |
 | `parachute:host:admin` | Drive the hub's vault instance-lifecycle *transactions* (`POST /vaults` / `DELETE /vaults/<name>`) and other host-level admin (operator-only-mintable; not requestable from third-party clients). The provisioning *UX* lives in vault's own surface — see [`hub-module-boundary.md`](./hub-module-boundary.md). |
-| `channel:send` | Post messages via channel |
+| `agent:send` | Send a message to a Parachute agent (the `parachute-agent` module, ex-channel; hub also mints `agent:read` / `agent:admin` via `/admin/agent-token`) |
+| `surface:<name>:read` | Fetch/clone the named surface's hub-hosted git repo (Surface Git Transport) |
+| `surface:<name>:write` | Push to the named surface's repo (write ⊇ read at the git endpoint) |
+| `surface:admin` | surface-host module admin — the hub↔surface-host notify bearer + the credential endpoint |
 
 Third-party modules declare their own namespace (`my-service:read`, etc.)
 and the hub renders consent for those scopes the same way.
 
-**Retired scopes.** `agent:read` / `agent:write` / `agent:admin` were the
-launch scopes for parachute-agent, retired with the module 2026-05-20 (see
-[`trust-gradient-isolation.md`](./trust-gradient-isolation.md)). No
-`agent:*` bearer was ever in the wild; the namespace is free to reclaim if
-a future module wants it.
+**Reclaimed `agent:*` namespace.** `agent:read` / `agent:write` /
+`agent:admin` were the launch scopes for the *containers* agent, retired
+with that module 2026-05-20 (see
+[`trust-gradient-isolation.md`](./trust-gradient-isolation.md); the repo
+is `paraclaw` today). No `agent:*` bearer was ever in the wild, and the
+namespace **has since been reclaimed** by the live `parachute-agent`
+module (the renamed `parachute-channel`, 2026-06-17): `channel:*` scopes
+became `agent:read` / `agent:send` / `agent:admin`, minted by the hub and
+enforced by the agent daemon. See
+[`../migrations/2026-06-17-channel-to-agent.md`](../migrations/2026-06-17-channel-to-agent.md).
 
 ## Inheritance
 
 ```
-admin ⊇ write ⊇ read       (for vault; the retired agent namespace followed the same tree)
+admin ⊇ write ⊇ read       (vault)
+write ⊇ read               (surface:<name>, at the git endpoint)
 ```
 
 - `vault:<name>:admin` satisfies any check for `vault:<name>:write` or
   `vault:<name>:read` on the same vault. Inheritance is per-resource —
   `vault:work:admin` does **not** satisfy a `vault:personal:read` check.
-- `agent:admin` satisfied `agent:write` and `agent:read` (single-namespace,
-  no per-resource binding) — historical; the `agent:*` namespace
-  retired with the agent module 2026-05-20.
+- `surface:<name>:write` satisfies a `surface:<name>:read` check at the
+  hub's git endpoint (fetch is implied by push authority). Same
+  per-resource rule: no cross-surface inheritance, and module-level
+  `surface:admin` is a separate axis (it does not imply per-surface git
+  access).
+- The live agent module's verbs (`agent:read` / `agent:send` /
+  `agent:admin`) do **not** form the read/write/admin tree — `send` is
+  its own axis. (The *retired containers* agent's `agent:admin` ⊇
+  `agent:write` ⊇ `agent:read` tree died with that module 2026-05-20.)
 - **Non-inheritance scopes exact-match only.** `scribe:admin` does **not**
   currently imply `scribe:transcribe` — each non-inheritance-tree scope
   stands alone. This is deliberate: we add inheritance per-service
@@ -79,7 +96,7 @@ Canonical implementations:
   RFC 8707 `resource=<origin>/vault/<name>/mcp` indicator (an MCP client
   connecting to one vault), the hub narrows the consent — and the minted
   token — to that vault's `vault:<name>:<verb>` scopes and **drops** any
-  non-vault scope (`scribe:*`, `channel:send`, `hub:admin`). Those are
+  non-vault scope (`scribe:*`, `agent:send`, `hub:admin`). Those are
   unusable inside an `aud=vault.<name>` token and would only inflate the
   consent surface a friend sees connecting a single vault. A client that
   legitimately wants a `scribe:` token runs a separate flow naming the scribe
@@ -91,6 +108,14 @@ Canonical implementations:
   only token issuance**. See the supersession banner on
   [`token-auth.md`](./token-auth.md) and
   [`tag-scoped-tokens.md`](./tag-scoped-tokens.md) for the current model.
+- **Issuer (`iss`) validation is set-tolerant on scope-guard ≥ 0.5.0.**
+  One box can be reachable on several URLs at once (loopback, `sslip.io`,
+  custom domain), so resource servers accept a token whose `iss` is *any
+  member of the hub's published origin set* (`PARACHUTE_HUB_ORIGINS`),
+  not just the single `PARACHUTE_HUB_ORIGIN`. The JWKS signature verify
+  runs FIRST and unconditionally; the set is hub/operator-controlled
+  only and never derived from a request `Host`. See
+  [`../migrations/2026-06-25-multi-origin-iss-set.md`](../migrations/2026-06-25-multi-origin-iss-set.md).
 - **Empty resource segments are preserved verbatim** (`vault::read` stays
   `vault::read`, so it can't satisfy any vault check — a one-line defence
   against a malformed DB row).
@@ -204,8 +229,15 @@ The parser already knows to split on `:`; the matcher is what gains the
 - `parachute-scribe` — scopes declared under `x-scopes` in the config
   schema; enforcement follows once hub starts issuing JWTs. See scribe's
   CLAUDE.md ("Scopes declared, not yet enforced").
-- `parachute-channel` — `channel:send` defined; enforcement tracking the
-  same JWT cutover.
+- `parachute-agent` — `agent:read` / `agent:send` / `agent:admin`
+  enforced (the daemon validates hub-issued JWTs; hub mints via
+  `/admin/agent-token`). Renamed from `channel:*` 2026-06-17.
+- `parachute-surface` (surface-host) — declares `surface:read` /
+  `surface:write` / `surface:admin` in `.parachute/module.json`; the
+  per-surface `surface:<name>:<verb>` form is enforced by the **hub** at
+  `/git/<name>` (`parachute-hub/src/git-transport.ts`, `requiredAccess`),
+  and `surface:admin` gates the hub→surface-host notify + credential
+  endpoints.
 - `parachute-notes` — requests `vault:read vault:write scribe:transcribe`
   on first-run OAuth consent.
 

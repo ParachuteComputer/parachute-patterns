@@ -35,6 +35,7 @@ GREP_DIR_EXCLUDES=(
   --exclude-dir=build
   --exclude-dir=.next
   --exclude-dir=migrations
+  --exclude-dir=.claude
 )
 
 # After grep finishes, line-level excludes for files we can't prune via
@@ -42,6 +43,17 @@ GREP_DIR_EXCLUDES=(
 # BLOG-OUTLINE-*.md are workspace-root drafts that legitimately quote
 # stale framing as historical narration).
 LINE_EXCLUDES='CHANGELOG\|DEPRECATED\|BLOG-OUTLINE'
+
+# Historical-doc excludes for rename/retirement sweeps: parachute-patterns'
+# OWN dated design docs (parachute-patterns/design/YYYY-MM-DD-*.md),
+# workspace-root DESIGN-YYYY-* drafts, and the adoption/migration-notes.md
+# running log deliberately quote the names that were current when they were
+# written. migrations/ is already dir-excluded above for the same reason.
+# Deliberately NOT excluded: other repos' design/ dirs — those hold living
+# docs (e.g. hub design docs marked "Status: implemented") whose stale refs
+# are real drift, not history. Scope stays narrow — live pattern docs and
+# code never get this pass.
+HISTORICAL_DOC_EXCLUDES='parachute-patterns/design/20[0-9][0-9]-\|DESIGN-20[0-9][0-9]-\|migration-notes'
 
 echo "=== Auditing canonical-architecture references in $WORKSPACE ==="
 echo ""
@@ -78,15 +90,40 @@ echo "(1942 is the deprecating notes-daemon port; new operator-facing copy shoul
     "$WORKSPACE" 2>/dev/null | grep -v "$LINE_EXCLUDES" | grep -v "parachute-notes\|canonical-ports\|service-spec" | head -20; } || true
 echo ""
 
-echo "--- 'parachute-agent' (retired 2026-05-20) outside retirement/historical docs ---"
-echo "(operator-facing docs should reference parachute-runner; agent retired)"
+# NOTE (2026-07-01): `parachute-agent` is the LIVE module — the renamed
+# parachute-channel (migrations/2026-06-17-channel-to-agent.md). The
+# *retired* Claude-in-containers agent (2026-05-20) is the separate
+# `paraclaw` repo; don't conflate the two. The old block here treated
+# `parachute-agent` as the retired name and its exclusions hid the live
+# module's drift — replaced by the channel-staleness sweep below.
+
+echo "--- stale 'channel' module references (channel→agent rename, 2026-06-17) ---"
+echo "(the live module is parachute-agent — ex parachute-channel. Stale: parachute-channel, @openparachute/channel, channel:send, #channel-message, /admin/channel-token, PARACHUTE_CHANNEL_*. Historical docs excluded; lines narrating the rename / back-compat aliases excluded.)"
 { grep -rn "${GREP_DIR_EXCLUDES[@]}" \
-    --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
-    -E "parachute-agent|parachute_agent" \
+    --exclude-dir=research \
+    --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.sh' --include='*.json' \
+    -E "parachute-channel|@openparachute/channel|channel:send|#channel-message|/admin/channel-token|PARACHUTE_CHANNEL_" \
     "$WORKSPACE" 2>/dev/null \
     | grep -v "$LINE_EXCLUDES" \
-    | grep -v "parachute-agent/\|trust-gradient\|retired\|governance\|FALLBACK\|service-spec\|loadAgents\|RELEASE-NOTES\|WAKE-UP\|BETA-EMAIL\|launch-day" \
-    | head -20; } || true
+    | grep -v "$HISTORICAL_DOC_EXCLUDES" \
+    | grep -v "audit-canonical-refs" \
+    | grep -vi "renam\|legacy\|alias\|redirect\|compat\|deprecat\|dual-read\|dual-accept" \
+    | head -30; } || true
+echo ""
+
+echo "--- 'parachute-runner' promoted/live framing (runner retired 2026-07-01) ---"
+echo "(runner is fully retired — superseded by parachute-agent scheduled jobs (#agent/job); see parachute-runner/DEPRECATED.md + migrations/2026-07-01-runner-retirement.md. The runner repo itself is historical record; lines narrating the retirement are excluded.)"
+{ grep -rn "${GREP_DIR_EXCLUDES[@]}" \
+    --exclude-dir=parachute-runner \
+    --exclude-dir=research \
+    --include='*.md' --include='*.tsx' --include='*.ts' --include='*.njk' \
+    -E "parachute-runner|@openparachute/runner" \
+    "$WORKSPACE" 2>/dev/null \
+    | grep -v "$LINE_EXCLUDES" \
+    | grep -v "$HISTORICAL_DOC_EXCLUDES" \
+    | grep -v "audit-canonical-refs" \
+    | grep -vi "retire\|deprecat\|supersed\|legacy\|not for new" \
+    | head -30; } || true
 echo ""
 
 echo "--- self-register row name written as literal short name ---"
@@ -121,8 +158,10 @@ echo ""
 #     label — those describe vault-connection actions, not OAuth flow
 #     verbs. design-system.md §5 doesn't claim authority over every
 #     "connect" word in the product.
-#   - parachute-agent (retired) + parachute-notes (archiving) excluded
-#     so retired-repo hits don't permanently noise the audit.
+#   - parachute-notes (archiving) excluded so archived-repo hits don't
+#     permanently noise the audit. parachute-agent is NO LONGER excluded
+#     (2026-07-01): it's the live ex-channel module, and excluding it hid
+#     live drift.
 #   - Test files (`*.test.ts*`) excluded — assertions like
 #     `expect(html).toContain("Authorize")` are pinning surface copy,
 #     not driving drift. Cleanup of the surface flips the test
@@ -138,7 +177,6 @@ echo "(design-system.md §5 — canonical: Sign in / Sign out / Approve / Deny /
 {
   grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --exclude-dir=patterns \
-    --exclude-dir=parachute-agent \
     --exclude-dir=parachute-notes \
     --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' \
     --exclude='*.test.ts*' \
@@ -169,12 +207,11 @@ echo "(CSS class aliases .status-disabled / .status-pending-oauth retained for o
 {
   grep -rn "${GREP_DIR_EXCLUDES[@]}" \
     --exclude-dir=patterns \
-    --exclude-dir=parachute-agent \
     --exclude-dir=parachute-notes \
     --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' \
     --exclude='*.test.ts*' \
     -E ">Pending-OAuth<|>Disabled<" \
-    "$WORKSPACE"/parachute-hub "$WORKSPACE"/parachute-surface "$WORKSPACE"/parachute-vault "$WORKSPACE"/parachute-scribe 2>/dev/null \
+    "$WORKSPACE"/parachute-hub "$WORKSPACE"/parachute-surface "$WORKSPACE"/parachute-vault "$WORKSPACE"/parachute-scribe "$WORKSPACE"/parachute-agent 2>/dev/null \
     | grep -v "$LINE_EXCLUDES" \
     | head -20
 } || true
@@ -187,7 +224,6 @@ echo "(vault no longer mints pvt_* opaque tokens — access tokens are hub-issue
     --exclude-dir=patterns \
     --exclude-dir=research \
     --exclude-dir=scratch \
-    --exclude-dir=parachute-agent \
     --exclude-dir=parachute-notes \
     --include='*.tsx' --include='*.ts' --include='*.njk' --include='*.html' --include='*.md' \
     --exclude='*.test.ts*' \
@@ -251,7 +287,10 @@ echo "Notes:"
 echo "  - Vendor/build dirs (node_modules, _site, dist, build, .next, .git, migrations) are pruned via --exclude-dir."
 echo "  - CHANGELOGs + DEPRECATED.md are excluded line-level (they're historical record)."
 echo "  - parachute-notes/canonical-ports.md/service-spec.ts are excluded from the port-1942 check (they're the canonical source)."
-echo "  - parachute-agent retirement docs + launch-day artifacts are excluded from the agent check."
+echo "  - parachute-agent is the LIVE module (ex parachute-channel, renamed 2026-06-17); the retired containers agent is the paraclaw repo."
+echo "  - parachute-patterns' own dated design docs + workspace-root DESIGN-* drafts + adoption/migration-notes.md are excluded from the rename/retirement sweeps (historical record); migrations/ is dir-excluded. Other repos' design/ dirs are NOT excluded — a dated-but-implemented design doc with stale refs is real drift."
+echo "  - parachute-runner hits: runner retired 2026-07-01 — see migrations/2026-07-01-runner-retirement.md for the propagation checklist."
+echo "  - channel-block hits inside hub's one-cycle back-compat shims (301 redirect route, LEGACY_MANIFEST_ALIASES map, install alias) are EXPECTED until the contract PR drops them."
 echo "  - depcheck's own registry + vault git-preflight.ts + hub cloudflaredInstallHint are excluded from the install-string check (canonical sources)."
 echo "  - /admin/vaults hits in hub code are EXPECTED until the hub-module-boundary Phase B5 SPA slim lands — that sweep tracks the propagation."
 echo "  - Add new grep blocks above when you hit a new class of stale ref."

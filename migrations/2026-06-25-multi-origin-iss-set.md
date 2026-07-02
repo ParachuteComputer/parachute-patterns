@@ -113,7 +113,8 @@ on top of the signature gate, never a substitute for it.
 
 - [x] `src/hub-origin.ts` / `src/vault-hub-origin-env.ts` jsdoc — the security
       invariant is stated at the validation/assembly sites (in-code).
-- [ ] `patterns/oauth-scopes.md` (or the hub-as-issuer pattern doc) — a line
+- [x] `patterns/oauth-scopes.md` (or the hub-as-issuer pattern doc) — a line
       that resource servers accept `iss` ∈ the hub's published origin set, not a
       single origin, when on scope-guard ≥0.5.0. (Add when convenient — the
-      in-code jsdoc is authoritative meanwhile.)
+      in-code jsdoc is authoritative meanwhile.) *(PR: patterns#132 — Parser
+      rules bullet.)*

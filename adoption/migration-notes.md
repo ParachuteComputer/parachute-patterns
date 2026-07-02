@@ -5,6 +5,43 @@ entries on top. Each entry: date, change, affected repos, status.
 
 ---
 
+## 2026-07-01 — Fable-cleanup propagation: channel→agent sweep, runner retirement, surface scope family
+
+**Change:** three architectural shifts propagated into the live pattern docs
+(patterns#132). (1) **channel→agent rename (2026-06-17)** swept through
+[`canonical-ports.md`](../patterns/canonical-ports.md) (1941 =
+`parachute-agent`, live module / experimental preview; 1944 disambiguated as
+the *containers* agent, retired to `paraclaw`),
+[`oauth-scopes.md`](../patterns/oauth-scopes.md) (`channel:send` →
+`agent:send`; the `agent:*` namespace is RECLAIMED by the live module),
+naming/repos + naming/bins, well-known-discovery-rfc,
+module-json-extensibility, post-merge-hygiene, and
+`scripts/audit-canonical-refs.sh` (whose old exclusion treated
+`parachute-agent` as retired and hid the live module's drift). (2)
+**parachute-runner fully retired** (Aaron 2026-07-01) — module set of record
+is vault, hub, agent, scribe, surface; checklist at
+[`../migrations/2026-07-01-runner-retirement.md`](../migrations/2026-07-01-runner-retirement.md).
+(3) **Surface Git Transport shipped** (hub 0.7.5 / surface-host 0.3.8 / agent
+0.2.4) — `surface:<name>:read|write` + `surface:admin` documented in
+oauth-scopes.md; retroactive checklist at
+[`../migrations/2026-07-01-surface-git-transport.md`](../migrations/2026-07-01-surface-git-transport.md).
+Also ticked the landed items in
+[`../migrations/2026-06-17-channel-to-agent.md`](../migrations/2026-06-17-channel-to-agent.md)
+(agent#87/#89/#133/#135/#147, hub#667) and completed the oauth-scopes item in
+[`../migrations/2026-06-25-multi-origin-iss-set.md`](../migrations/2026-06-25-multi-origin-iss-set.md).
+
+**Affected repos:** parachute-hub (runner SERVICE_SPECS/KNOWN_MODULES/focus
+removal — pending PR), parachute-runner (archive + npm deprecate — Aaron),
+parachute.computer (surface-git-transport design-doc status flip DRAFT →
+shipped), parachute-agent (repo description still channel-era copy),
+parachute-workspace (runner row in the committed-core table), team vault
+(runner Canon note; `#channel-message` re-tag still open).
+
+**Status:** pattern docs updated (patterns#132); downstream items tracked in
+the two new migration files + the channel→agent checklist.
+
+---
+
 ## 2026-06-30 — `@openparachute/surface` ships stable, not rc (Rule 2 carve-out)
 
 **Change:** [`governance.md`](../patterns/governance.md) rule 2 gains a

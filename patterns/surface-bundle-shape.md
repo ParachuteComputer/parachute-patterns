@@ -161,19 +161,20 @@ them unconditionally: `scopes_required` (→ `["vault:*:read"]`), `pwa`
 
 ## Reference implementation
 
-**[`@openparachute/notes-ui`](https://github.com/ParachuteComputer/parachute-notes/tree/main/packages/notes-ui)**
-— first canonical app. Vault read+write, PWA mode, declares
-`required_schema` for `capture` / `capture/text` / `capture/voice` tag
-types. See
-[`parachute-notes/packages/notes-ui/meta.json`](https://github.com/ParachuteComputer/parachute-notes/blob/main/packages/notes-ui/meta.json)
-(PR #158).
+**[`@openparachute/notes-ui`](https://github.com/ParachuteComputer/parachute-surface/tree/main/packages/notes-ui)**
+— the bundled reference surface, shipped inside `parachute-surface`
+(moved from the archived `parachute-notes` repo 2026-05-24). Vault
+read+write, PWA mode, declares `required_schema` for `capture` /
+`capture/text` / `capture/voice` tag types. See
+[`parachute-surface/packages/notes-ui/meta.json`](https://github.com/ParachuteComputer/parachute-surface/blob/main/packages/notes-ui/meta.json)
+(originally parachute-notes PR #158).
 
 ```json
 {
   "$schema": "https://parachute.computer/schemas/app-ui-meta.json",
   "name": "notes",
   "displayName": "Notes",
-  "tagline": "Notes PWA backed by your vault.",
+  "tagline": "Capture and browse notes in your vault.",
   "path": "/surface/notes",
   "iconUrl": "icon.svg",
   "scopes_required": ["vault:*:read", "vault:*:write"],
